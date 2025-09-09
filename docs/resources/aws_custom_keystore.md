@@ -3,21 +3,25 @@
 page_title: "ciphertrust_aws_custom_keystore Resource - terraform-provider-ciphertrust"
 subcategory: ""
 description: |-
-  Use this resource to create and manage Custom Key Stores in CipherTrust Manager.CipherTrust Manager provides the integration of Custom Key Stores proxy service for Amazon Web Services.
-  Custom Key Stores type are External Key Stores (XKS) and CloudHSM Key Stores.
-  AWS_CLOUDHSM key stores will have keys backed by a CloudHSM cluster in AWS.
-  EXTERNAL_KEY_STORE key stores will have keys backed by a Luna HSM or CipherTrust Manager.
+  Use this resource to create and manage Custom Key Stores in CipherTrust Manager.
+  CipherTrust Manager provides the integration of Custom Key Stores proxy service for Amazon Web Services.
+  Custom Key Stores types are External Key Stores (XKS) and CloudHSM Key Stores.
+  * AWS_CLOUDHSM key stores will have keys backed by a CloudHSM cluster in AWS.
+  
+  * EXTERNAL_KEY_STORE key stores will have keys backed by a Luna HSM or CipherTrust Manager.
 ---
 
 # ciphertrust_aws_custom_keystore (Resource)
 
-Use this resource to create and manage Custom Key Stores in CipherTrust Manager.CipherTrust Manager provides the integration of Custom Key Stores proxy service for Amazon Web Services.
+Use this resource to create and manage Custom Key Stores in CipherTrust Manager.
 
-Custom Key Stores type are External Key Stores (XKS) and CloudHSM Key Stores.
+CipherTrust Manager provides the integration of Custom Key Stores proxy service for Amazon Web Services.
 
-AWS_CLOUDHSM key stores will have keys backed by a CloudHSM cluster in AWS.
+Custom Key Stores types are External Key Stores (XKS) and CloudHSM Key Stores.
 
-EXTERNAL_KEY_STORE key stores will have keys backed by a Luna HSM or CipherTrust Manager.
+	* AWS_CLOUDHSM key stores will have keys backed by a CloudHSM cluster in AWS.
+
+	* EXTERNAL_KEY_STORE key stores will have keys backed by a Luna HSM or CipherTrust Manager.
 
 ## Example Usage
 
