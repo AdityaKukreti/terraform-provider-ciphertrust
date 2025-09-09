@@ -60,7 +60,7 @@ func (r *resourceAWSKeyImportMaterial) Configure(_ context.Context, req resource
 
 func (r *resourceAWSKeyImportMaterial) Schema(_ context.Context, _ resource.SchemaRequest, resp *resource.SchemaResponse) {
 	resp.Schema = schema.Schema{
-		Description: "Use this resource to create an AWS key.",
+		Description: "Use this resource to import or re-import key material to an AWS EXTERNAL key.",
 		Attributes: map[string]schema.Attribute{
 			"id": schema.StringAttribute{
 				Computed:    true,
@@ -100,9 +100,7 @@ func (r *resourceAWSKeyImportMaterial) Schema(_ context.Context, _ resource.Sche
 			},
 			"origin": schema.StringAttribute{
 				Computed:    true,
-				Optional:    true,
-				Description: "Source of the key material. Options: AWS_KMS, EXTERNAL. AWS_KMS will create a native AWS key and is the default for AWS native key creation. EXTERNAL will create an external AWS key and is the default for import operations. This parameter is not required for upload operations.",
-				Validators:  []validator.String{stringvalidator.OneOf([]string{"AWS_KMS", "EXTERNAL"}...)},
+				Description: "AWS source of the key material.",
 			},
 			"schedule_for_deletion_days": schema.Int64Attribute{
 				Optional:    true,
@@ -163,7 +161,7 @@ func (r *resourceAWSKeyImportMaterial) Schema(_ context.Context, _ resource.Sche
 			},
 			"key_id": schema.StringAttribute{
 				Required:    true,
-				Description: "CipherTrust Manager Key ID.",
+				Description: "CipherTrust Manager Key ID of the AWS Key.",
 			},
 			"key_manager": schema.StringAttribute{
 				Computed:    true,
@@ -265,13 +263,15 @@ func (r *resourceAWSKeyImportMaterial) Schema(_ context.Context, _ resource.Sche
 		},
 		Blocks: map[string]schema.Block{
 			"import_key_material": schema.ListNestedBlock{
-				Description: "Both a 'source_key_tier' key and an AWS external key will be created. Key material from the 'source_key_tier' key will be imported to the AWS key." +
-					"The 'source_key_tier' key will not be deleted on Terraform destroy. An alternative is to use 'upload_key' parameter.",
+				Description: "Key material parameters.",
 				NestedObject: schema.NestedBlockObject{
 					Attributes: map[string]schema.Attribute{
 						"import_type": schema.StringAttribute{
-							Optional:    true,
-							Description: "Specify the type of import wants to perform. Options: NEW_KEY_MATERIAL, EXISTING_KEY_MATERIAL",
+							Optional: true,
+							Description: "Options: NEW_KEY_MATERIAL, EXISTING_KEY_MATERIAL. " +
+								"This parameter is optional and only usable with symmetric keys. If no key material has " +
+								"ever been imported into the AWS key, and this parameter is omitted, the default is NEW_KEY_MATERIAL. " +
+								"Otherwise, the default is EXISTING_KEY_MATERIAL. ",
 						},
 						"key_expiration": schema.BoolAttribute{
 							Optional:    true,
@@ -283,11 +283,13 @@ func (r *resourceAWSKeyImportMaterial) Schema(_ context.Context, _ resource.Sche
 						},
 						"key_material_id": schema.StringAttribute{
 							Optional:    true,
-							Description: "Specify the key material id. This is applicable for re-import only.",
+							Description: "Specify the key material id. This is applicable for re-import to symmetric keys only.",
 						},
 						"source_key_identifier": schema.StringAttribute{
-							Optional:    true,
-							Description: "source_key_identifier is the mandatory parameter. (Optional only if source_key_tier is local and key is 256 bits AES key). If key material is re-imported, AWS allows re-importing the same key material only, therefore it is mandatory to provide source key identifier of the same source key which was imported previously.",
+							Optional: true,
+							Description: "This parameter is optional only if the source_key_tier is local and the key is a 256 bits AES key. " +
+								"If key material is being re-imported, AWS only allows re-importing the same key material therefore it's necessary " +
+								"to provide the source key identifier of the same source key which was imported previously.",
 						},
 						"source_key_tier": schema.StringAttribute{
 							Computed:    true,

@@ -60,11 +60,11 @@ func (r *resourceAWSCustomKeyStore) Metadata(_ context.Context, req resource.Met
 // Schema defines the schema for the resource.
 func (r *resourceAWSCustomKeyStore) Schema(ctx context.Context, _ resource.SchemaRequest, resp *resource.SchemaResponse) {
 	resp.Schema = schema.Schema{
-		Description: "Use this resource to create and manage Custom Key Stores in CipherTrust Manager." +
+		Description: "Use this resource to create and manage Custom Key Stores in CipherTrust Manager.\n\n" +
 			"CipherTrust Manager provides the integration of Custom Key Stores proxy service for Amazon Web Services.\n\n" +
-			"Custom Key Stores type are External Key Stores (XKS) and CloudHSM Key Stores.\n\n" +
-			"AWS_CLOUDHSM key stores will have keys backed by a CloudHSM cluster in AWS.\n\n" +
-			"EXTERNAL_KEY_STORE key stores will have keys backed by a Luna HSM or CipherTrust Manager.",
+			"Custom Key Stores types are External Key Stores (XKS) and CloudHSM Key Stores.\n\n" +
+			"\t* AWS_CLOUDHSM key stores will have keys backed by a CloudHSM cluster in AWS.\n\n" +
+			"\t* EXTERNAL_KEY_STORE key stores will have keys backed by a Luna HSM or CipherTrust Manager.",
 		Attributes: map[string]schema.Attribute{
 			"id": schema.StringAttribute{
 				Computed: true,
