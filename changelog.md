@@ -1,3 +1,8 @@
+# 0.11.3-beta
+## Background Refresh of CipherTrust Manager Authentication Token
+    Middleware was added to the REST client to automatically handle authentication token renewal, preventing tokens from expiring. 
+    Previously token refreshes had to occur during CRUD operations.
+
 # 0.11.2-beta
 ## New Provider Settings
     replication_delay_ms
