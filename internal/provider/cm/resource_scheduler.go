@@ -233,8 +233,9 @@ func (r *resourceScheduler) Schema(_ context.Context, _ resource.SchemaRequest, 
 				NestedObject: schema.NestedBlockObject{
 					Attributes: map[string]schema.Attribute{
 						"aws_retain_alias": schema.BoolAttribute{
-							Optional:    true,
-							Description: "Retain the alias and timestamp on the archived key after rotation. Applicable only to AWS key rotation.",
+							Optional: true,
+							Description: "Retain the alias and timestamp on the archived key after rotation. " +
+								"Applicable only to AWS key rotation.",
 						},
 						"rotate_material": schema.BoolAttribute{
 							Optional:    true,
@@ -251,12 +252,8 @@ func (r *resourceScheduler) Schema(_ context.Context, _ resource.SchemaRequest, 
 							Optional: true,
 							Description: "Expiration time of the new key. If not specified, the new key material never expires. " +
 								"For example, if you want the scheduler to the rotate keys that are expiring within six hours of its run, " +
-								"set expire_in to 6h. Use either 'Xd' for x days or 'Yh' for y hours.",
-							Validators: []validator.String{
-								stringvalidator.RegexMatches(
-									regexp.MustCompile(`^[0-9]+[d|h]$`), "must contain either Xd for x days or Yh for y hours",
-								),
-							},
+								"set expire_in to 6h. Use either 'Xd' for x days or 'Yh' for y hours. " +
+								"To remove the setting, set to an empty string.",
 						},
 						"expire_in": schema.StringAttribute{
 							Optional: true,
@@ -264,12 +261,17 @@ func (r *resourceScheduler) Schema(_ context.Context, _ resource.SchemaRequest, 
 								"The scheduler rotates the keys that are expiring in this period. " +
 								"If not specified, the scheduler rotates all the keys. " +
 								"For example, if you want the scheduler to rotate the keys that are expiring " +
-								"within six hours of its run, set expire_in to 6h. Use either 'Xd' for x days or 'Yh' for y hours.",
-							Validators: []validator.String{
-								stringvalidator.RegexMatches(
-									regexp.MustCompile(`^[0-9]+[d|h]$`), "must contain either Xd for x days or Yh for y hours",
-								),
-							},
+								"within six hours of its run, set expire_in to 6h. Use either 'Xd' for x days or 'Yh' for y hours. " +
+								"To remove the setting, set to an empty string.",
+						},
+						"rotation_after": schema.StringAttribute{
+							Optional: true,
+							Description: "Number of days after which the keys will be rotated. Specify Xd for x days. " +
+								"The first key rotation will happen after x days of key creation. " +
+								"Subsequent key rotations will happen after every x days of the last rotation date. " +
+								"For example, if you set rotation_after to 6d, the first key rotation will happen after six days of key creation. " +
+								"Subsequently, the keys will be rotated after every six days. " +
+								"To remove the setting, set to an empty string.",
 						},
 					},
 				},
@@ -697,6 +699,7 @@ func getCckmKeyRotationOperationParams(ctx context.Context, plan CreateJobConfig
 			CCKMRotationAwsParamsJSON: awsParams,
 			Expiration:                rotationParams.Expiration.ValueStringPointer(),
 			ExpireIn:                  rotationParams.ExpireIn.ValueStringPointer(),
+			RotationAfter:             rotationParams.RotationAfter.ValueStringPointer(),
 		}
 		return &rotationParamsJSON
 	}

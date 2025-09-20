@@ -119,8 +119,16 @@ func (d *dataSourceScheduler) Schema(_ context.Context, _ datasource.SchemaReque
 						"cckm_key_rotation_params": schema.SingleNestedAttribute{
 							Computed: true,
 							Attributes: map[string]schema.Attribute{
-								"aws_retain_alias": schema.BoolAttribute{
+								"aws_params": schema.SingleNestedAttribute{
 									Computed: true,
+									Attributes: map[string]schema.Attribute{
+										"retain_alias": schema.BoolAttribute{
+											Computed: true,
+										},
+										"rotate_material": schema.BoolAttribute{
+											Computed: true,
+										},
+									},
 								},
 								"cloud_name": schema.StringAttribute{
 									Computed: true,
@@ -129,6 +137,9 @@ func (d *dataSourceScheduler) Schema(_ context.Context, _ datasource.SchemaReque
 									Computed: true,
 								},
 								"expire_in": schema.StringAttribute{
+									Computed: true,
+								},
+								"rotation_after": schema.StringAttribute{
 									Computed: true,
 								},
 							},
@@ -205,12 +216,6 @@ func (d *dataSourceScheduler) Read(ctx context.Context, req datasource.ReadReque
 		return
 	}
 
-	xxx := JobConfigParamsTFSDK{
-		CreateJobConfigParamsTFSDKCommon: CreateJobConfigParamsTFSDKCommon{},
-		CCKMKeyRotationParams:            nil,
-		CCKMSynchronizationParams:        nil,
-	}
-	_ = xxx
 	for _, jobs := range schedulerJobConfigs {
 		schedulerJobs := JobConfigParamsTFSDK{
 			CreateJobConfigParamsTFSDKCommon: CreateJobConfigParamsTFSDKCommon{
@@ -234,13 +239,13 @@ func (d *dataSourceScheduler) Read(ctx context.Context, req datasource.ReadReque
 
 		switch jobs.Operation {
 		case "database_backup":
-			getDataBaseBackupParams(jobs, &schedulerJobs)
+			getDataBaseBackupParams(ctx, id, &schedulerJobs, jobs.JobConfigParams, &resp.Diagnostics)
 		case "cckm_key_rotation":
-			getCCKMKeyRotationParams(jobs, &schedulerJobs)
+			getCCKMKeyRotationParams(ctx, id, &schedulerJobs, jobs.JobConfigParams, &resp.Diagnostics)
 		case "cckm_synchronization":
-			getCCKMSynchronizationParams(jobs, &schedulerJobs, &resp.Diagnostics)
+			getCCKMSynchronizationParams(ctx, id, &schedulerJobs, jobs.JobConfigParams, &resp.Diagnostics)
 		case "cckm_xks_credential_rotation":
-			getCCKMCredentialRotationParams(jobs, &schedulerJobs)
+			getCCKMCredentialRotationParams(ctx, id, &schedulerJobs, jobs.JobConfigParams, &resp.Diagnostics)
 		}
 		state.Scheduler = append(state.Scheduler, schedulerJobs)
 	}
@@ -253,7 +258,7 @@ func (d *dataSourceScheduler) Read(ctx context.Context, req datasource.ReadReque
 	}
 }
 
-func (d *dataSourceScheduler) Configure(ctx context.Context, req datasource.ConfigureRequest, resp *datasource.ConfigureResponse) {
+func (d *dataSourceScheduler) Configure(_ context.Context, req datasource.ConfigureRequest, resp *datasource.ConfigureResponse) {
 	if req.ProviderData == nil {
 		return
 	}
@@ -271,107 +276,139 @@ func (d *dataSourceScheduler) Configure(ctx context.Context, req datasource.Conf
 	d.client = client
 }
 
-func getDataBaseBackupParams(jobs CreateJobConfigParamsListJSON, schedulerJobs *JobConfigParamsTFSDK) {
-	if jobs.DatabaseBackupParams != nil {
-		schedulerJobs.DatabaseBackupParams = &DatabaseBackupParamsTFSDK{
-			BackupKey:      types.StringValue(jobs.DatabaseBackupParams.BackupKey),
-			Connection:     types.StringValue(jobs.DatabaseBackupParams.Connection),
-			Description:    types.StringValue(jobs.DatabaseBackupParams.Description),
-			DoSCP:          types.BoolValue(jobs.DatabaseBackupParams.DoSCP),
-			Scope:          types.StringValue(jobs.DatabaseBackupParams.Scope),
-			TiedToHSM:      types.BoolValue(jobs.DatabaseBackupParams.TiedToHSM),
-			RetentionCount: types.Int64Value(jobs.DatabaseBackupParams.RetentionCount),
-			Filters: func() []BackupFilterTFSDK {
-				var filters []BackupFilterTFSDK
-				if jobs.DatabaseBackupParams.Filters != nil {
-					for _, filter := range *jobs.DatabaseBackupParams.Filters {
-						var resourceQueryStr string
+func getDataBaseBackupParams(ctx context.Context, id string, schedulerJobs *JobConfigParamsTFSDK, jobConfigParams json.RawMessage, diags *diag.Diagnostics) {
+	var dbBackupParams DatabaseBackupParamsJSON
+	err := json.Unmarshal(jobConfigParams, &dbBackupParams)
+	if err != nil {
+		tflog.Debug(ctx, common.ERR_METHOD_END+err.Error()+" [data_source_scheduler.go -> Read]["+id+"]")
+		diags.AddError(
+			"Unable to read scheduler database backup params",
+			err.Error(),
+		)
+	}
+	schedulerJobs.DatabaseBackupParams = &DatabaseBackupParamsTFSDK{
+		BackupKey:      types.StringValue(dbBackupParams.BackupKey),
+		Connection:     types.StringValue(dbBackupParams.Connection),
+		Description:    types.StringValue(dbBackupParams.Description),
+		DoSCP:          types.BoolValue(dbBackupParams.DoSCP),
+		Scope:          types.StringValue(dbBackupParams.Scope),
+		TiedToHSM:      types.BoolValue(dbBackupParams.TiedToHSM),
+		RetentionCount: types.Int64Value(dbBackupParams.RetentionCount),
+		Filters: func() []BackupFilterTFSDK {
+			var filters []BackupFilterTFSDK
+			if dbBackupParams.Filters != nil {
+				for _, filter := range *dbBackupParams.Filters {
+					var resourceQueryStr string
 
-						// Handle ResourceQuery which is an interface
-						switch query := filter.ResourceQuery.(type) {
-						case string:
-							resourceQueryStr = query
-						case map[string]interface{}:
-							// Serialize map into a JSON string
-							bytes, err := json.Marshal(query)
-							if err != nil {
-								resourceQueryStr = "error_serializing_resource_query"
-							} else {
-								resourceQueryStr = string(bytes)
-							}
-						default:
-							resourceQueryStr = fmt.Sprintf("%v", query)
+					// Handle ResourceQuery which is an interface
+					switch query := filter.ResourceQuery.(type) {
+					case string:
+						resourceQueryStr = query
+					case map[string]interface{}:
+						// Serialize map into a JSON string
+						bytes, err := json.Marshal(query)
+						if err != nil {
+							resourceQueryStr = "error_serializing_resource_query"
+						} else {
+							resourceQueryStr = string(bytes)
 						}
-
-						filters = append(filters, BackupFilterTFSDK{
-							ResourceType:  types.StringValue(filter.ResourceType),
-							ResourceQuery: types.StringValue(resourceQueryStr),
-						})
+					default:
+						resourceQueryStr = fmt.Sprintf("%v", query)
 					}
+
+					filters = append(filters, BackupFilterTFSDK{
+						ResourceType:  types.StringValue(filter.ResourceType),
+						ResourceQuery: types.StringValue(resourceQueryStr),
+					})
 				}
-				return filters
-			}(),
-		}
+			}
+			return filters
+		}(),
 	}
 }
 
-func getCCKMKeyRotationParams(jobs CreateJobConfigParamsListJSON, schedulerJobs *JobConfigParamsTFSDK) {
-	if jobs.CCKMKeyRotationParams != nil {
-		keyRotationParams := &CCKMKeyRotationParamsTFSDK{
-			RetainAlias: types.BoolValue(jobs.CCKMKeyRotationParams.RetainAlias),
-			CloudName:   types.StringValue(jobs.CCKMKeyRotationParams.CloudName),
-		}
-		if jobs.CCKMKeyRotationParams.Expiration != nil {
-			keyRotationParams.Expiration = types.StringValue(*jobs.CCKMKeyRotationParams.Expiration)
-		}
-		if jobs.CCKMKeyRotationParams.ExpireIn != nil {
-			keyRotationParams.ExpireIn = types.StringValue(*jobs.CCKMKeyRotationParams.ExpireIn)
-		}
-		schedulerJobs.CCKMKeyRotationParams = keyRotationParams
+func getCCKMKeyRotationParams(ctx context.Context, id string, schedulerJobs *JobConfigParamsTFSDK, jobConfigParams json.RawMessage, diags *diag.Diagnostics) {
+	var cckmKeyRotationParams CCKMKeyRotationParamsJSON
+	err := json.Unmarshal(jobConfigParams, &cckmKeyRotationParams)
+	if err != nil {
+		tflog.Debug(ctx, common.ERR_METHOD_END+err.Error()+" [data_source_scheduler.go -> Read]["+id+"]")
+		diags.AddError(
+			"Unable to read scheduler cckm key rotation params",
+			err.Error(),
+		)
+		return
 	}
+	keyRotationParams := &CCKMKeyRotationParamsDatasourceTFSDK{
+		CloudName: types.StringValue(cckmKeyRotationParams.CloudName),
+		AwsParams: CCKMAwsKeyRotationParamsDatasourceTFSDK{
+			RetainAlias:    types.BoolValue(cckmKeyRotationParams.RetainAlias),
+			RotateMaterial: types.BoolValue(cckmKeyRotationParams.RotateMaterial),
+		},
+	}
+	if cckmKeyRotationParams.Expiration != nil {
+		keyRotationParams.Expiration = types.StringValue(*cckmKeyRotationParams.Expiration)
+	}
+	if cckmKeyRotationParams.ExpireIn != nil {
+		keyRotationParams.ExpireIn = types.StringValue(*cckmKeyRotationParams.ExpireIn)
+	}
+	if cckmKeyRotationParams.RotationAfter != nil {
+		keyRotationParams.RotationAfter = types.StringValue(*cckmKeyRotationParams.RotationAfter)
+	}
+	schedulerJobs.CCKMKeyRotationParams = keyRotationParams
 }
 
-func getCCKMSynchronizationParams(jobs CreateJobConfigParamsListJSON, schedulerJobs *JobConfigParamsTFSDK, diags *diag.Diagnostics) {
-	if jobs.CCKMSynchronizationParams != nil {
-
-		synchronizationParams := &CCKMSynchronizationParamsTFSDK{
-			CloudName: types.StringValue(jobs.CCKMSynchronizationParams.CloudName),
-		}
-
-		if jobs.CCKMSynchronizationParams.SynchronizeAll != nil {
-			synchronizationParams.SyncAll = types.BoolValue(*jobs.CCKMSynchronizationParams.SynchronizeAll)
-		}
-
-		var kmsValues []attr.Value
-		for _, kms := range jobs.CCKMSynchronizationParams.Kms {
-			kmsValues = append(kmsValues, types.StringValue(kms))
-		}
-		kmses, d := types.SetValue(types.StringType, kmsValues)
-		if d.HasError() {
-			diags.Append(d...)
-			return
-		}
-		synchronizationParams.Kms = kmses
-
-		var ociValues []attr.Value
-		for _, vault := range jobs.CCKMSynchronizationParams.OCIVaults {
-			ociValues = append(ociValues, types.StringValue(vault))
-		}
-		ociSet, d := types.SetValue(types.StringType, ociValues)
-		if d.HasError() {
-			diags.Append(d...)
-			return
-		}
-		synchronizationParams.OCIVaults = ociSet
-
-		schedulerJobs.CCKMSynchronizationParams = synchronizationParams
+func getCCKMSynchronizationParams(ctx context.Context, id string, schedulerJobs *JobConfigParamsTFSDK, jobConfigParams json.RawMessage, diags *diag.Diagnostics) {
+	var cckmSyncParams CCKMSynchronizationParamsJSON
+	err := json.Unmarshal(jobConfigParams, &cckmSyncParams)
+	if err != nil {
+		tflog.Debug(ctx, common.ERR_METHOD_END+err.Error()+" [data_source_scheduler.go -> Read]["+id+"]")
+		diags.AddError(
+			"Unable to read scheduler cckm key synchronization params",
+			err.Error(),
+		)
+		return
 	}
+	synchronizationParams := &CCKMSynchronizationParamsTFSDK{
+		CloudName: types.StringValue(cckmSyncParams.CloudName),
+	}
+	if cckmSyncParams.SynchronizeAll != nil {
+		synchronizationParams.SyncAll = types.BoolValue(*cckmSyncParams.SynchronizeAll)
+	}
+	var kmsValues []attr.Value
+	for _, kms := range cckmSyncParams.Kms {
+		kmsValues = append(kmsValues, types.StringValue(kms))
+	}
+	kmses, d := types.SetValue(types.StringType, kmsValues)
+	if d.HasError() {
+		diags.Append(d...)
+		return
+	}
+	synchronizationParams.Kms = kmses
+	var ociValues []attr.Value
+	for _, vault := range cckmSyncParams.OCIVaults {
+		ociValues = append(ociValues, types.StringValue(vault))
+	}
+	ociSet, d := types.SetValue(types.StringType, ociValues)
+	if d.HasError() {
+		diags.Append(d...)
+		return
+	}
+	synchronizationParams.OCIVaults = ociSet
+	schedulerJobs.CCKMSynchronizationParams = synchronizationParams
 }
 
-func getCCKMCredentialRotationParams(jobs CreateJobConfigParamsListJSON, schedulerJobs *JobConfigParamsTFSDK) {
-	if jobs.CCKMXksRotateCredentialsParams != nil {
-		schedulerJobs.CCKMXksRotateCredentialsParams = &CCKMXksRotateCredentialsParamsTFSDK{
-			CloudName: types.StringValue(jobs.CCKMXksRotateCredentialsParams.CloudName),
-		}
+func getCCKMCredentialRotationParams(ctx context.Context, id string, schedulerJobs *JobConfigParamsTFSDK, jobConfigParams json.RawMessage, diags *diag.Diagnostics) {
+	var rotateCredentialsParams CCKMXksRotateCredentialsParamsJSON
+	err := json.Unmarshal(jobConfigParams, &rotateCredentialsParams)
+	if err != nil {
+		tflog.Debug(ctx, common.ERR_METHOD_END+err.Error()+" [data_source_scheduler.go -> Read]["+id+"]")
+		diags.AddError(
+			"Unable to read scheduler rotate credentials params",
+			err.Error(),
+		)
+		return
+	}
+	schedulerJobs.CCKMXksRotateCredentialsParams = &CCKMXksRotateCredentialsParamsTFSDK{
+		CloudName: types.StringValue(rotateCredentialsParams.CloudName),
 	}
 }
