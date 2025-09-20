@@ -1,6 +1,7 @@
 package cm
 
 import (
+	"encoding/json"
 	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"time"
 
@@ -762,12 +763,13 @@ type CMPrometheusMetricsConfigJSON struct {
 
 type CCKMRotationAwsParamsJSON struct {
 	RetainAlias    bool `json:"retain_alias"`
-	RotateMaterial bool `json:"rotate_material,omitempty"`
+	RotateMaterial bool `json:"rotate_material"`
 }
 type CCKMKeyRotationParamsJSON struct {
 	CloudName                 string  `json:"cloud_name"`
 	Expiration                *string `json:"expiration"`
 	ExpireIn                  *string `json:"expire_in"`
+	RotationAfter             *string `json:"rotation_after"`
 	CCKMRotationAwsParamsJSON `json:"aws_param"`
 }
 
@@ -853,8 +855,8 @@ type CreateJobConfigParamsTFSDK struct {
 
 type JobConfigParamsTFSDK struct {
 	CreateJobConfigParamsTFSDKCommon
-	CCKMKeyRotationParams     *CCKMKeyRotationParamsTFSDK     `tfsdk:"cckm_key_rotation_params"`
-	CCKMSynchronizationParams *CCKMSynchronizationParamsTFSDK `tfsdk:"cckm_synchronization_params"`
+	CCKMKeyRotationParams     *CCKMKeyRotationParamsDatasourceTFSDK `tfsdk:"cckm_key_rotation_params"`
+	CCKMSynchronizationParams *CCKMSynchronizationParamsTFSDK       `tfsdk:"cckm_synchronization_params"`
 }
 
 type DatabaseBackupParamsTFSDK struct {
@@ -874,25 +876,22 @@ type BackupFilterTFSDK struct {
 }
 
 type CreateJobConfigParamsListJSON struct {
-	ID                             string                              `json:"id"`
-	URI                            string                              `json:"uri"`
-	Account                        string                              `json:"account"`
-	Application                    string                              `json:"application"`
-	DevAccount                     string                              `json:"devAccount"`
-	CreatedAt                      string                              `json:"createdAt"`
-	UpdatedAt                      string                              `json:"updatedAt"`
-	Name                           string                              `json:"name"`
-	Description                    string                              `json:"description"`
-	Operation                      string                              `json:"operation"`
-	RunAt                          string                              `json:"run_at"`
-	RunOn                          string                              `json:"run_on"`
-	Disabled                       bool                                `json:"disabled"`
-	StartDate                      time.Time                           `json:"start_date"`
-	EndDate                        time.Time                           `json:"end_date"`
-	DatabaseBackupParams           *DatabaseBackupParamsJSON           `json:"job_config_params"`
-	CCKMKeyRotationParams          *CCKMKeyRotationParamsJSON          `json:"cckm_key_rotation_params"`
-	CCKMSynchronizationParams      *CCKMSynchronizationParamsJSON      `json:"cckm_synchronization_params"`
-	CCKMXksRotateCredentialsParams *CCKMXksRotateCredentialsParamsJSON `json:"cckm_xks_credential_rotation_params"`
+	ID              string          `json:"id"`
+	URI             string          `json:"uri"`
+	Account         string          `json:"account"`
+	Application     string          `json:"application"`
+	DevAccount      string          `json:"devAccount"`
+	CreatedAt       string          `json:"createdAt"`
+	UpdatedAt       string          `json:"updatedAt"`
+	Name            string          `json:"name"`
+	Description     string          `json:"description"`
+	Operation       string          `json:"operation"`
+	RunAt           string          `json:"run_at"`
+	RunOn           string          `json:"run_on"`
+	Disabled        bool            `json:"disabled"`
+	StartDate       time.Time       `json:"start_date"`
+	EndDate         time.Time       `json:"end_date"`
+	JobConfigParams json.RawMessage `json:"job_config_params"`
 }
 
 type CMPropertyTFSDK struct {
@@ -1104,6 +1103,20 @@ type CCKMKeyRotationParamsTFSDK struct {
 	Expiration     types.String `tfsdk:"expiration"`
 	ExpireIn       types.String `tfsdk:"expire_in"`
 	RotateMaterial types.Bool   `tfsdk:"rotate_material"`
+	RotationAfter  types.String `tfsdk:"rotation_after"`
+}
+
+type CCKMAwsKeyRotationParamsDatasourceTFSDK struct {
+	RetainAlias    types.Bool `tfsdk:"retain_alias"`
+	RotateMaterial types.Bool `tfsdk:"rotate_material"`
+}
+
+type CCKMKeyRotationParamsDatasourceTFSDK struct {
+	AwsParams     CCKMAwsKeyRotationParamsDatasourceTFSDK `tfsdk:"aws_params"`
+	CloudName     types.String                            `tfsdk:"cloud_name"`
+	Expiration    types.String                            `tfsdk:"expiration"`
+	ExpireIn      types.String                            `tfsdk:"expire_in"`
+	RotationAfter types.String                            `tfsdk:"rotation_after"`
 }
 
 type CCKMSynchronizationParamsTFSDK struct {

@@ -29,7 +29,7 @@ terraform {
 
 # Configure the CipherTrust provider for authentication
 provider "ciphertrust" {
-	# The address of the CipherTrust appliance (replace with the actual address)
+  # The address of the CipherTrust appliance (replace with the actual address)
   address = "https://10.10.10.10"
 
   # Username for authenticating with the CipherTrust appliance
@@ -86,8 +86,8 @@ resource "ciphertrust_scp_connection" "scp_connection" {
   # Custom metadata for the SCP connection
   # This can be used to store additional information related to the SCP connection
   meta = {
-    "custom_meta_key1" = "custom_value1"  # Example custom metadata key-value pair
-    "customer_meta_key2" = "custom_value2"  # Another custom metadata entry
+    "custom_meta_key1"   = "custom_value1" # Example custom metadata key-value pair
+    "customer_meta_key2" = "custom_value2" # Another custom metadata entry
   }
 }
 
@@ -126,6 +126,44 @@ resource "ciphertrust_scheduler" "scheduler" {
 output "scheduler" {
   # Outputs all attributes of the scheduler resource.
   value = ciphertrust_scheduler.scheduler
+}
+
+# AWS Scheduled Key Rotation
+resource "ciphertrust_scheduler" "aws_scheduled_rotation_job" {
+  end_date = "2030-12-07T14:24:00Z"
+  cckm_key_rotation_params {
+    cloud_name       = "aws"
+    aws_retain_alias = true # Apply "gravestone alias" to the "rotated-from" key"
+    rotation_after   = "6d" # Number of days after which the keys will be rotated
+    rotate_material  = true # Rotate key material during the key rotation job
+  }
+  name       = "aws-scheduled-rotation"
+  operation  = "cckm_key_rotation"
+  run_at     = "0 9 * * sat"
+  run_on     = "any"
+  start_date = "20226-01-01T14:24:00Z"
+}
+
+# XKS Credential Rotation
+resource "ciphertrust_scheduler" "xks_credential_rotation" {
+  cckm_xks_credential_rotation_params = {
+    cloud_name = "aws"
+  }
+  name      = "aws-xks-credential-roration"
+  operation = "cckm_xks_credential_rotation"
+  run_at    = "0 9 * * fri"
+}
+
+#  OCI Scheduled Key Rotation
+resource "ciphertrust_scheduler" "oci" {
+  cckm_key_rotation_params {
+    cloud_name = "oci"
+    expiration = "365d" # Expiration time of the new key
+    expire_in  = "10d"  # Rotate keys expiring in this period
+  }
+  name      = "oci-key-rotation"
+  operation = "cckm_key_rotation"
+  run_at    = "0 9 * * fri"
 }
 ```
 
@@ -176,9 +214,10 @@ Required:
 Optional:
 
 - `aws_retain_alias` (Boolean) Retain the alias and timestamp on the archived key after rotation. Applicable only to AWS key rotation.
-- `expiration` (String) Expiration time of the new key. If not specified, the new key material never expires. For example, if you want the scheduler to the rotate keys that are expiring within six hours of its run, set expire_in to 6h. Use either 'Xd' for x days or 'Yh' for y hours.
-- `expire_in` (String) Period during which certain keys are going to expire. The scheduler rotates the keys that are expiring in this period. If not specified, the scheduler rotates all the keys. For example, if you want the scheduler to rotate the keys that are expiring within six hours of its run, set expire_in to 6h. Use either 'Xd' for x days or 'Yh' for y hours.
+- `expiration` (String) Expiration time of the new key. If not specified, the new key material never expires. For example, if you want the scheduler to the rotate keys that are expiring within six hours of its run, set expire_in to 6h. Use either 'Xd' for x days or 'Yh' for y hours. To remove the setting, set to an empty string.
+- `expire_in` (String) Period during which certain keys are going to expire. The scheduler rotates the keys that are expiring in this period. If not specified, the scheduler rotates all the keys. For example, if you want the scheduler to rotate the keys that are expiring within six hours of its run, set expire_in to 6h. Use either 'Xd' for x days or 'Yh' for y hours. To remove the setting, set to an empty string.
 - `rotate_material` (Boolean) If true, rotate the key material during the key rotation job.
+- `rotation_after` (String) Number of days after which the keys will be rotated. Specify Xd for x days. The first key rotation will happen after x days of key creation. Subsequent key rotations will happen after every x days of the last rotation date. For example, if you set rotation_after to 6d, the first key rotation will happen after six days of key creation. Subsequently, the keys will be rotated after every six days. To remove the setting, set to an empty string.
 
 
 <a id="nestedblock--cckm_synchronization_params"></a>

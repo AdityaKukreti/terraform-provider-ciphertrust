@@ -14,7 +14,7 @@ terraform {
 
 # Configure the CipherTrust provider for authentication
 provider "ciphertrust" {
-	# The address of the CipherTrust appliance (replace with the actual address)
+  # The address of the CipherTrust appliance (replace with the actual address)
   address = "https://10.10.10.10"
 
   # Username for authenticating with the CipherTrust appliance
@@ -71,8 +71,8 @@ resource "ciphertrust_scp_connection" "scp_connection" {
   # Custom metadata for the SCP connection
   # This can be used to store additional information related to the SCP connection
   meta = {
-    "custom_meta_key1" = "custom_value1"  # Example custom metadata key-value pair
-    "customer_meta_key2" = "custom_value2"  # Another custom metadata entry
+    "custom_meta_key1"   = "custom_value1" # Example custom metadata key-value pair
+    "customer_meta_key2" = "custom_value2" # Another custom metadata entry
   }
 }
 
@@ -111,4 +111,42 @@ resource "ciphertrust_scheduler" "scheduler" {
 output "scheduler" {
   # Outputs all attributes of the scheduler resource.
   value = ciphertrust_scheduler.scheduler
+}
+
+# AWS Scheduled Key Rotation
+resource "ciphertrust_scheduler" "aws_scheduled_rotation_job" {
+  end_date = "2030-12-07T14:24:00Z"
+  cckm_key_rotation_params {
+    cloud_name       = "aws"
+    aws_retain_alias = true # Apply "gravestone alias" to the "rotated-from" key"
+    rotation_after   = "6d" # Number of days after which the keys will be rotated
+    rotate_material  = true # Rotate key material during the key rotation job
+  }
+  name       = "aws-scheduled-rotation"
+  operation  = "cckm_key_rotation"
+  run_at     = "0 9 * * sat"
+  run_on     = "any"
+  start_date = "20226-01-01T14:24:00Z"
+}
+
+# XKS Credential Rotation
+resource "ciphertrust_scheduler" "xks_credential_rotation" {
+  cckm_xks_credential_rotation_params = {
+    cloud_name = "aws"
+  }
+  name      = "aws-xks-credential-roration"
+  operation = "cckm_xks_credential_rotation"
+  run_at    = "0 9 * * fri"
+}
+
+#  OCI Scheduled Key Rotation
+resource "ciphertrust_scheduler" "oci" {
+  cckm_key_rotation_params {
+    cloud_name = "oci"
+    expiration = "365d" # Expiration time of the new key
+    expire_in  = "10d"  # Rotate keys expiring in this period
+  }
+  name      = "oci-key-rotation"
+  operation = "cckm_key_rotation"
+  run_at    = "0 9 * * fri"
 }
