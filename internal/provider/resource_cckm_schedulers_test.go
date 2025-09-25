@@ -8,19 +8,21 @@ import (
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
 )
 
-func TestCckmSchedulersRotation(t *testing.T) {
+func TestCckmSchedulersRotationResource(t *testing.T) {
 	t.Run("aws", func(t *testing.T) {
 		createSchedulerParams := `
 			resource "ciphertrust_scheduler" "rotation_max_params" {
-			  cckm_key_rotation_params {
-				cloud_name = "aws"
-				expiration = "%s"
-				expire_in = "%s"
-			  }
-			  name       = "%s"
-			  operation  = "cckm_key_rotation"
-			  run_at     = "0 9 * * fri"
-			}
+				cckm_key_rotation_params {
+					cloud_name = "aws"
+					expiration = "%s"
+					expire_in = "%s"
+					rotation_after = "%s"
+					rotate_material = true
+				}
+				name       = "%s"
+				operation  = "cckm_key_rotation"
+				run_at     = "0 9 * * fri"
+				}
 			resource "ciphertrust_scheduler" "rotation_min_params" {
 				cckm_key_rotation_params {
 					cloud_name = "aws"
@@ -35,6 +37,8 @@ func TestCckmSchedulersRotation(t *testing.T) {
 					cloud_name = "aws"
 					expiration = "%s"
 					expire_in = "%s"
+					rotation_after = "%s"
+					rotate_material = false
 				}
 				name       = "%s"
 				operation  = "cckm_key_rotation"
@@ -45,21 +49,54 @@ func TestCckmSchedulersRotation(t *testing.T) {
 					cloud_name = "aws"
 					expiration = "%s"
 					expire_in = "%s"
+					rotation_after = "%s"
+					rotate_material = true
 				}
 				name       = "%s"
 				operation  = "cckm_key_rotation"
 				run_at     = "0 9 * * fri"
 			}`
+		updateSchedulerParams2 := `
+		resource "ciphertrust_scheduler" "rotation_max_params" {
+			cckm_key_rotation_params {
+				cloud_name = "aws"
+				expiration = ""
+				expire_in = ""
+				rotation_after = ""
+				rotate_material = false
+			}
+			name       = "%s"
+			operation  = "cckm_key_rotation"
+			run_at     = "0 9 * * fri"
+		}
+		resource "ciphertrust_scheduler" "rotation_min_params" {
+			cckm_key_rotation_params {
+				cloud_name = "aws"
+				expiration = ""
+				expire_in = ""
+				rotation_after = ""
+				rotate_material = false
+			}
+			name       = "%s"
+			operation  = "cckm_key_rotation"
+			run_at     = "0 9 * * fri"
+		}`
 		maxParamsResource := "ciphertrust_scheduler.rotation_max_params"
 		minParamsResource := "ciphertrust_scheduler.rotation_min_params"
 		maxParamsName := "MaxParams" + uuid.New().String()[:8]
 		minParamsName := "MinParams" + uuid.New().String()[:8]
 		expiration := "44d"
 		expireIn := "22h"
-		createConfig := fmt.Sprintf(createSchedulerParams, expiration, expireIn, maxParamsName, minParamsName)
+		rotationAfter := "6d"
+		createConfig := fmt.Sprintf(createSchedulerParams, expiration, expireIn,
+			rotationAfter, maxParamsName, minParamsName)
 		expirationUpdate := "55d"
 		expireInUpdate := "33h"
-		updateConfig := fmt.Sprintf(updateSchedulerParams, expirationUpdate, expireInUpdate, maxParamsName, expirationUpdate, expireInUpdate, minParamsName)
+		rotationAfterUpdate := "8d"
+		updateConfig := fmt.Sprintf(updateSchedulerParams, expirationUpdate, expireInUpdate,
+			rotationAfterUpdate, maxParamsName, expirationUpdate, expireInUpdate,
+			rotationAfterUpdate, minParamsName)
+		updateConfig2 := fmt.Sprintf(updateSchedulerParams2, maxParamsName, minParamsName)
 		resource.Test(t, resource.TestCase{
 			ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
 			Steps: []resource.TestStep{
@@ -71,6 +108,8 @@ func TestCckmSchedulersRotation(t *testing.T) {
 						resource.TestCheckResourceAttr(maxParamsResource, "cckm_key_rotation_params.0.cloud_name", "aws"),
 						resource.TestCheckResourceAttr(maxParamsResource, "cckm_key_rotation_params.0.expiration", expiration),
 						resource.TestCheckResourceAttr(maxParamsResource, "cckm_key_rotation_params.0.expire_in", expireIn),
+						resource.TestCheckResourceAttr(maxParamsResource, "cckm_key_rotation_params.0.rotation_after", rotationAfter),
+						resource.TestCheckResourceAttr(maxParamsResource, "cckm_key_rotation_params.0.rotate_material", "true"),
 
 						resource.TestCheckResourceAttrSet(minParamsResource, "id"),
 						resource.TestCheckResourceAttrSet(minParamsResource, "cckm_key_rotation_params.#"),
@@ -87,12 +126,16 @@ func TestCckmSchedulersRotation(t *testing.T) {
 						resource.TestCheckResourceAttr(maxParamsResource, "cckm_key_rotation_params.0.cloud_name", "aws"),
 						resource.TestCheckResourceAttr(maxParamsResource, "cckm_key_rotation_params.0.expiration", expirationUpdate),
 						resource.TestCheckResourceAttr(maxParamsResource, "cckm_key_rotation_params.0.expire_in", expireInUpdate),
+						resource.TestCheckResourceAttr(maxParamsResource, "cckm_key_rotation_params.0.rotation_after", rotationAfterUpdate),
+						resource.TestCheckResourceAttr(maxParamsResource, "cckm_key_rotation_params.0.rotate_material", "false"),
 
 						resource.TestCheckResourceAttrSet(minParamsResource, "id"),
 						resource.TestCheckResourceAttrSet(minParamsResource, "cckm_key_rotation_params.#"),
 						resource.TestCheckResourceAttr(minParamsResource, "cckm_key_rotation_params.0.cloud_name", "aws"),
 						resource.TestCheckResourceAttr(minParamsResource, "cckm_key_rotation_params.0.expiration", expirationUpdate),
 						resource.TestCheckResourceAttr(minParamsResource, "cckm_key_rotation_params.0.expire_in", expireInUpdate),
+						resource.TestCheckResourceAttr(minParamsResource, "cckm_key_rotation_params.0.rotation_after", rotationAfterUpdate),
+						resource.TestCheckResourceAttr(minParamsResource, "cckm_key_rotation_params.0.rotate_material", "true"),
 					),
 				},
 				{
@@ -103,12 +146,34 @@ func TestCckmSchedulersRotation(t *testing.T) {
 						resource.TestCheckResourceAttr(maxParamsResource, "cckm_key_rotation_params.0.cloud_name", "aws"),
 						resource.TestCheckResourceAttr(maxParamsResource, "cckm_key_rotation_params.0.expiration", expiration),
 						resource.TestCheckResourceAttr(maxParamsResource, "cckm_key_rotation_params.0.expire_in", expireIn),
+						resource.TestCheckResourceAttr(maxParamsResource, "cckm_key_rotation_params.0.rotation_after", rotationAfter),
+						resource.TestCheckResourceAttr(maxParamsResource, "cckm_key_rotation_params.0.rotate_material", "true"),
 
 						resource.TestCheckResourceAttrSet(minParamsResource, "id"),
 						resource.TestCheckResourceAttrSet(minParamsResource, "cckm_key_rotation_params.#"),
 						resource.TestCheckResourceAttr(minParamsResource, "cckm_key_rotation_params.0.cloud_name", "aws"),
 						testCheckAttributeNotSet(minParamsResource, "cckm_key_rotation_params.0.expiration"),
 						testCheckAttributeNotSet(minParamsResource, "cckm_key_rotation_params.0.expire_in"),
+					),
+				},
+				{
+					Config: updateConfig2,
+					Check: resource.ComposeTestCheckFunc(
+						resource.TestCheckResourceAttrSet(maxParamsResource, "id"),
+						resource.TestCheckResourceAttrSet(maxParamsResource, "cckm_key_rotation_params.#"),
+						resource.TestCheckResourceAttr(maxParamsResource, "cckm_key_rotation_params.0.cloud_name", "aws"),
+						resource.TestCheckResourceAttr(maxParamsResource, "cckm_key_rotation_params.0.expiration", ""),
+						resource.TestCheckResourceAttr(maxParamsResource, "cckm_key_rotation_params.0.expire_in", ""),
+						resource.TestCheckResourceAttr(maxParamsResource, "cckm_key_rotation_params.0.rotation_after", ""),
+						resource.TestCheckResourceAttr(maxParamsResource, "cckm_key_rotation_params.0.rotate_material", "false"),
+
+						resource.TestCheckResourceAttrSet(minParamsResource, "id"),
+						resource.TestCheckResourceAttrSet(minParamsResource, "cckm_key_rotation_params.#"),
+						resource.TestCheckResourceAttr(minParamsResource, "cckm_key_rotation_params.0.cloud_name", "aws"),
+						resource.TestCheckResourceAttr(minParamsResource, "cckm_key_rotation_params.0.expiration", ""),
+						resource.TestCheckResourceAttr(minParamsResource, "cckm_key_rotation_params.0.expire_in", ""),
+						resource.TestCheckResourceAttr(minParamsResource, "cckm_key_rotation_params.0.rotation_after", ""),
+						resource.TestCheckResourceAttr(minParamsResource, "cckm_key_rotation_params.0.rotate_material", "false"),
 					),
 				},
 			},
@@ -143,7 +208,7 @@ func TestCckmSchedulersRotation(t *testing.T) {
 	})
 
 	t.Run("oci", func(t *testing.T) {
-		createConfig := `	
+		createConfig := `
 			resource "ciphertrust_scheduler" "oci" {
 				cckm_key_rotation_params {
 					cloud_name = "oci"
@@ -169,7 +234,7 @@ func TestCckmSchedulersRotation(t *testing.T) {
 	})
 }
 
-func TestCckmSchedulersSync(t *testing.T) {
+func TestCckmSchedulersSyncResource(t *testing.T) {
 	t.Run("aws", func(t *testing.T) {
 		connectionResource, ok := initCckmAwsTest()
 		if !ok {

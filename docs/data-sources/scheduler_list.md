@@ -53,10 +53,20 @@ Read-Only:
 
 Read-Only:
 
-- `aws_retain_alias` (Boolean)
+- `aws_params` (Attributes) (see [below for nested schema](#nestedatt--scheduler--cckm_key_rotation_params--aws_params))
 - `cloud_name` (String)
 - `expiration` (String)
 - `expire_in` (String)
+- `rotation_after` (String)
+
+<a id="nestedatt--scheduler--cckm_key_rotation_params--aws_params"></a>
+### Nested Schema for `scheduler.cckm_key_rotation_params.aws_params`
+
+Read-Only:
+
+- `retain_alias` (Boolean)
+- `rotate_material` (Boolean)
+
 
 
 <a id="nestedatt--scheduler--cckm_synchronization_params"></a>
