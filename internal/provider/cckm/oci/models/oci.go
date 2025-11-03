@@ -29,15 +29,15 @@ type GetOCICompartmentTFSDK struct {
 
 type GetOCICompartmentJSON struct {
 	ID             string                       `json:"id"`
-	CompartmentID  string                       `json:"compartmentId"`
+	CompartmentID  string                       `json:"compartment_id"`
 	Name           string                       `json:"name"`
 	Description    string                       `json:"description"`
-	TimeCreated    string                       `json:"timeCreated"`
-	LifecycleState string                       `json:"lifecycleState"`
-	InactiveStatus int64                        `json:"inactiveStatus"`
-	IsAccessible   bool                         `json:"isAccessible"`
-	FreeformTags   map[string]string            `json:"freeformTags"`
-	DefinedTags    map[string]map[string]string `json:"definedTags"`
+	TimeCreated    string                       `json:"time_created"`
+	LifecycleState string                       `json:"lifecycle_state"`
+	InactiveStatus int64                        `json:"inactive_status"`
+	IsAccessible   bool                         `json:"is_accessible"`
+	FreeformTags   map[string]string            `json:"freeform_tags"`
+	DefinedTags    map[string]map[string]string `json:"defined_tags"`
 }
 
 type GetOCICompartmentsPayloadJSON struct {
