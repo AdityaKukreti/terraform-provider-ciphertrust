@@ -2,8 +2,9 @@ package cm
 
 import (
 	"encoding/json"
-	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"time"
+
+	"github.com/hashicorp/terraform-plugin-framework/attr"
 
 	"github.com/hashicorp/terraform-plugin-framework/types"
 )
@@ -427,7 +428,7 @@ type CMUserJSON struct {
 	IsDomainUser           bool               `json:"is_domain_user"`
 	LoginFlags             UserLoginFlagsJSON `json:"login_flags"`
 	PasswordChangeRequired bool               `json:"password_change_required"`
-	Metadata               map[string]string  `json:"user_metadata"`
+	Metadata               map[string]string  `json:"user_metadata,omitempty"`
 }
 
 type CMSSHKeyTFSDK struct {

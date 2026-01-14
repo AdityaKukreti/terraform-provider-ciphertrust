@@ -11,6 +11,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/booldefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringdefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-log/tflog"
@@ -48,13 +49,19 @@ func (r *resourceCMUser) Schema(_ context.Context, _ resource.SchemaRequest, res
 			},
 			"nickname": schema.StringAttribute{
 				Optional: true,
+				Computed: true,
+				Default:  stringdefault.StaticString(""),
 			},
 			"email": schema.StringAttribute{
 				Optional: true,
+				Computed: true,
+				Default:  stringdefault.StaticString(""),
 			},
 			"name": schema.StringAttribute{
 				Optional:    true,
 				Description: "Users full name",
+				Computed:    true,
+				Default:     stringdefault.StaticString(""),
 			},
 			"password": schema.StringAttribute{
 				Required: true,
@@ -139,6 +146,14 @@ func (r *resourceCMUser) Create(ctx context.Context, req resource.CreateRequest,
 		if resp.Diagnostics.HasError() {
 			return
 		}
+	}
+	if len(plan.Metadata.Elements()) != 0 {
+		metadata := make(map[string]string, len(plan.Metadata.Elements()))
+		resp.Diagnostics.Append(plan.Metadata.ElementsAs(ctx, &metadata, false)...)
+		if resp.Diagnostics.HasError() {
+			return
+		}
+		payload.Metadata = metadata
 	}
 
 	payloadJSON, err := json.Marshal(payload)
@@ -256,6 +271,22 @@ func (r *resourceCMUser) Update(ctx context.Context, req resource.UpdateRequest,
 	payload.IsDomainUser = plan.IsDomainUser.ValueBool()
 	payload.LoginFlags = loginFlags
 	payload.PasswordChangeRequired = plan.PasswordChangeRequired.ValueBool()
+
+	// if len(plan.Metadata.Elements()) != 0 {
+	// 	metadata := make(map[string]string, len(plan.Metadata.Elements()))
+	// 	resp.Diagnostics.Append(plan.Metadata.ElementsAs(ctx, &metadata, false)...)
+	// 	if resp.Diagnostics.HasError() {
+	// 		return
+	// 	}
+	// }
+	if !plan.Metadata.IsNull() && !plan.Metadata.IsUnknown() {
+		metadata := make(map[string]string, len(plan.Metadata.Elements()))
+		resp.Diagnostics.Append(plan.Metadata.ElementsAs(ctx, &metadata, false)...)
+		if resp.Diagnostics.HasError() {
+			return
+		}
+		payload.Metadata = metadata
+	}
 
 	payloadJSON, err := json.Marshal(payload)
 	if err != nil {
