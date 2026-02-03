@@ -1,3 +1,116 @@
+# 1.0.1-pre1
+
+## New Resources
+    ciphertrust_aws_acl
+    ciphertrust_aws_key_import_material
+    ciphertrust_aws_key_rotation
+    ciphertrust_oci_byok_key
+    ciphertrust_oci_byok_key_version
+    ciphertrust_oci_key
+    ciphertrust_oci_key_version
+    ciphertrust_oci_vault
+
+## Resources Ported from Beta Provider
+    ciphertrust_aws_cloudhsm_key
+    ciphertrust_aws_custom_keystore
+    ciphertrust_aws_key
+    ciphertrust_aws_kms
+    ciphertrust_aws_policy_template
+    ciphertrust_aws_xks_key
+    ciphertrust_oci_acl
+    ciphertrust_oci_connection
+
+## DataSources
+    ciphertrust_aws_account_details
+    ciphertrust_aws_cloudhsm_key
+    ciphertrust_aws_connection_list
+    ciphertrust_aws_custom_keystore
+    ciphertrust_aws_key
+    ciphertrust_aws_key_rotation_list
+    ciphertrust_aws_kms_list
+    ciphertrust_aws_xks_key
+    ciphertrust_get_oci_compartments
+    ciphertrust_get_oci_regions
+    ciphertrust_get_oci_vaults
+    ciphertrust_oci_connection_list
+    ciphertrust_oci_key_list
+    ciphertrust_oci_key_version_list
+    ciphertrust_oci_vault_list
+
+# 1.0.0-pre11 (OpenSource Provider)
+
+## New Resources
+    ciphertrust_cm_prometheus
+    ciphertrust_cm_reg_token
+    ciphertrust_cm_ssh_key
+    ciphertrust_cm_user_password_change
+    ciphertrust_cte_client_guardpoint
+    ciphertrust_cte_policy
+    ciphertrust_cte_policy_data_tx_rule
+    ciphertrust_cte_policy_idt_key_rule
+    ciphertrust_cte_policy_key_rule
+    ciphertrust_cte_policy_ldtkey_rule
+    ciphertrust_cte_policy_security_rule
+    ciphertrust_cte_policy_signature_rule
+    ciphertrust_cte_resource_set
+    ciphertrust_cte_signature_set
+    ciphertrust_hsm_root_of_trust_setup
+    ciphertrust_scp_connection
+
+## Resources Ported from Beta Provider
+    ciphertrust_aws_connection
+    ciphertrust_azure_connection
+    ciphertrust_cluster
+    ciphertrust_cm_key
+    ciphertrust_cte_client
+    ciphertrust_cte_client_group
+    ciphertrust_cte_csigroup
+    ciphertrust_cte_ldtgroupcomms
+    ciphertrust_cte_policy
+    ciphertrust_cte_process_set
+    ciphertrust_cte_profile
+    ciphertrust_cte_user_set
+    ciphertrust_domain
+    ciphertrust_gcp_connection
+    ciphertrust_groups
+    ciphertrust_interface
+    ciphertrust_license
+    ciphertrust_log_forwarder
+    ciphertrust_ntp
+    ciphertrust_password_policy
+    ciphertrust_policies
+    ciphertrust_policy_attachments
+    ciphertrust_property
+    ciphertrust_proxy
+    ciphertrust_scheduler
+    ciphertrust_syslog
+    ciphertrust_trial_license
+    ciphertrust_user
+
+## DataSources
+    ciphertrust_azure_connection_list
+    ciphertrust_cm_groups_list
+    ciphertrust_cm_keys_list
+    ciphertrust_cm_local_ca_list
+    ciphertrust_cm_prometheus_status
+    ciphertrust_cm_tokens_list
+    ciphertrust_cm_users_list
+    ciphertrust_cte_clients_list
+    ciphertrust_cte_policy_data_tx_rules
+    ciphertrust_cte_policy_idt_key_rules
+    ciphertrust_cte_policy_key_rules
+    ciphertrust_cte_policy_ldt_key_rules
+    ciphertrust_cte_policy_security_rules
+    ciphertrust_cte_policy_signature_rules
+    ciphertrust_cte_process_sets
+    ciphertrust_cte_profiles
+    ciphertrust_cte_resource_sets
+    ciphertrust_cte_signature_sets
+    ciphertrust_cte_usersets
+    ciphertrust_gcp_connection_list
+    ciphertrust_scheduler_list
+    ciphertrust_scp_connection_list
+    
 # 0.10.9-beta
 ## Updated Resources
     Fixes an ldap user creating a ciphertrust_cm_key resource.

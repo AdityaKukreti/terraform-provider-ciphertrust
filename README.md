@@ -18,6 +18,7 @@ Use the navigation to the left to read about the available resources.
 - AWS
 - Azure
 - Google Cloud
+- Oracle Cloud Infrastructure (OCI)
 
 ### AWS Deployment
 To deploy a Virtual CipherTrust Manager from AWS, you must supply the Amazon Machine Image (AMI), available on the AWS Marketplace or through the Thales Cloud Provisioning System. The cluster example in dev_examples demonstrates launching CipherTrust Manager images from AWS.
@@ -35,11 +36,11 @@ To deploy a Virtual CipherTrust Manager from AWS, you must supply the Amazon Mac
 
 2. Consult [Google Cloud Platform provider documentation](https://registry.terraform.io/providers/hashicorp/google/latest/docs/resources/compute_instance) for details on launching a Virtual Machine image with the GCP provider.
 
+### Oracle Cloud Development
+
 ## Thales Devices
 The following devices can be used to create keys for the above public clouds.
 - CipherTrust Manager
-- DSM
-- HSM Luna
 
 ## Provider Initialization
 
@@ -160,28 +161,53 @@ provider "ciphertrust" {}
 - **domain** (String) CipherTrust domain to log in to. domain can be set in the provider block, via the CM_DOMAIN environment variable or in ~/.ciphertrust/config. Default is the root domain.
 - **no_ssl_verify** (Boolean) Set to false to verify the server's certificate chain and host name. no_ssl_verify can be set in the provider block or in ~/.ciphertrust/config. Default is true.
 - **rest_api_timeout** (Number) CipherTrust rest api timeout in seconds. rest_api_timeout can be set in the provider block or in ~/.ciphertrust/config. Default is 60.
+- **aws_operation_timeout** (Number) Some AWS key operations, for example, replication, can take some time to complete. This specifies how long to wait for an operation to complete in seconds.
+- **oci_operation_timeout** (Number) Some OCI key operations can take some time to complete. This specifies how long to wait for an operation to complete in seconds.
+- **replication_delay_ms** (Number) In the case of a CipherTrust Manager cluster behind a load balancer a small delay after creating CipherTrust Manager resources may be required to allow for replication to other cluster instances.
 
 ## Supported resource types
 
 The following table illustrates which resource types are supported in CipherTrust Manager and CipherTrust Data Security Platform as a Service(CDSPaaS).
-| Resource Type                    | CipherTrust Manager | CDSPaaS |
-|:---------------------------------|:--------------------|:--------|
-| ciphertrust_cluster              | yes                 | no      |
-| ciphertrust_cm_key               | yes                 | yes     |
-| ciphertrust_cte_client           | yes                 | no      |
-| ciphertrust_cte_guardpoint       | yes                 | no      |
-| ciphertrust_cte_policies         | yes                 | no      |
-| ciphertrust_domain               | yes                 | no      |
-| ciphertrust_groups               | yes                 | yes     |
-| ciphertrust_interface            | yes                 | no      |
-| ciphertrust_license              | yes                 | no      |
-| ciphertrust_log_forwarder        | yes                 | no      |
-| ciphertrust_ntp                  | yes                 | no      |
-| ciphertrust_password_policy      | yes                 | no      |
-| ciphertrust_policies             | yes                 | no      |
-| ciphertrust_policy_attachments   | yes                 | no      |
-| ciphertrust_property             | yes                 | no      |
-| ciphertrust_proxy                | yes                 | no      |
-| ciphertrust_scheduler            | yes                 | yes     |
-| ciphertrust_syslog               | yes                 | no      |
-| ciphertrust_user                 | yes                 | yes     |
+
+| Resource Type                       | CipherTrust Manager | CDSPaaS |
+| ----------------------------------- | ------------------- | -------- |
+| ciphertrust_aws_account_details     | yes                 | yes      |
+| ciphertrust_aws_acl                 | yes                 | yes      |
+| ciphertrust_aws_cloudhsm_key        | yes                 | yes      |
+| ciphertrust_aws_connection          | yes                 | yes      |
+| ciphertrust_aws_custom_keystore     | yes                 | yes      |
+| ciphertrust_aws_key                 | yes                 | yes      |
+| ciphertrust_aws_key_import_material | yes                 | yes      |
+| ciphertrust_aws_key_rotation        | yes                 | yes      |
+| ciphertrust_aws_kms                 | yes                 | yes      |
+| ciphertrust_aws_policy_template     | yes                 | yes      |
+| ciphertrust_aws_xks_key             | yes                 | yes      |
+| ciphertrust_cluster                 | yes                 | no       |
+| ciphertrust_cm_key                  | yes                 | yes      |
+| ciphertrust_cte_client              | yes                 | no       |
+| ciphertrust_cte_guardpoint          | yes                 | no       |
+| ciphertrust_cte_policies            | yes                 | no       |
+| ciphertrust_domain                  | yes                 | no       |
+| ciphertrust_get_oci_compartments    | yes                 | yes      |
+| ciphertrust_get_oci_regions         | yes                 | yes      |
+| ciphertrust_get_oci_vaults          | yes                 | yes      |
+| ciphertrust_groups                  | yes                 | yes      |
+| ciphertrust_interface               | yes                 | no       |
+| ciphertrust_license                 | yes                 | no       |
+| ciphertrust_log_forwarder           | yes                 | no       |
+| ciphertrust_ntp                     | yes                 | no       |
+| ciphertrust_oci_acl                 | yes                 | yes      |
+| ciphertrust_oci_byok_key            | yes                 | yes      |
+| ciphertrust_oci_byok_key_version    | yes                 | yes      |
+| ciphertrust_oci_connection          | yes                 | yes      |
+| ciphertrust_oci_key                 | yes                 | yes      |
+| ciphertrust_oci_key_version         | yes                 | yes      |
+| ciphertrust_password_policy         | yes                 | no       |
+| ciphertrust_policies                | yes                 | no       |
+| ciphertrust_policy_attachments      | yes                 | no       |
+| ciphertrust_property                | yes                 | no       |
+| ciphertrust_proxy                   | yes                 | no       |
+| ciphertrust_scheduler               | yes                 | yes      |
+| ciphertrust_syslog                  | yes                 | no       |
+| ciphertrust_user                    | yes                 | yes      |
+```
