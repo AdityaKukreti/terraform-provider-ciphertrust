@@ -12,16 +12,8 @@ Use the navigation to the left to read about the available resources.
 
 [Sample scripts](https://github.com/ThalesGroup/terraform-provider-ciphertrust/tree/main/sample-scripts) allow you to easily create CipherTrust Manager resources for your cloud and includes some practical examples of using the CipherTrust provider with other cloud providers. 
 
-## Supported Clouds
-
-## Public Clouds
-- AWS
-- Azure
-- Google Cloud
-- Oracle Cloud Infrastructure (OCI)
-
 ### AWS Deployment
-To deploy a Virtual CipherTrust Manager from AWS, you must supply the Amazon Machine Image (AMI), available on the AWS Marketplace or through the Thales Cloud Provisioning System. The cluster example in dev_examples demonstrates launching CipherTrust Manager images from AWS.
+To deploy a Virtual CipherTrust Manager from AWS, you must supply the Amazon Machine Image (AMI), available on the AWS Marketplace or through the Thales Cloud Provisioning System.
 
 ### Azure Deployment
 1. List the available versions with `Get-AzVMImage -location eastus2 -PublisherName thalesdiscplusainc1596561677238 -Offer cm_k170v -sku ciphertrust_manager`.
@@ -36,11 +28,8 @@ To deploy a Virtual CipherTrust Manager from AWS, you must supply the Amazon Mac
 
 2. Consult [Google Cloud Platform provider documentation](https://registry.terraform.io/providers/hashicorp/google/latest/docs/resources/compute_instance) for details on launching a Virtual Machine image with the GCP provider.
 
-### Oracle Cloud Development
-
-## Thales Devices
-The following devices can be used to create keys for the above public clouds.
-- CipherTrust Manager
+### Oracle Cloud Infrastructure Development
+  - Refer to CipherTrust Manager online documenation to create a CipherTrust Manager instance in OCI. 
 
 ## Provider Initialization
 
@@ -210,4 +199,15 @@ The following table illustrates which resource types are supported in CipherTrus
 | ciphertrust_scheduler               | yes                 | yes      |
 | ciphertrust_syslog                  | yes                 | no       |
 | ciphertrust_user                    | yes                 | yes      |
-```
+
+## Supported Cloud Key Manager Clouds
+
+  - AWS
+  - Azure
+  - Google Cloud
+  - Oracle Cloud Infrastructure (OCI)
+
+## Supported Key Sources
+  The following devices can be used to create keys for the above public clouds.
+
+  - CipherTrust Manager
