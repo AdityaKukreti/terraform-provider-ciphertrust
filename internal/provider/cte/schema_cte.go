@@ -784,7 +784,7 @@ type CTEClientGroupTFSDK struct {
 	ClientList              []types.String `tfsdk:"client_list"`
 	InheritAttributes       types.Bool     `tfsdk:"inherit_attributes"`
 	ClientID                types.String   `tfsdk:"client_id"`
-	OpType                  types.String   `tfsdk:op_type`
+	OpType                  types.String   `tfsdk:"op_type"`
 	Paused                  types.Bool     `tfsdk:"paused"`
 }
 
@@ -796,15 +796,15 @@ type CTEClientGroupJSON struct {
 	Description             string   `json:"description"`
 	LDTDesignatedPrimarySet string   `json:"ldt_designated_primary_set"`
 	Password                string   `json:"password,omitempty"`
-	PasswordCreationMethod  string   `json:"password_creation_method"`
-	ProfileID               string   `json:"profile_id"`
-	ClientLocked            bool     `json:"client_locked"`
-	EnableDomainSharing     bool     `json:"enable_domain_sharing"`
-	EnabledCapabilities     string   `json:"enabled_capabilities"`
+	PasswordCreationMethod  string   `json:"password_creation_method,omitempty"`
+	ProfileID               string   `json:"profile_id,omitempty"`
+	ClientLocked            bool     `json:"client_locked,omitempty"`
+	EnableDomainSharing     bool     `json:"enable_domain_sharing,omitempty"`
+	EnabledCapabilities     string   `json:"enabled_capabilities,omitempty"`
 	SharedDomainList        []string `json:"shared_domain_list"`
-	SystemLocked            bool     `json:"system_locked"`
-	AuthBinaries            string   `json:"auth_binaries"`
-	ReSign                  bool     `json:"re_sign"`
+	SystemLocked            bool     `json:"system_locked,omitempty"`
+	AuthBinaries            string   `json:"auth_binaries,omitempty"`
+	ReSign                  bool     `json:"re_sign,omitempty"`
 	ClientList              []string `json:"client_list"`
 	InheritAttributes       bool     `json:"inherit_attributes"`
 	ClientID                string   `json:"client_id"`
