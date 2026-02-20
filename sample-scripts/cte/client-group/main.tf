@@ -12,16 +12,7 @@ provider "ciphertrust" {
 	username = "admin"
 	password = "ChangeMe101!"
 }
-
-resource "ciphertrust_cte_policy" "standard_policy" {
-    name        = "TF_CTE_Policy"
-    policy_type        = "Standard"
-    description = "Created via TF"
-    never_deny  = true
-    security_rules = [{
-        effect               = "permit,audit"
-        action               = "all_ops"
-        partial_match        = false
-        exclude_resource_set = true
-    }]
+resource "ciphertrust_cte_client_group" "test_cg_group_test1" {
+  name = "test_cgp_1"
+  cluster_type = "NON-CLUSTER"
 }
