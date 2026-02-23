@@ -92,7 +92,7 @@ func (d *dataSourceCTEClients) Schema(_ context.Context, _ datasource.SchemaRequ
 						"password_creation_method": schema.StringAttribute{
 							Computed: true,
 						},
-						"client_version": schema.Int64Attribute{
+						"client_version": schema.StringAttribute{
 							Computed: true,
 						},
 						"registration_allowed": schema.BoolAttribute{
@@ -125,21 +125,17 @@ func (d *dataSourceCTEClients) Schema(_ context.Context, _ datasource.SchemaRequ
 						"client_health_status": schema.StringAttribute{
 							Computed: true,
 						},
-						"errors": schema.ListAttribute{
-							Computed:    true,
-							ElementType: types.StringType,
+						"errors": schema.StringAttribute{
+							Computed: true,
 						},
-						"warnings": schema.ListAttribute{
-							Computed:    true,
-							ElementType: types.StringType,
+						"warnings": schema.StringAttribute{
+							Computed: true,
 						},
-						"client_errors": schema.ListAttribute{
-							Computed:    true,
-							ElementType: types.StringType,
+						"client_errors": schema.StringAttribute{
+							Computed: true,
 						},
-						"client_warnings": schema.ListAttribute{
-							Computed:    true,
-							ElementType: types.StringType,
+						"client_warnings": schema.StringAttribute{
+							Computed: true,
 						},
 					},
 				},
@@ -159,8 +155,18 @@ func (d *dataSourceCTEClients) Read(ctx context.Context, req datasource.ReadRequ
 	req.Config.Get(ctx, &state)
 	var kvs []string
 	for k, v := range state.Filters.Elements() {
-		kv := fmt.Sprintf("%s=%s&", k, v.(types.String).ValueString())
-		kvs = append(kvs, kv)
+		filterVal := v.(types.String).ValueString()
+		// Support comma-separated values for multiple filters
+		if strings.Contains(filterVal, ",") {
+			values := strings.Split(filterVal, ",")
+			for _, val := range values {
+				kv := fmt.Sprintf("%s=%s&", k, strings.TrimSpace(val))
+				kvs = append(kvs, kv)
+			}
+		} else {
+			kv := fmt.Sprintf("%s=%s&", k, filterVal)
+			kvs = append(kvs, kv)
+		}
 	}
 
 	jsonStr, err := d.client.GetAll(
@@ -190,10 +196,6 @@ func (d *dataSourceCTEClients) Read(ctx context.Context, req datasource.ReadRequ
 	}
 
 	for _, client := range clients {
-		var errs []types.String
-		var warnings []types.String
-		var clientErrs []types.String
-		var clientWarnings []types.String
 
 		clientState := CTEClientsListTFSDK{}
 		clientState.ID = types.StringValue(client.ID)
@@ -212,7 +214,7 @@ func (d *dataSourceCTEClients) Read(ctx context.Context, req datasource.ReadRequ
 		clientState.ClientLocked = types.BoolValue(client.ClientLocked)
 		clientState.SystemLocked = types.BoolValue(client.SystemLocked)
 		clientState.PasswordCreationMethod = types.StringValue(client.PasswordCreationMethod)
-		clientState.ClientVersion = types.Int64Value(client.ClientVersion)
+		clientState.ClientVersion = types.StringValue(client.ClientVersion)
 		clientState.RegistrationAllowed = types.BoolValue(client.RegistrationAllowed)
 		clientState.CommunicationEnabled = types.BoolValue(client.CommunicationEnabled)
 		clientState.Capabilities = types.StringValue(client.Capabilities)
@@ -223,24 +225,10 @@ func (d *dataSourceCTEClients) Read(ctx context.Context, req datasource.ReadRequ
 		clientState.ProfileID = types.StringValue(client.ProfileID)
 		clientState.LDTEnabled = types.BoolValue(client.LDTEnabled)
 		clientState.ClientHealthStatus = types.StringValue(client.ClientHealthStatus)
-
-		for _, err := range client.Errors {
-			errs = append(errs, types.StringValue(err))
-		}
-		clientState.Errors = errs
-		for _, warning := range client.Warnings {
-			warnings = append(warnings, types.StringValue(warning))
-		}
-		clientState.Warnings = warnings
-		for _, clientErr := range client.ClientErrors {
-			clientErrs = append(clientErrs, types.StringValue(clientErr))
-		}
-		clientState.ClientErrors = clientErrs
-		for _, clientWarning := range client.ClientWarnings {
-			clientWarnings = append(clientWarnings, types.StringValue(clientWarning))
-		}
-		clientState.ClientWarnings = clientWarnings
-
+		clientState.Errors = types.StringValue(client.Errors)
+		clientState.Warnings = types.StringValue(client.Warnings)
+		clientState.ClientErrors = types.StringValue(client.ClientErrors)
+		clientState.ClientWarnings = types.StringValue(client.ClientWarnings)
 		state.Clients = append(state.Clients, clientState)
 	}
 
