@@ -19,7 +19,7 @@ func TestCckmAwsAcl(t *testing.T) {
 		%s
 		resource "ciphertrust_user" "user" {
 			username = "%s"
-			password = "admin"
+			password = "LongPassword123+"
 		}
 		resource "ciphertrust_groups" "group" {
 			name = "%s"
@@ -45,7 +45,7 @@ func TestCckmAwsAcl(t *testing.T) {
 		%s
 		resource "ciphertrust_user" "user" {
 			username = "%s"
-			password = "admin"
+			password = "LongPassword123+"
 		}
 		resource "ciphertrust_groups" "group" {
 			name = "%s"
@@ -65,7 +65,7 @@ func TestCckmAwsAcl(t *testing.T) {
 		%s
 		resource "ciphertrust_user" "user" {
 			username = "%s"
-			password = "admin"
+			password = "LongPassword123+"
 		}
 		resource "ciphertrust_groups" "group" {
 			name = "%s"
