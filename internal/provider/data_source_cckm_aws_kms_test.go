@@ -28,7 +28,7 @@ func TestCckmAwsDataSourceKms(t *testing.T) {
 	acls := `
 		resource "ciphertrust_user" "user" {
 			username = "%s"
-			password = "admin"
+			password = "LongPassword123+"
 		}
 		resource "ciphertrust_groups" "group" {
 			name = "%s"
