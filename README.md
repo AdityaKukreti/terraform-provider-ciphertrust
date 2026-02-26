@@ -8,10 +8,6 @@ description: |-
 
 # CipherTrust Provider
 
-Use the navigation to the left to read about the available resources.
-
-[Sample scripts](https://github.com/ThalesGroup/terraform-provider-ciphertrust/tree/main/sample-scripts) allow you to easily create CipherTrust Manager resources for your cloud and includes some practical examples of using the CipherTrust provider with other cloud providers. 
-
 ### AWS Deployment
 To deploy a Virtual CipherTrust Manager from AWS, you must supply the Amazon Machine Image (AMI), available on the AWS Marketplace or through the Thales Cloud Provisioning System.
 
@@ -29,7 +25,7 @@ To deploy a Virtual CipherTrust Manager from AWS, you must supply the Amazon Mac
 2. Consult [Google Cloud Platform provider documentation](https://registry.terraform.io/providers/hashicorp/google/latest/docs/resources/compute_instance) for details on launching a Virtual Machine image with the GCP provider.
 
 ### Oracle Cloud Infrastructure Development
-  - Refer to CipherTrust Manager online documenation to create a CipherTrust Manager instance in OCI. 
+  - Refer to CipherTrust Manager online documentation to create a CipherTrust Manager instance in OCI. 
 
 ## Provider Initialization
 
