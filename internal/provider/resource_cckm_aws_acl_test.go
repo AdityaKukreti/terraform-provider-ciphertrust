@@ -8,7 +8,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
 )
 
-func TestCckmAwsAcl(t *testing.T) {
+func TestCckmAWSAcl(t *testing.T) {
 
 	awsConnectionResource, ok := initCckmAwsTest()
 	if !ok {

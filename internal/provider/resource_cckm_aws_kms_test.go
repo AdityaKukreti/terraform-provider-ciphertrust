@@ -6,7 +6,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
 )
 
-func TestCckmAwsKms(t *testing.T) {
+func TestCckmAWSKms(t *testing.T) {
 	createKmsConfig := `
 		resource "ciphertrust_aws_connection" "aws_connection" {
 			name = "TerraformTest"
@@ -83,7 +83,7 @@ func TestCckmAwsKms(t *testing.T) {
 	})
 }
 
-func TestCckmAwsKmsImport(t *testing.T) {
+func TestCckmAWSKmsImport(t *testing.T) {
 	createKmsConfig := `
 		resource "ciphertrust_aws_connection" "aws_connection" {
 			name = "TerraformTest"

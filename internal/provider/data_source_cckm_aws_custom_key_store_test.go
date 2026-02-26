@@ -9,7 +9,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
 )
 
-func TestCckmAwsDataSourceCustomKeyStore(t *testing.T) {
+func TestCckmAWSDataSourceCustomKeyStore(t *testing.T) {
 	awsConnectionResource, ok := initCckmAwsTest()
 	if !ok {
 		t.Skip()

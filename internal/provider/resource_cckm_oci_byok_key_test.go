@@ -17,17 +17,15 @@ func initCckmOCITest(t *testing.T) string {
 	region := os.Getenv("OCI_REGION")
 	tenancyOCID := os.Getenv("OCI_TENANCY_OCID")
 	userOCID := os.Getenv("OCI_USER_OCID")
-	compartmentOCID := os.Getenv("OCI_COMPARTMENT_DEV_OCID")
 	vaultOCID := os.Getenv("OCI_VAULT_OCID")
 
-	ok := keyFile != "" && pubKeyFP != "" && region != "" && tenancyOCID != "" && userOCID != "" && compartmentOCID != "" && vaultOCID != ""
+	ok := keyFile != "" && pubKeyFP != "" && region != "" && tenancyOCID != "" && userOCID != "" /*&& compartmentOCID != "" */ && vaultOCID != ""
 	if !ok {
 		t.Skip("Failed to get OCI connection environment variables")
 	}
 	name := "tf-" + uuid.New().String()[:8]
 	config := `
 		locals {
-			compartment_ocid  = "%s"
 			vault_ocid          = "%s"
 			region              = "%s"
 		}
@@ -47,19 +45,13 @@ func initCckmOCITest(t *testing.T) string {
 			region        = local.region
 		}`
 	resourceStr := fmt.Sprintf(config,
-		compartmentOCID, vaultOCID, region,
-		keyFile, name, pubKeyFP, region, tenancyOCID, userOCID)
+		vaultOCID, region, keyFile, name, pubKeyFP, region, tenancyOCID, userOCID)
 	return resourceStr
 }
 
 func TestCckmOCIKeysAndVersionsBYOK(t *testing.T) {
 
 	connectionResource := initCckmOCITest(t)
-
-	compartment2OCID := os.Getenv("OCI_COMPARTMENT_PROD_OCID")
-	if compartment2OCID == "" {
-		//t.Skip("Failed to get second compartment to test change of compartment")
-	}
 
 	localsConfig := `locals {
 		connection_name     = "tf-%s"
@@ -70,13 +62,11 @@ func TestCckmOCIKeysAndVersionsBYOK(t *testing.T) {
 		rotation_job_name   = "tf-%s"
 		rotation_job_name_2 = "tf-%s"
 		oci_key_name_update = "tf-%s"
-		compartment_2_ocid  = "%s"
 	}`
 
 	localsResource := fmt.Sprintf(localsConfig,
 		uuid.New().String()[:8], uuid.New().String()[:8], uuid.New().String()[:8], uuid.New().String()[:8],
-		uuid.New().String()[:8], uuid.New().String()[:8], uuid.New().String()[:8], uuid.New().String()[:8],
-		compartment2OCID)
+		uuid.New().String()[:8], uuid.New().String()[:8], uuid.New().String()[:8], uuid.New().String()[:8])
 
 	maxConfig := `
 		%s
@@ -84,7 +74,7 @@ func TestCckmOCIKeysAndVersionsBYOK(t *testing.T) {
 
 		# Create a rotation scheduler
 		resource "ciphertrust_scheduler" "scheduler_1" {
-			end_date = "2027-03-07T14:24:00Z"
+			end_date = "2050-03-07T14:24:00Z"
 			cckm_key_rotation_params {
 				cloud_name       = "oci"
 			}
@@ -111,7 +101,7 @@ func TestCckmOCIKeysAndVersionsBYOK(t *testing.T) {
 			}
 			name            = local.oci_key_name
 			oci_key_params = {
-				compartment_id  = local.compartment_ocid
+				compartment_id  = ciphertrust_oci_vault.vault.compartment_id
 				protection_mode = "SOFTWARE"
 				defined_tags = [
 					{
@@ -186,7 +176,7 @@ func TestCckmOCIKeysAndVersionsBYOK(t *testing.T) {
 
 		# Create a rotation scheduler
 		resource "ciphertrust_scheduler" "scheduler_1" {
-			end_date = "2027-03-07T14:24:00Z"
+			end_date = "2050-03-07T14:24:00Z"
 			cckm_key_rotation_params {
 				cloud_name       = "oci"
 			}
@@ -198,7 +188,7 @@ func TestCckmOCIKeysAndVersionsBYOK(t *testing.T) {
 		}
 
 		resource "ciphertrust_scheduler" "scheduler_2" {
-			end_date = "2027-03-07T14:24:00Z"
+			end_date = "2050-03-07T14:24:00Z"
 			cckm_key_rotation_params {
 			cloud_name       = "oci"
 			}
@@ -225,8 +215,7 @@ func TestCckmOCIKeysAndVersionsBYOK(t *testing.T) {
 			}
 			name            = local.oci_key_name_update
 			oci_key_params = {
-				#compartment_id  = local.compartment_2_ocid
-				compartment_id  = local.compartment_ocid
+				compartment_id  = ciphertrust_oci_vault.vault.compartment_id
 				protection_mode = "SOFTWARE"
 				defined_tags = [
 					{
@@ -293,7 +282,7 @@ func TestCckmOCIKeysAndVersionsBYOK(t *testing.T) {
 			name            = local.oci_key_name
 			oci_key_params = {
 				protection_mode = "SOFTWARE"
-				compartment_id  = local.compartment_ocid
+				compartment_id  = ciphertrust_oci_vault.vault.compartment_id
 			}
 			source_key_id   = ciphertrust_cm_key.cm_aes_key.id
 			source_key_tier = "local"

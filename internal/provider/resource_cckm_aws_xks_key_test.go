@@ -9,7 +9,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
 )
 
-func TestCckmAwsXKSUnlinkedKey(t *testing.T) {
+func TestCckmAWSXKSUnlinkedKey(t *testing.T) {
 	awsConnectionResource, ok := initCckmAwsTest()
 	if !ok {
 		t.Skip()
@@ -68,7 +68,7 @@ func TestCckmAwsXKSUnlinkedKey(t *testing.T) {
 	enableRotationName := "tf-rotation-" + uuid.New().String()[:8]
 	enableRotationConfig := `
 		resource "ciphertrust_scheduler" "scheduled_rotation_job" {
-		  end_date = "2026-03-07T14:24:00Z"
+		  end_date = "2050-03-07T14:24:00Z"
 		  cckm_key_rotation_params {
 			cloud_name = "aws"
 		  }

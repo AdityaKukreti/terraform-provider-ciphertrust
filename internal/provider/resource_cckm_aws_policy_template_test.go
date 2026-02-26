@@ -24,7 +24,7 @@ const defaultPolicy = `{
     ]
 }`
 
-func TestCckmAwsPolicyTemplate(t *testing.T) {
+func TestCckmAWSPolicyTemplate(t *testing.T) {
 	awsConnectionResource, ok := initCckmAwsTest()
 	if !ok {
 		t.Skip()
@@ -42,7 +42,7 @@ func TestCckmAwsPolicyTemplate(t *testing.T) {
 	createConfigEx1 := `
 		resource "ciphertrust_aws_policy_template" "policy_template_ex1" {
 			kms    = ciphertrust_aws_kms.kms.id
-			name   = "%s"   
+			name   = "%s"
 			policy = jsonencode(
 				{
 					"Version": "2012-10-17",
@@ -116,7 +116,7 @@ func TestCckmAwsPolicyTemplate(t *testing.T) {
 	updateConfigEx4 := `
 		resource "ciphertrust_aws_policy_template" "policy_template_without_policy" {
 			kms    = ciphertrust_aws_kms.kms.id
-			name   = "%s"   
+			name   = "%s"
 			policy = jsonencode(
 				{
 					"Version": "2012-10-17",
