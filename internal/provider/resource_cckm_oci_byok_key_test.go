@@ -12,12 +12,12 @@ import (
 
 func initCckmOCITest(t *testing.T) string {
 
-	keyFile := os.Getenv("OCI_KEYFILE")
-	pubKeyFP := os.Getenv("OCI_PUBKEY_FP")
-	region := os.Getenv("OCI_REGION")
-	tenancyOCID := os.Getenv("OCI_TENANCY_OCID")
-	userOCID := os.Getenv("OCI_USER_OCID")
-	vaultOCID := os.Getenv("OCI_VAULT_OCID")
+	keyFile := os.Getenv("CCKM_OCI_KEY_FILE")
+	pubKeyFP := os.Getenv("CCKM_OCI_FINGERPRINT")
+	region := os.Getenv("CCKM_OCI_REGION")
+	tenancyOCID := os.Getenv("CCKM_OCI_CONN_TENANCY")
+	userOCID := os.Getenv("CCKM_OCI_USER")
+	vaultOCID := os.Getenv("CCKM_OCI_VAULT")
 
 	ok := keyFile != "" && pubKeyFP != "" && region != "" && tenancyOCID != "" && userOCID != "" /*&& compartmentOCID != "" */ && vaultOCID != ""
 	if !ok {
