@@ -3,7 +3,7 @@ default: fmt  install
 
 
 build:
-	go build -v ./...
+	go build -o terraform-provider-ciphertrust .
 
 install: build
 	go install -v ./...
