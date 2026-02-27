@@ -55,7 +55,7 @@ func TestCckmOCIAcl(t *testing.T) {
 		%s
 		resource "ciphertrust_user" "user" {
 			username = "%s"
-			password = "LongPassword123+"
+			password = "LongPassword1234++"
 		}
 		resource "ciphertrust_groups" "group" {
 			name = "%s"
@@ -81,7 +81,7 @@ func TestCckmOCIAcl(t *testing.T) {
 		%s
 		resource "ciphertrust_user" "user" {
 			username = "%s"
-			password = "LongPassword123+"
+			password = "LongPassword1234++"
 		}
 		resource "ciphertrust_groups" "group" {
 			name = "%s"
@@ -101,7 +101,7 @@ func TestCckmOCIAcl(t *testing.T) {
 		%s
 		resource "ciphertrust_user" "user" {
 			username = "%s"
-			password = "LongPassword123+"
+			password = "LongPassword1234++"
 		}
 		resource "ciphertrust_groups" "group" {
 			name = "%s"
