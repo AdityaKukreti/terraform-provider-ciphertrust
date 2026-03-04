@@ -86,7 +86,7 @@ func (r *resourceCCKMOCIConnection) Schema(_ context.Context, _ resource.SchemaR
 			"meta": schema.MapAttribute{
 				ElementType: types.StringType,
 				Optional:    true,
-				Description: "Optional end-user or service data stored with the connection. Once set, 'meta' can be changed but not removed.\",",
+				Description: "Optional end-user or service data stored with the connection.",
 			},
 			"name": schema.StringAttribute{
 				Required:    true,
@@ -294,6 +294,9 @@ func (r *resourceCCKMOCIConnection) Update(ctx context.Context, req resource.Upd
 	id := uuid.New().String()
 	tflog.Trace(ctx, common.MSG_METHOD_START+"[resource_azure_connection.go -> Read]["+id+"]")
 
+	tflog.Info(ctx, "SARAH Update start")
+	defer tflog.Info(ctx, "SARAH Update end")
+
 	var plan OCIConnectionTFSDK
 	resp.Diagnostics.Append(req.Plan.Get(ctx, &plan)...)
 	if resp.Diagnostics.HasError() {
@@ -341,31 +344,51 @@ func (r *resourceCCKMOCIConnection) Update(ctx context.Context, req resource.Upd
 		payload.Fingerprint = plan.Fingerprint.ValueString()
 	}
 
-	planMetadata := make(map[string]string)
-	for k, v := range plan.Meta.Elements() {
-		planMetadata[k] = v.(types.String).ValueString()
-	}
-	connectionMeta := make(map[string]string)
-	if gjson.Get(response, "meta").Exists() {
-		metaMap, ok := gjson.Parse(gjson.Get(response, "meta").String()).Value().(map[string]interface{})
-		if ok {
-			for key, value := range metaMap {
-				switch value.(type) {
-				case string:
-					connectionMeta[key] = value.(string)
-				case int64:
-					connectionMeta[key] = fmt.Sprintf("%v", value.(int))
-				case bool:
-					connectionMeta[key] = fmt.Sprintf("%t", value.(bool))
-				default:
-					// For unknown types, convert them to a string representation
-					connectionMeta[key] = fmt.Sprintf("%v", value)
+	// If meta not specified in config/plan, do not manage it.
+	// Use meta = {} to remove all keys.
+	if !(plan.Meta.IsNull() || plan.Meta.IsUnknown()) {
+
+		// Desired meta from plan (strings)
+		planMetadata := map[string]interface{}{}
+		for k, v := range plan.Meta.Elements() {
+			if s, ok := v.(types.String); ok {
+				// handle null just in case (rare for map(string))
+				if s.IsNull() {
+					planMetadata[k] = nil
+				} else {
+					planMetadata[k] = s.ValueString()
 				}
 			}
 		}
-	}
-	if !reflect.DeepEqual(planMetadata, connectionMeta) {
-		payload.Meta = planMetadata
+
+		// Current meta from CM (normalize to strings)
+		connectionMeta := map[string]interface{}{}
+		if metaVal := gjson.Get(response, "meta"); metaVal.Exists() && metaVal.Type == gjson.JSON {
+			if metaMap, ok := gjson.Parse(metaVal.Raw).Value().(map[string]interface{}); ok {
+				for key, value := range metaMap {
+					if value == nil {
+						connectionMeta[key] = nil
+					} else {
+						connectionMeta[key] = fmt.Sprintf("%v", value)
+					}
+				}
+			}
+		}
+
+		// Add deletes for keys removed from config (including meta = {} => delete all)
+		for key := range connectionMeta {
+			if _, exists := planMetadata[key]; !exists {
+				planMetadata[key] = nil
+			}
+		}
+
+		// Update only if needed
+		if !reflect.DeepEqual(planMetadata, connectionMeta) {
+			payload.Meta = planMetadata
+			tflog.Info(ctx, fmt.Sprintf("SARAH payload.Meta: %v", payload.Meta))
+		}
+	} else {
+		tflog.Info(ctx, fmt.Sprintf("SARAH plan.MEta is nul or unknown"))
 	}
 
 	var planProducts []string
@@ -465,6 +488,7 @@ func (r *resourceCCKMOCIConnection) getOciParamsFromResponse(ctx context.Context
 	data.LastConnectionOK = types.BoolValue(gjson.Get(response, "last_connection_ok").Bool())
 	data.LastConnectionError = types.StringValue(gjson.Get(response, "last_connection_error").String())
 	data.LastConnectionAt = types.StringValue(gjson.Get(response, "last_connection_at").String())
+	tflog.Info(ctx, fmt.Sprintf("SARAH gjson.Get(response, meta): %v", gjson.Get(response, "meta")))
 	if len(gjson.Get(response, "meta").String()) > 0 {
 		data.Meta = common.ParseMap(response, diags, "meta")
 	}

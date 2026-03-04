@@ -29,6 +29,7 @@ func TestOciConnection(t *testing.T) {
 			region              = "%s"
 			tenancy_ocid        = "%s"
 			user_ocid           = "%s"
+			meta = {}
 		}`
 	maxParamsConfig := `
 		resource "ciphertrust_oci_connection" "connection" {
