@@ -294,9 +294,6 @@ func (r *resourceCCKMOCIConnection) Update(ctx context.Context, req resource.Upd
 	id := uuid.New().String()
 	tflog.Trace(ctx, common.MSG_METHOD_START+"[resource_azure_connection.go -> Read]["+id+"]")
 
-	tflog.Info(ctx, "SARAH Update start")
-	defer tflog.Info(ctx, "SARAH Update end")
-
 	var plan OCIConnectionTFSDK
 	resp.Diagnostics.Append(req.Plan.Get(ctx, &plan)...)
 	if resp.Diagnostics.HasError() {
@@ -385,10 +382,7 @@ func (r *resourceCCKMOCIConnection) Update(ctx context.Context, req resource.Upd
 		// Update only if needed
 		if !reflect.DeepEqual(planMetadata, connectionMeta) {
 			payload.Meta = planMetadata
-			tflog.Info(ctx, fmt.Sprintf("SARAH payload.Meta: %v", payload.Meta))
 		}
-	} else {
-		tflog.Info(ctx, fmt.Sprintf("SARAH plan.MEta is nul or unknown"))
 	}
 
 	var planProducts []string
@@ -488,7 +482,6 @@ func (r *resourceCCKMOCIConnection) getOciParamsFromResponse(ctx context.Context
 	data.LastConnectionOK = types.BoolValue(gjson.Get(response, "last_connection_ok").Bool())
 	data.LastConnectionError = types.StringValue(gjson.Get(response, "last_connection_error").String())
 	data.LastConnectionAt = types.StringValue(gjson.Get(response, "last_connection_at").String())
-	tflog.Info(ctx, fmt.Sprintf("SARAH gjson.Get(response, meta): %v", gjson.Get(response, "meta")))
 	if len(gjson.Get(response, "meta").String()) > 0 {
 		data.Meta = common.ParseMap(response, diags, "meta")
 	}
