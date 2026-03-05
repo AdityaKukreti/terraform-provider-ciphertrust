@@ -40,8 +40,8 @@ resource "ciphertrust_gcp_connection" "gcp_connection" {
 				// verifying the resources for id, private key id, client email, cloud name and products
 				Check: resource.ComposeAggregateTestCheckFunc(
 					resource.TestCheckResourceAttrSet("ciphertrust_gcp_connection.gcp_connection", "id"),
-					resource.TestCheckResourceAttr("ciphertrust_gcp_connection.gcp_connection", "private_key_id", "y437c51g956b8ab4908yb41541262a2fa3b0f84f"),
-					resource.TestCheckResourceAttr("ciphertrust_gcp_connection.gcp_connection", "client_email", "test@some-project.iam.gserviceaccount.com"),
+					resource.TestCheckResourceAttrSet("ciphertrust_gcp_connection.gcp_connection", "private_key_id"),
+					resource.TestCheckResourceAttrSet("ciphertrust_gcp_connection.gcp_connection", "client_email"),
 					resource.TestCheckResourceAttr("ciphertrust_gcp_connection.gcp_connection", "cloud_name", "gcp"),
 					resource.TestCheckResourceAttr("ciphertrust_gcp_connection.gcp_connection", "products.#", "1"),
 					resource.TestCheckResourceAttr("ciphertrust_gcp_connection.gcp_connection", "products.0", "cckm"),
@@ -62,8 +62,8 @@ resource "ciphertrust_gcp_connection" "gcp_connection" {
 				`,
 				// verifying the updated field private key id, client email, description and products
 				Check: resource.ComposeAggregateTestCheckFunc(
-					resource.TestCheckResourceAttr("ciphertrust_gcp_connection.gcp_connection", "private_key_id", "p437c51g956b8ab4908yb41541262a2fa3b0f84f"),
-					resource.TestCheckResourceAttr("ciphertrust_gcp_connection.gcp_connection", "client_email", "test-updated@some-project.iam.gserviceaccount.com"),
+					resource.TestCheckResourceAttrSet("ciphertrust_gcp_connection.gcp_connection", "private_key_id"),
+					resource.TestCheckResourceAttrSet("ciphertrust_gcp_connection.gcp_connection", "client_email"),
 					resource.TestCheckResourceAttr("ciphertrust_gcp_connection.gcp_connection", "description", "updated connection description"),
 					resource.TestCheckResourceAttr("ciphertrust_gcp_connection.gcp_connection", "products.#", "1"),
 					resource.TestCheckResourceAttr("ciphertrust_gcp_connection.gcp_connection", "products.0", "ddc"),

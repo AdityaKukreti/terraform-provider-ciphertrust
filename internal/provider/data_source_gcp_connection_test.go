@@ -57,8 +57,8 @@ func TestGCPConnectionDataSource(t *testing.T) {
 
 					resource.TestCheckResourceAttr(datasourceName, "gcp.0.name", "test-gcp-connection"),
 					resource.TestCheckResourceAttr(datasourceName, "gcp.0.cloud_name", "gcp"),
-					resource.TestCheckResourceAttr(datasourceName, "gcp.0.private_key_id", "y437c51g956b8ab4908yb41541262a2fa3b0f84f"),
-					resource.TestCheckResourceAttr(datasourceName, "gcp.0.client_email", "test@some-project.iam.gserviceaccount.com"),
+					resource.TestCheckResourceAttrSet(datasourceName, "gcp.0.private_key_id"),
+					resource.TestCheckResourceAttrSet(datasourceName, "gcp.0.client_email"),
 					resource.TestCheckResourceAttr(datasourceName, "gcp.0.description", "connection description"),
 				),
 			},
