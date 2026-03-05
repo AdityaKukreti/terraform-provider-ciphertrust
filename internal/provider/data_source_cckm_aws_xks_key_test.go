@@ -9,7 +9,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
 )
 
-func TestCckmAwsDataSourceXksKey(t *testing.T) {
+func TestCckmAWSDataSourceXksKey(t *testing.T) {
 
 	awsConnectionResource, ok := initCckmAwsTest()
 	if !ok {

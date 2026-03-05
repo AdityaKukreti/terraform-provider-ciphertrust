@@ -72,7 +72,7 @@ resource "ciphertrust_oci_connection" "oci_connection" {
 
 - `description` (String) Description about the connection. Once set, 'description' can be changed but not removed.
 - `key_file_pass_phrase` (String) Passphrase if the OCI key file is encrypted.
-- `meta` (Map of String) Optional end-user or service data stored with the connection. Once set, 'meta' can be changed but not removed.",
+- `meta` (Map of String) Optional end-user or service data stored with the connection.
 - `products` (List of String) Array of the CipherTrust products to associate with the connection. Default is 'cckm'
 - `skip_connection_params_test` (Boolean) Set to true to skip connection parameter test.
 

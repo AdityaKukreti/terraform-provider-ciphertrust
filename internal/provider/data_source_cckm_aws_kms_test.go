@@ -8,7 +8,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
 )
 
-func TestCckmAwsDataSourceKms(t *testing.T) {
+func TestCckmAWSDataSourceKms(t *testing.T) {
 	awsConnectionResource, ok := initCckmAwsTest()
 	if !ok {
 		t.Skip()
@@ -28,7 +28,7 @@ func TestCckmAwsDataSourceKms(t *testing.T) {
 	acls := `
 		resource "ciphertrust_user" "user" {
 			username = "%s"
-			password = "LongPassword123+"
+			password = "LongPassword1234++"
 		}
 		resource "ciphertrust_groups" "group" {
 			name = "%s"
@@ -62,7 +62,7 @@ func TestCckmAwsDataSourceKms(t *testing.T) {
 	byName := `
 		data "ciphertrust_aws_kms_list" "by_name" {
 			filters = {
-				name = ciphertrust_aws_kms.kms_two.name 
+				name = ciphertrust_aws_kms.kms_two.name
 			}
 		}`
 	byID := `
@@ -74,7 +74,7 @@ func TestCckmAwsDataSourceKms(t *testing.T) {
 	noFiltersWithAcls := `
 		data "ciphertrust_aws_kms_list" "all_kms" {
 			depends_on = [ciphertrust_aws_kms.kms, ciphertrust_aws_kms.kms_two,
-						ciphertrust_aws_acl.user1_acl, ciphertrust_aws_acl.user2_acl, 
+						ciphertrust_aws_acl.user1_acl, ciphertrust_aws_acl.user2_acl,
 						ciphertrust_aws_acl.group1_acl, ciphertrust_aws_acl.group2_acl]
 		}`
 

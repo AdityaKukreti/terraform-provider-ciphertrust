@@ -28,7 +28,7 @@ resource "ciphertrust_cte_resource_set" "resource_set" {
 resource "ciphertrust_cm_key" "cte_key" {
   name="TestKey"
   algorithm="aes"
-  size=256
+  key_size=256
   usage_mask=4194303
   unexportable=false
   undeletable=false

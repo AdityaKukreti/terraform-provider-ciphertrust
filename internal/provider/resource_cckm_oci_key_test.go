@@ -27,7 +27,7 @@ func TestCckmOCIKeysAndVersionsNative(t *testing.T) {
 		resource "ciphertrust_oci_key" "rsa" {
 			oci_key_params = {
 				algorithm       = "RSA"
-				compartment_id  = local.compartment_ocid
+				compartment_id  = ciphertrust_oci_vault.vault.compartment_id
 				length          = 256
 				protection_mode = "SOFTWARE"
 			}

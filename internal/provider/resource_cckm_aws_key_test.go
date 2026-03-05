@@ -90,8 +90,8 @@ func getAwsRoles() []string {
 	return ret
 }
 
-// TestCckmAwsKeyNative tests creating native keys and update functionality
-func TestCckmAwsKeyNative(t *testing.T) {
+// TestCckmAWSKeyNative tests creating native keys and update functionality
+func TestCckmAWSKeyNative(t *testing.T) {
 	awsConnectionResource, ok := initCckmAwsTest()
 	if !ok {
 		t.Skip()
@@ -110,7 +110,7 @@ func TestCckmAwsKeyNative(t *testing.T) {
 			cckm_key_rotation_params {
 				cloud_name = "aws"
 			}
-			end_date = "2027-03-07T14:24:00Z"
+			end_date = "2050-03-07T14:24:00Z"
 			name       = "%s"
 			operation  = "cckm_key_rotation"
 			run_at     = "0 9 * * sat"
@@ -147,7 +147,7 @@ func TestCckmAwsKeyNative(t *testing.T) {
 			cckm_key_rotation_params {
 				cloud_name = "aws"
 			}
-			end_date = "2027-03-07T14:24:00Z"
+			end_date = "2050-03-07T14:24:00Z"
 			name       = "%s"
 			operation  = "cckm_key_rotation"
 			run_at     = "0 9 * * sat"
@@ -158,7 +158,7 @@ func TestCckmAwsKeyNative(t *testing.T) {
 			cckm_key_rotation_params {
 				cloud_name = "aws"
 			}
-			end_date = "2027-03-07T14:24:00Z"
+			end_date = "2050-03-07T14:24:00Z"
 			name       = "%s"
 			operation  = "cckm_key_rotation"
 			run_at     = "0 9 * * sat"
@@ -372,7 +372,7 @@ func TestCckmAwsKeyNative(t *testing.T) {
 	})
 }
 
-func TestCckmAwsKeyImportKeyMaterial(t *testing.T) {
+func TestCckmAWSKeyImportKeyMaterial(t *testing.T) {
 	awsConnectionResource, ok := initCckmAwsTest()
 	if !ok {
 		t.Skip()
@@ -488,7 +488,7 @@ func TestCckmAwsKeyImportKeyMaterial(t *testing.T) {
 	})
 }
 
-func TestCckmAwsKeyUpload(t *testing.T) {
+func TestCckmAWSKeyUpload(t *testing.T) {
 	awsConnectionResource, ok := initCckmAwsTest()
 	if !ok {
 		t.Skip()
@@ -560,7 +560,7 @@ func TestCckmAwsKeyUpload(t *testing.T) {
 	})
 }
 
-func TestCckmAwsKeyMultiRegion(t *testing.T) {
+func TestCckmAWSKeyMultiRegion(t *testing.T) {
 	awsConnectionResource, ok := initCckmAwsTest()
 	if !ok {
 		t.Skip()
@@ -955,7 +955,7 @@ func testAccListResources() resource.TestCheckFunc {
 	}
 }
 
-func TestCckmAwsKeyRotation(t *testing.T) {
+func TestCckmAWSKeyRotation(t *testing.T) {
 	awsConnectionResource, ok := initCckmAwsTest()
 	if !ok {
 		t.Skip()
@@ -997,7 +997,7 @@ func TestCckmAwsKeyRotation(t *testing.T) {
 	})
 }
 
-func TestCckmAwsKeyNativeImport(t *testing.T) {
+func TestCckmAWSKeyNativeImport(t *testing.T) {
 	awsConnectionResource, ok := initCckmAwsTest()
 	if !ok {
 		t.Skip()
@@ -1016,7 +1016,7 @@ func TestCckmAwsKeyNativeImport(t *testing.T) {
 			cckm_key_rotation_params {
 				cloud_name = "aws"
 			}
-			end_date = "2027-03-07T14:24:00Z"
+			end_date = "2050-03-07T14:24:00Z"
 			name       = "%s"
 			operation  = "cckm_key_rotation"
 			run_at     = "0 9 * * sat"

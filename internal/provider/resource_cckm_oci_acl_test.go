@@ -11,11 +11,11 @@ import (
 
 func TestCckmOCIAcl(t *testing.T) {
 
-	ociKeyFile := os.Getenv("OCI_KEYFILE")
-	ociPubKeyFP := os.Getenv("OCI_PUBKEY_FP")
-	ociRegion := os.Getenv("OCI_REGION")
-	ociTenancyOCID := os.Getenv("OCI_TENANCY_OCID")
-	ociUserOCID := os.Getenv("OCI_USER_OCID")
+	ociKeyFile := os.Getenv("CCKM_OCI_KEY_FILE")
+	ociPubKeyFP := os.Getenv("CCKM_OCI_FINGERPRINT")
+	ociRegion := os.Getenv("CCKM_OCI_REGION")
+	ociTenancyOCID := os.Getenv("CCKM_OCI_CONN_TENANCY")
+	ociUserOCID := os.Getenv("CCKM_OCI_USER")
 	ok := ociKeyFile != "" && ociPubKeyFP != "" && ociRegion != "" && ociTenancyOCID != "" && ociUserOCID != ""
 	if !ok {
 		t.Skip("Failed to set OCI connection variables")
@@ -55,7 +55,7 @@ func TestCckmOCIAcl(t *testing.T) {
 		%s
 		resource "ciphertrust_user" "user" {
 			username = "%s"
-			password = "LongPassword123+"
+			password = "LongPassword1234++"
 		}
 		resource "ciphertrust_groups" "group" {
 			name = "%s"
@@ -81,7 +81,7 @@ func TestCckmOCIAcl(t *testing.T) {
 		%s
 		resource "ciphertrust_user" "user" {
 			username = "%s"
-			password = "LongPassword123+"
+			password = "LongPassword1234++"
 		}
 		resource "ciphertrust_groups" "group" {
 			name = "%s"
@@ -101,7 +101,7 @@ func TestCckmOCIAcl(t *testing.T) {
 		%s
 		resource "ciphertrust_user" "user" {
 			username = "%s"
-			password = "LongPassword123+"
+			password = "LongPassword1234++"
 		}
 		resource "ciphertrust_groups" "group" {
 			name = "%s"

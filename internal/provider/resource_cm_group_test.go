@@ -32,6 +32,7 @@ resource "ciphertrust_groups" "testGroup" {
 				Config: providerConfig + `
 resource "ciphertrust_groups" "testGroup" {
   description="Updated via TF"
+  name="TestGroup"
 }
 `,
 				Check: resource.ComposeAggregateTestCheckFunc(

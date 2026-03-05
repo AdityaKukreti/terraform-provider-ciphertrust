@@ -135,9 +135,9 @@ provider "ciphertrust" {}
 
 - `address` (String) HTTPS URL of the CipherTrust instance. An address need not be provided when creating a cluster of CipherTrust instances. address can be set in the provider block, via the CM_ADDRESS environment variable or in ~/.ciphertrust/config
 - `auth_domain` (String) CipherTrust authentication domain of the user. This is the domain where the user was created. auth_domain can be set in the provider block, via the CM_AUTH_DOMAIN environment variable or in ~/.ciphertrust/config. Default is the empty string (root domain).
+- `aws_operation_timeout` (Number) Some AWS key operations, for example, replication, can take some time to complete. This specifies how long to wait for an operation to complete in seconds. aws_operation_timeout can be set in the provider block or in ~/.ciphertrust/config. Default is 480.
 - `domain` (String) CipherTrust domain to log in to. domain can be set in the provider block, via the CM_DOMAIN environment variable or in ~/.ciphertrust/config. Default is the empty string (root domain).
-- `log_file` (String) Log file name. log_file can be set in the provider block or in ~/.ciphertrust/config. Default is ctp.log.
-- `log_level` (String) Logging level. log_level can be set in the provider block or in ~/.ciphertrust/config. Default is info. Options: debug, info, warning or error.
 - `no_ssl_verify` (Boolean) Set as false to verify the server's certificate chain and host name. no_ssl_verify can be set in the provider block or in ~/.ciphertrust/config. Default is true.
+- `oci_operation_timeout` (Number) Some OCI key operations can take some time to complete. This specifies how long to wait for an operation to complete in seconds. oci_operation_timeout can be set in the provider block or in ~/.ciphertrust/config. Default is 480.- 
 - `replication_delay_ms` (Number) In the case of a CipherTrust Manager cluster behind a load balancer a small delay after creating CipherTrust Manager resources may be required to allow for replication to other cluster instances. replication_delay_ms can be set in the provider block, via the CM_REPLICATION_DELAY environment variable or in ~/.ciphertrust/config. Default is 100.
 - `rest_api_timeout` (Number) CipherTrust rest api timeout in seconds. rest_api_timeout can be set in the provider block or in ~/.ciphertrust/config. Default is 60.

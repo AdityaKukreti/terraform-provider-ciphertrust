@@ -8,7 +8,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
 )
 
-func TestCckmAwsAcl(t *testing.T) {
+func TestCckmAWSAcl(t *testing.T) {
 
 	awsConnectionResource, ok := initCckmAwsTest()
 	if !ok {
@@ -19,7 +19,7 @@ func TestCckmAwsAcl(t *testing.T) {
 		%s
 		resource "ciphertrust_user" "user" {
 			username = "%s"
-			password = "LongPassword123+"
+			password = "LongPassword1234++"
 		}
 		resource "ciphertrust_groups" "group" {
 			name = "%s"
@@ -45,7 +45,7 @@ func TestCckmAwsAcl(t *testing.T) {
 		%s
 		resource "ciphertrust_user" "user" {
 			username = "%s"
-			password = "LongPassword123+"
+			password = "LongPassword1234++"
 		}
 		resource "ciphertrust_groups" "group" {
 			name = "%s"
@@ -65,7 +65,7 @@ func TestCckmAwsAcl(t *testing.T) {
 		%s
 		resource "ciphertrust_user" "user" {
 			username = "%s"
-			password = "LongPassword123+"
+			password = "LongPassword1234++"
 		}
 		resource "ciphertrust_groups" "group" {
 			name = "%s"
