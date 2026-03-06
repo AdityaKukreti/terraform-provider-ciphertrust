@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net/url"
 	"strings"
 
 	"github.com/google/uuid"
@@ -86,7 +87,7 @@ func (d *dataSourceCertificateAuthorities) Read(ctx context.Context, req datasou
 	req.Config.Get(ctx, &state)
 	var kvs []string
 	for k, v := range state.Filters.Elements() {
-		kv := fmt.Sprintf("%s=%s&", k, v.(types.String).ValueString())
+		kv := fmt.Sprintf("%s=%s&", k, url.QueryEscape(v.(types.String).ValueString()))
 		kvs = append(kvs, kv)
 	}
 
