@@ -86,6 +86,7 @@ func (d *dataSourceCertificateAuthorities) Read(ctx context.Context, req datasou
 	var state certificateAuthoritiesDataSourceModel
 	req.Config.Get(ctx, &state)
 	var kvs []string
+
 	for k, v := range state.Filters.Elements() {
 		kv := fmt.Sprintf("%s=%s&", k, url.QueryEscape(v.(types.String).ValueString()))
 		kvs = append(kvs, kv)
