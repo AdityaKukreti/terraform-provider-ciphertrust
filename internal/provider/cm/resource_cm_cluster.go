@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"regexp"
+	"strings"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/tidwall/gjson"
@@ -129,6 +131,20 @@ func (r *resourceCMCluster) Create(ctx context.Context, req resource.CreateReque
 		return
 	}
 
+	// find the original node's host and port for use as MemberNodeHost/Port in join requests
+	var originalNodeHost string
+	var originalNodePort int64
+	for _, n := range plan.Nodes {
+		if n.Original.ValueBool() {
+			urlOriginal := regexURL.FindStringSubmatch(n.Host.ValueString())
+			if len(urlOriginal) > 1 {
+				originalNodeHost = urlOriginal[1]
+			}
+			originalNodePort = n.Port.ValueInt64()
+			break
+		}
+	}
+
 	for _, node := range plan.Nodes {
 		if node.Original.ValueBool() {
 			//Let's check if the cluster already exists for the primary node
@@ -206,7 +222,7 @@ func (r *resourceCMCluster) Create(ctx context.Context, req resource.CreateReque
 			urlLocalNode := regexURL.FindStringSubmatch(node.Host.ValueString())
 			payloadCSR.LocalNodeHost = urlLocalNode[1]
 
-			urlLocalNodePubAddress := regexURL.FindStringSubmatch(r.client.CipherTrustURL)
+			urlLocalNodePubAddress := regexURL.FindStringSubmatch(node.PublicAddress.ValueString())
 			payloadCSR.PublicAddress = urlLocalNodePubAddress[1]
 
 			payloadCSRJSON, err := json.Marshal(payloadCSR)
@@ -234,7 +250,7 @@ func (r *resourceCMCluster) Create(ctx context.Context, req resource.CreateReque
 			urlNewNode := regexURL.FindStringSubmatch(node.Host.ValueString())
 			payloadSignCSR.NewNodeHost = urlNewNode[1]
 
-			urlNewNodePub := regexURL.FindStringSubmatch(r.client.CipherTrustURL)
+			urlNewNodePub := regexURL.FindStringSubmatch(node.PublicAddress.ValueString())
 			payloadSignCSR.PublicAddress = urlNewNodePub[1]
 
 			payloadSignCSR.SharedHSMPartition = false
@@ -247,7 +263,29 @@ func (r *resourceCMCluster) Create(ctx context.Context, req resource.CreateReque
 				)
 				return
 			}
-			responseSignCSR, err := r.client.PostDataV2(ctx, id, common.URL_SIGN_CERT, payloadSignCSRJSON)
+
+			// Retry signing the CSR if consensus is temporarily down after a node join.
+			// This is needed for n-node clusters where consensus needs time to stabilize
+			// after each new member joins before the next CSR can be signed.
+			maxSignRetries := 30
+			signRetryInterval := 10 * time.Second
+			var responseSignCSR string
+			for attempt := 1; attempt <= maxSignRetries; attempt++ {
+				responseSignCSR, err = r.client.PostDataV2(ctx, id, common.URL_SIGN_CERT, payloadSignCSRJSON)
+				if err == nil {
+					break
+				}
+				if strings.Contains(err.Error(), "consensus is down") && attempt < maxSignRetries {
+					tflog.Debug(ctx, fmt.Sprintf("[resource_cluster.go -> Create][%s] Consensus not ready, retrying sign CSR (attempt %d/%d)...", id, attempt, maxSignRetries))
+					time.Sleep(signRetryInterval)
+					continue
+				}
+				tflog.Debug(ctx, common.ERR_METHOD_END+err.Error()+" [resource_cluster.go -> Create]["+id+"]")
+				resp.Diagnostics.AddError(
+					"Error signing CSR on the existing node: ", err.Error(),
+				)
+				return
+			}
 			if err != nil {
 				tflog.Debug(ctx, common.ERR_METHOD_END+err.Error()+" [resource_cluster.go -> Create]["+id+"]")
 				resp.Diagnostics.AddError(
@@ -262,13 +300,15 @@ func (r *resourceCMCluster) Create(ctx context.Context, req resource.CreateReque
 			payloadJoinNode.Cert = gjson.Get(responseSignCSR, "cert").String()
 			payloadJoinNode.MKEKBlob = gjson.Get(responseSignCSR, "mkek_blob").String()
 			urlJoinNode := regexURL.FindStringSubmatch(node.Host.ValueString())
-			urlMemberNodePub := regexURL.FindStringSubmatch(r.client.CipherTrustURL)
 			payloadJoinNode.LocalNodeHost = urlJoinNode[1]
-			payloadJoinNode.MemberNodeHost = urlMemberNodePub[1]
+			payloadJoinNode.MemberNodeHost = originalNodeHost
+			payloadJoinNode.MemberNodePort = originalNodePort
 
 			if node.Port.ValueInt64() != types.Int64Null().ValueInt64() {
 				payloadJoinNode.LocalNodePort = node.Port.ValueInt64()
 			}
+			urlLocalNodePub := regexURL.FindStringSubmatch(node.PublicAddress.ValueString())
+			payloadJoinNode.LocalNodePublicAddress = urlLocalNodePub[1]
 			payloadJoinNodeJSON, err := json.Marshal(payloadJoinNode)
 			if err != nil {
 				tflog.Debug(ctx, common.ERR_METHOD_END+err.Error()+" [resource_cluster.go -> Create]["+id+"]")
