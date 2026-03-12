@@ -42,10 +42,12 @@ func (r *resourceCMProxy) Schema(_ context.Context, _ resource.SchemaRequest, re
 			},
 			"http_proxy": schema.StringAttribute{
 				Optional:    true,
+				Sensitive:   true,
 				Description: "HTTP proxy URL for proxy configurations. If the proxy server's password contains any special character replace it with encoded values.",
 			},
 			"https_proxy": schema.StringAttribute{
 				Optional:    true,
+				Sensitive:   true,
 				Description: "HTTPS proxy URL for proxy configurations. If the proxy server's password contains any special character replace it with encoded values.",
 			},
 			"no_proxy": schema.ListAttribute{
@@ -145,9 +147,26 @@ func (r *resourceCMProxy) Read(ctx context.Context, req resource.ReadRequest, re
 		return
 	}
 
-	state.Certificate = types.StringValue(gjson.Get(response, "certificate").String())
-	state.HTTPProxy = types.StringValue(gjson.Get(response, "http_proxy").String())
-	state.HTTPSProxy = types.StringValue(gjson.Get(response, "https_proxy").String())
+	// Handle certificate - convert empty string to null for consistency
+	certFromAPI := gjson.Get(response, "certificate").String()
+	if certFromAPI == "" {
+		state.Certificate = types.StringNull()
+	} else {
+		state.Certificate = types.StringValue(certFromAPI)
+	}
+
+	// API returns masked passwords (user:xxxxxx@host:port) for security - preserve state values when masked
+	httpProxyFromAPI := gjson.Get(response, "http_proxy").String()
+	if httpProxyFromAPI != "" && !containsMaskedPassword(httpProxyFromAPI) {
+		state.HTTPProxy = types.StringValue(httpProxyFromAPI)
+	}
+	// If masked (contains xxxxxx), keep the existing state value (don't update)
+
+	httpsProxyFromAPI := gjson.Get(response, "https_proxy").String()
+	if httpsProxyFromAPI != "" && !containsMaskedPassword(httpsProxyFromAPI) {
+		state.HTTPSProxy = types.StringValue(httpsProxyFromAPI)
+	}
+	// If masked (contains xxxxxx), keep the existing state value (don't update)
 
 	hosts := gjson.Get(response, "no_proxy").Array()
 	var noProxies []types.String
@@ -197,15 +216,16 @@ func (r *resourceCMProxy) Update(ctx context.Context, req resource.UpdateRequest
 
 	payloadJSON, err := json.Marshal(payload)
 	if err != nil {
-		tflog.Debug(ctx, common.ERR_METHOD_END+err.Error()+" [resource_proxy.go -> Create]["+id+"]")
+		tflog.Debug(ctx, common.ERR_METHOD_END+err.Error()+" [resource_proxy.go -> Update]["+id+"]")
 		resp.Diagnostics.AddError(
-			"Invalid data input: Syslog Updation",
+			"Invalid data input: Proxy Update",
 			err.Error(),
 		)
 		return
 	}
 
-	response, err := r.client.UpdateDataV2(
+	// Use PutData instead of UpdateDataV2 because proxy is a singleton resource (no ID)
+	response, err := r.client.PutData(
 		ctx,
 		id,
 		common.URL_CM_PROXY,
@@ -219,9 +239,26 @@ func (r *resourceCMProxy) Update(ctx context.Context, req resource.UpdateRequest
 		return
 	}
 
-	plan.Certificate = types.StringValue(gjson.Get(response, "certificate").String())
-	plan.HTTPProxy = types.StringValue(gjson.Get(response, "http_proxy").String())
-	plan.HTTPSProxy = types.StringValue(gjson.Get(response, "https_proxy").String())
+	// Handle certificate - convert empty string to null for consistency
+	certFromAPI := gjson.Get(response, "certificate").String()
+	if certFromAPI == "" {
+		plan.Certificate = types.StringNull()
+	} else {
+		plan.Certificate = types.StringValue(certFromAPI)
+	}
+
+	// API returns masked passwords (user:xxxxxx@host:port) for security - preserve plan values when masked
+	httpProxyFromAPI := gjson.Get(response, "http_proxy").String()
+	if httpProxyFromAPI != "" && !containsMaskedPassword(httpProxyFromAPI) {
+		plan.HTTPProxy = types.StringValue(httpProxyFromAPI)
+	}
+	// If masked (contains xxxxxx), keep the plan value (don't overwrite with masked value)
+
+	httpsProxyFromAPI := gjson.Get(response, "https_proxy").String()
+	if httpsProxyFromAPI != "" && !containsMaskedPassword(httpsProxyFromAPI) {
+		plan.HTTPSProxy = types.StringValue(httpsProxyFromAPI)
+	}
+	// If masked (contains xxxxxx), keep the plan value (don't overwrite with masked value)
 
 	noProxyHosts := gjson.Get(response, "no_proxy").Array()
 	var noProxies []types.String
@@ -276,4 +313,16 @@ func (d *resourceCMProxy) Configure(_ context.Context, req resource.ConfigureReq
 	}
 
 	d.client = client
+}
+
+// containsMaskedPassword checks if a proxy URL contains a masked password (xxxxxx)
+// The API returns URLs like "user01:xxxxxx@10.171.18.190:8080" when passwords are masked
+func containsMaskedPassword(proxyURL string) bool {
+	// Simple check: if the URL contains "xxxxxx", it's masked
+	for i := 0; i+6 <= len(proxyURL); i++ {
+		if proxyURL[i:i+6] == "xxxxxx" {
+			return true
+		}
+	}
+	return false
 }

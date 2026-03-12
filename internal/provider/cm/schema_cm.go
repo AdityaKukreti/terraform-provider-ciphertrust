@@ -424,7 +424,7 @@ type CMUserJSON struct {
 	UserName               string             `json:"username"`
 	Nickname               string             `json:"nickname"`
 	Email                  string             `json:"email"`
-	Password               string             `json:"password"`
+	Password               string             `json:"password,omitempty"`
 	IsDomainUser           bool               `json:"is_domain_user"`
 	LoginFlags             UserLoginFlagsJSON `json:"login_flags"`
 	PasswordChangeRequired bool               `json:"password_change_required"`

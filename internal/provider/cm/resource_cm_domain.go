@@ -76,18 +76,33 @@ func (r *resourceCMDomain) Schema(_ context.Context, _ resource.SchemaRequest, r
 			},
 			"uri": schema.StringAttribute{
 				Computed: true,
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.UseStateForUnknown(),
+				},
 			},
 			"account": schema.StringAttribute{
 				Computed: true,
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.UseStateForUnknown(),
+				},
 			},
 			"application": schema.StringAttribute{
 				Computed: true,
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.UseStateForUnknown(),
+				},
 			},
 			"dev_account": schema.StringAttribute{
 				Computed: true,
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.UseStateForUnknown(),
+				},
 			},
 			"created_at": schema.StringAttribute{
 				Computed: true,
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.UseStateForUnknown(),
+				},
 			},
 			"updated_at": schema.StringAttribute{
 				Computed: true,
@@ -163,8 +178,30 @@ func (r *resourceCMDomain) Create(ctx context.Context, req resource.CreateReques
 	plan.DevAccount = types.StringValue(gjson.Get(response, "devAccount").String())
 	plan.Application = types.StringValue(gjson.Get(response, "application").String())
 	plan.CreatedAt = types.StringValue(gjson.Get(response, "createdAt").String())
-	plan.UpdatedAt = types.StringValue(gjson.Get(response, "updatedAt ").String())
-	plan.Account = types.StringValue(gjson.Get(response, "account ").String())
+	plan.UpdatedAt = types.StringValue(gjson.Get(response, "updatedAt").String())
+	plan.Account = types.StringValue(gjson.Get(response, "account").String())
+
+	// Handle optional fields - set to null if empty string to avoid inconsistent state
+	hsmConnectionIdResp := gjson.Get(response, "hsm_connection_id").String()
+	if hsmConnectionIdResp == "" {
+		plan.HSMConnectionId = types.StringNull()
+	} else {
+		plan.HSMConnectionId = types.StringValue(hsmConnectionIdResp)
+	}
+
+	hsmKekLabelResp := gjson.Get(response, "hsm_kek_label").String()
+	if hsmKekLabelResp == "" {
+		plan.HSMKEKLabel = types.StringNull()
+	} else {
+		plan.HSMKEKLabel = types.StringValue(hsmKekLabelResp)
+	}
+
+	parentCaIdResp := gjson.Get(response, "parent_ca_id").String()
+	if parentCaIdResp == "" {
+		plan.ParentCAId = types.StringNull()
+	} else {
+		plan.ParentCAId = types.StringValue(parentCaIdResp)
+	}
 
 	tflog.Debug(ctx, "[resource_cm_domain.go -> Create Output]["+response+"]")
 
@@ -199,14 +236,62 @@ func (r *resourceCMDomain) Read(ctx context.Context, req resource.ReadRequest, r
 
 	state.ID = types.StringValue(gjson.Get(response, "id").String())
 	state.Name = types.StringValue(gjson.Get(response, "name").String())
-	state.HSMConnectionId = types.StringValue(gjson.Get(response, "hsm_connection_id").String())
-	state.HSMKEKLabel = types.StringValue(gjson.Get(response, "hsm_kek_label").String())
+
+	// Handle optional fields - set to null if empty string to avoid inconsistent state
+	hsmConnectionId := gjson.Get(response, "hsm_connection_id").String()
+	if hsmConnectionId == "" {
+		state.HSMConnectionId = types.StringNull()
+	} else {
+		state.HSMConnectionId = types.StringValue(hsmConnectionId)
+	}
+
+	hsmKekLabel := gjson.Get(response, "hsm_kek_label").String()
+	if hsmKekLabel == "" {
+		state.HSMKEKLabel = types.StringNull()
+	} else {
+		state.HSMKEKLabel = types.StringValue(hsmKekLabel)
+	}
+
+	parentCaId := gjson.Get(response, "parent_ca_id").String()
+	if parentCaId == "" {
+		state.ParentCAId = types.StringNull()
+	} else {
+		state.ParentCAId = types.StringValue(parentCaId)
+	}
+
+	state.AllowUserManagement = types.BoolValue(gjson.Get(response, "allow_user_management").Bool())
 	state.URI = types.StringValue(gjson.Get(response, "uri").String())
 	state.DevAccount = types.StringValue(gjson.Get(response, "devAccount").String())
 	state.Application = types.StringValue(gjson.Get(response, "application").String())
 	state.CreatedAt = types.StringValue(gjson.Get(response, "createdAt").String())
-	state.UpdatedAt = types.StringValue(gjson.Get(response, "updatedAt ").String())
-	state.Account = types.StringValue(gjson.Get(response, "account ").String())
+	state.UpdatedAt = types.StringValue(gjson.Get(response, "updatedAt").String())
+	state.Account = types.StringValue(gjson.Get(response, "account").String())
+
+	// Read admins list
+	adminsResult := gjson.Get(response, "admins")
+	if adminsResult.Exists() && adminsResult.IsArray() {
+		var admins []types.String
+		for _, admin := range adminsResult.Array() {
+			admins = append(admins, types.StringValue(admin.String()))
+		}
+		state.Admins = admins
+	}
+
+	// Read meta_data map
+	metaResult := gjson.Get(response, "meta")
+	if metaResult.Exists() {
+		metaMap := make(map[string]types.String)
+		metaResult.ForEach(func(key, value gjson.Result) bool {
+			metaMap[key.String()] = types.StringValue(value.String())
+			return true
+		})
+		mapValue, diags2 := types.MapValueFrom(ctx, types.StringType, metaMap)
+		if diags2.HasError() {
+			resp.Diagnostics.Append(diags2...)
+		} else {
+			state.Meta = mapValue
+		}
+	}
 
 	tflog.Trace(ctx, common.MSG_METHOD_END+"[resource_cte_client.go -> Read]["+id+"]")
 	// Set refreshed state
@@ -221,6 +306,7 @@ func (r *resourceCMDomain) Read(ctx context.Context, req resource.ReadRequest, r
 func (r *resourceCMDomain) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
 	id := uuid.New().String()
 	var plan CMDomainTFSDK
+	var state CMDomainTFSDK
 	var payload CMDomainJSON
 
 	diags := req.Plan.Get(ctx, &plan)
@@ -229,6 +315,55 @@ func (r *resourceCMDomain) Update(ctx context.Context, req resource.UpdateReques
 		return
 	}
 
+	// Get current state to preserve computed fields
+	diags = req.State.Get(ctx, &state)
+	resp.Diagnostics.Append(diags...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	// Check if there are actual changes to user-controlled fields
+	hasChanges := false
+
+	// Check HSM fields
+	if plan.HSMKEKLabel.ValueString() != state.HSMKEKLabel.ValueString() {
+		hasChanges = true
+	}
+	if plan.HSMConnectionId.ValueString() != state.HSMConnectionId.ValueString() {
+		hasChanges = true
+	}
+
+	// Check metadata
+	if !plan.Meta.Equal(state.Meta) {
+		hasChanges = true
+	}
+
+	// Check admins list
+	if len(plan.Admins) != len(state.Admins) {
+		hasChanges = true
+	} else {
+		for i := range plan.Admins {
+			if plan.Admins[i].ValueString() != state.Admins[i].ValueString() {
+				hasChanges = true
+				break
+			}
+		}
+	}
+
+	// Check allow_user_management
+	if plan.AllowUserManagement.ValueBool() != state.AllowUserManagement.ValueBool() {
+		hasChanges = true
+	}
+
+	// If no changes detected, preserve existing state and return
+	if !hasChanges {
+		tflog.Debug(ctx, "[resource_cm_domain.go -> Update] No changes detected, preserving state")
+		diags = resp.State.Set(ctx, state)
+		resp.Diagnostics.Append(diags...)
+		return
+	}
+
+	// Build payload only if there are changes
 	if plan.HSMKEKLabel.ValueString() != "" && plan.HSMKEKLabel.ValueString() != types.StringNull().ValueString() {
 		payload.HSMKEKLabel = plan.HSMKEKLabel.ValueString()
 	}
@@ -244,15 +379,15 @@ func (r *resourceCMDomain) Update(ctx context.Context, req resource.UpdateReques
 
 	payloadJSON, err := json.Marshal(payload)
 	if err != nil {
-		tflog.Debug(ctx, common.ERR_METHOD_END+err.Error()+" [resource_cm_domain.go -> Create]["+id+"]")
+		tflog.Debug(ctx, common.ERR_METHOD_END+err.Error()+" [resource_cm_domain.go -> Update]["+id+"]")
 		resp.Diagnostics.AddError(
-			"Invalid data input: Domain Creation",
+			"Invalid data input: Domain Update",
 			err.Error(),
 		)
 		return
 	}
 
-	response, err := r.client.UpdateData(ctx, plan.Name.ValueString(), common.URL_DOMAIN, payloadJSON, "updatedAt")
+	_, err = r.client.UpdateData(ctx, plan.Name.ValueString(), common.URL_DOMAIN, payloadJSON, "updatedAt")
 	if err != nil {
 		tflog.Debug(ctx, common.ERR_METHOD_END+err.Error()+" [resource_cm_domain.go -> Update]["+plan.Name.ValueString()+"]")
 		resp.Diagnostics.AddError(
@@ -261,7 +396,49 @@ func (r *resourceCMDomain) Update(ctx context.Context, req resource.UpdateReques
 		)
 		return
 	}
-	plan.UpdatedAt = types.StringValue(response)
+
+	// Read back the domain to get all computed fields with current values
+	readResponse, err := r.client.ReadDataByParam(ctx, id, state.ID.ValueString(), common.URL_DOMAIN)
+	if err != nil {
+		tflog.Debug(ctx, common.ERR_METHOD_END+err.Error()+" [resource_cm_domain.go -> Update -> Read]["+id+"]")
+		resp.Diagnostics.AddError(
+			"Error reading CM Domain on CipherTrust Manager after update: ",
+			"Could not read CM Domain id: "+state.ID.ValueString()+", unexpected error: "+err.Error(),
+		)
+		return
+	}
+
+	// Update plan with current computed values from API
+	plan.ID = types.StringValue(gjson.Get(readResponse, "id").String())
+	plan.URI = types.StringValue(gjson.Get(readResponse, "uri").String())
+	plan.Account = types.StringValue(gjson.Get(readResponse, "account").String())
+	plan.Application = types.StringValue(gjson.Get(readResponse, "application").String())
+	plan.DevAccount = types.StringValue(gjson.Get(readResponse, "devAccount").String())
+	plan.CreatedAt = types.StringValue(gjson.Get(readResponse, "createdAt").String())
+	plan.UpdatedAt = types.StringValue(gjson.Get(readResponse, "updatedAt").String())
+
+	// Handle optional fields - set to null if empty string to avoid inconsistent state
+	hsmConnectionIdUpdate := gjson.Get(readResponse, "hsm_connection_id").String()
+	if hsmConnectionIdUpdate == "" {
+		plan.HSMConnectionId = types.StringNull()
+	} else {
+		plan.HSMConnectionId = types.StringValue(hsmConnectionIdUpdate)
+	}
+
+	hsmKekLabelUpdate := gjson.Get(readResponse, "hsm_kek_label").String()
+	if hsmKekLabelUpdate == "" {
+		plan.HSMKEKLabel = types.StringNull()
+	} else {
+		plan.HSMKEKLabel = types.StringValue(hsmKekLabelUpdate)
+	}
+
+	parentCaIdUpdate := gjson.Get(readResponse, "parent_ca_id").String()
+	if parentCaIdUpdate == "" {
+		plan.ParentCAId = types.StringNull()
+	} else {
+		plan.ParentCAId = types.StringValue(parentCaIdUpdate)
+	}
+
 	diags = resp.State.Set(ctx, plan)
 	resp.Diagnostics.Append(diags...)
 	if resp.Diagnostics.HasError() {
