@@ -374,6 +374,22 @@ type CMRegTokensListTFSDK struct {
 	NamePrefix        types.String `tfsdk:"name_prefix"`
 }
 
+type CMRegTokensListJSON struct {
+	ID                string `json:"id"`
+	URI               string `json:"uri"`
+	Account           string `json:"account"`
+	Application       string `json:"application"`
+	DevAccount        string `json:"dev_account"`
+	CreatedAt         string `json:"created_at"`
+	UpdatedAt         string `json:"updated_at"`
+	Token             string `json:"token"`
+	ValidUntil        string `json:"valid_until"`
+	MaxClients        int64  `json:"max_clients"`
+	ClientsRegistered int64  `json:"clients_registered"`
+	CAID              string `json:"ca_id"`
+	NamePrefix        string `json:"name_prefix"`
+}
+
 type CMRegTokenTFSDK struct {
 	ID                        types.String `tfsdk:"id"`
 	Token                     types.String `tfsdk:"token"`
