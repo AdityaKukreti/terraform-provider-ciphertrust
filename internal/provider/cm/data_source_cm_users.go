@@ -9,6 +9,7 @@ import (
 	"github.com/google/uuid"
 
 	common "github.com/ThalesGroup/terraform-provider-ciphertrust/internal/provider/common"
+	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
 	"github.com/hashicorp/terraform-plugin-framework/datasource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/types"
@@ -40,10 +41,17 @@ func (d *dataSourceUsers) Metadata(_ context.Context, req datasource.MetadataReq
 func (d *dataSourceUsers) Schema(_ context.Context, _ datasource.SchemaRequest, resp *datasource.SchemaResponse) {
 	resp.Schema = schema.Schema{
 		Attributes: map[string]schema.Attribute{
+			"filters": schema.MapAttribute{
+				ElementType: types.StringType,
+				Optional:    true,
+			},
 			"users": schema.ListNestedAttribute{
 				Computed: true,
 				NestedObject: schema.NestedAttributeObject{
 					Attributes: map[string]schema.Attribute{
+						"id": schema.StringAttribute{
+							Computed: true,
+						},
 						"user_id": schema.StringAttribute{
 							Computed: true,
 						},
@@ -56,7 +64,7 @@ func (d *dataSourceUsers) Schema(_ context.Context, _ datasource.SchemaRequest, 
 						"email": schema.StringAttribute{
 							Computed: true,
 						},
-						"full_name": schema.StringAttribute{
+						"name": schema.StringAttribute{
 							Computed: true,
 						},
 						"password": schema.StringAttribute{
@@ -71,12 +79,12 @@ func (d *dataSourceUsers) Schema(_ context.Context, _ datasource.SchemaRequest, 
 						"password_change_required": schema.BoolAttribute{
 							Computed: true,
 						},
+						"user_metadata": schema.MapAttribute{
+							Computed:    true,
+							ElementType: types.StringType,
+						},
 					},
 				},
-			},
-			"filters": schema.MapAttribute{
-				ElementType: types.StringType,
-				Optional:    true,
 			},
 		},
 	}
@@ -121,6 +129,7 @@ func (d *dataSourceUsers) Read(ctx context.Context, req datasource.ReadRequest, 
 
 	for _, user := range users {
 		userState := CMUserTFSDK{
+			ID:                     types.StringValue(user.UserID),
 			UserID:                 types.StringValue(user.UserID),
 			Name:                   types.StringValue(user.Name),
 			Email:                  types.StringValue(user.Email),
@@ -128,7 +137,9 @@ func (d *dataSourceUsers) Read(ctx context.Context, req datasource.ReadRequest, 
 			UserName:               types.StringValue(user.UserName),
 			Password:               types.StringValue(user.Password),
 			IsDomainUser:           types.BoolValue(user.IsDomainUser),
+			PreventUILogin:         types.BoolValue(user.LoginFlags.PreventUILogin),
 			PasswordChangeRequired: types.BoolValue(user.PasswordChangeRequired),
+			Metadata:               convertMetadata(user.Metadata),
 		}
 
 		state.User = append(state.User, userState)
@@ -158,4 +169,15 @@ func (d *dataSourceUsers) Configure(ctx context.Context, req datasource.Configur
 	}
 
 	d.client = client
+}
+
+func convertMetadata(m map[string]string) types.Map {
+	if len(m) == 0 {
+		return types.MapValueMust(types.StringType, map[string]attr.Value{})
+	}
+	result := make(map[string]attr.Value)
+	for k, v := range m {
+		result[k] = types.StringValue(v)
+	}
+	return types.MapValueMust(types.StringType, result)
 }
