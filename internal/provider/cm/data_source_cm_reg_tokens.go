@@ -119,7 +119,7 @@ func (d *dataSourceRegTokens) Read(ctx context.Context, req datasource.ReadReque
 		return
 	}
 
-	tokens := []CMRegTokensListTFSDK{}
+	tokens := []CMRegTokensListJSON{}
 
 	err = json.Unmarshal([]byte(jsonStr), &tokens)
 	if err != nil {
@@ -133,19 +133,19 @@ func (d *dataSourceRegTokens) Read(ctx context.Context, req datasource.ReadReque
 
 	for _, token := range tokens {
 		tokenState := CMRegTokensListTFSDK{
-			ID:                types.StringValue(token.ID.ValueString()),
-			URI:               types.StringValue(token.URI.ValueString()),
-			Account:           types.StringValue(token.Account.ValueString()),
-			Application:       types.StringValue(token.Application.ValueString()),
-			DevAccount:        types.StringValue(token.DevAccount.ValueString()),
-			CreatedAt:         types.StringValue(token.CreatedAt.ValueString()),
-			UpdatedAt:         types.StringValue(token.UpdatedAt.ValueString()),
-			Token:             types.StringValue(token.Token.ValueString()),
-			ValidUntil:        types.StringValue(token.ValidUntil.ValueString()),
-			MaxClients:        types.Int64Value(token.MaxClients.ValueInt64()),
-			ClientsRegistered: types.Int64Value(token.ClientsRegistered.ValueInt64()),
-			CAID:              types.StringValue(token.CAID.ValueString()),
-			NamePrefix:        types.StringValue(token.NamePrefix.ValueString()),
+			ID:                types.StringValue(token.ID),
+			URI:               types.StringValue(token.URI),
+			Account:           types.StringValue(token.Account),
+			Application:       types.StringValue(token.Application),
+			DevAccount:        types.StringValue(token.DevAccount),
+			CreatedAt:         types.StringValue(token.CreatedAt),
+			UpdatedAt:         types.StringValue(token.UpdatedAt),
+			Token:             types.StringValue(token.Token),
+			ValidUntil:        types.StringValue(token.ValidUntil),
+			MaxClients:        types.Int64Value(token.MaxClients),
+			ClientsRegistered: types.Int64Value(token.ClientsRegistered),
+			CAID:              types.StringValue(token.CAID),
+			NamePrefix:        types.StringValue(token.NamePrefix),
 		}
 
 		state.Tokens = append(state.Tokens, tokenState)
