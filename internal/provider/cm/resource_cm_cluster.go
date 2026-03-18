@@ -4,7 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"regexp"
+	"net"
+	"net/url"
 	"strings"
 	"time"
 
@@ -123,7 +124,6 @@ func (r *resourceCMCluster) Create(ctx context.Context, req resource.CreateReque
 
 	// Retrieve values from plan
 	var plan CMClusterTFSDK
-	regexURL := regexp.MustCompile(`https://([a-zA-Z0-9.\-]+)`)
 
 	diags := req.Plan.Get(ctx, &plan)
 	resp.Diagnostics.Append(diags...)
@@ -136,9 +136,11 @@ func (r *resourceCMCluster) Create(ctx context.Context, req resource.CreateReque
 	var originalNodePort int64
 	for _, n := range plan.Nodes {
 		if n.Original.ValueBool() {
-			urlOriginal := regexURL.FindStringSubmatch(n.Host.ValueString())
-			if len(urlOriginal) > 1 {
-				originalNodeHost = urlOriginal[1]
+			var err error
+			originalNodeHost, err = extractHost(n.Host.ValueString())
+			if err != nil {
+				resp.Diagnostics.AddError("Invalid host for original node", err.Error())
+				return
 			}
 			originalNodePort = n.Port.ValueInt64()
 			break
@@ -162,15 +164,23 @@ func (r *resourceCMCluster) Create(ctx context.Context, req resource.CreateReque
 				//This means we need to create a new cluster with the primary node
 				var newClusterPayload NewCMClusterNodeJSON
 				if node.Host.ValueString() != "" && node.Host.ValueString() != types.StringNull().ValueString() {
-					url := regexURL.FindStringSubmatch(node.Host.ValueString())
-					newClusterPayload.LocalNodeHost = url[1]
+					host, err := extractHost(node.Host.ValueString())
+					if err != nil {
+						resp.Diagnostics.AddError("Invalid host for original node", err.Error())
+						return
+					}
+					newClusterPayload.LocalNodeHost = host
 				}
 				if node.Port.ValueInt64() != types.Int64Null().ValueInt64() {
 					newClusterPayload.LocalNodePort = node.Port.ValueInt64()
 				}
 				if node.PublicAddress.ValueString() != "" && node.PublicAddress.ValueString() != types.StringNull().ValueString() {
-					url := regexURL.FindStringSubmatch(node.PublicAddress.ValueString())
-					newClusterPayload.PublicAddress = url[1]
+					host, err := extractHost(node.PublicAddress.ValueString())
+					if err != nil {
+						resp.Diagnostics.AddError("Invalid public_address for original node", err.Error())
+						return
+					}
+					newClusterPayload.PublicAddress = host
 				}
 
 				payloadJSON, err := json.Marshal(newClusterPayload)
@@ -202,12 +212,26 @@ func (r *resourceCMCluster) Create(ctx context.Context, req resource.CreateReque
 			//Steps are -
 			//1. Create CSR on the node that wants to join the cluster
 			//For this step we need to create a client object for the joining node
-			node_address := node.Host.ValueString()
+
+			// Extract host and public_address once for this joining node.
+			// Both fields accept a bare hostname/IP or a full URL (https://...).
+			joiningNodeHost, err := extractHost(node.Host.ValueString())
+			if err != nil {
+				resp.Diagnostics.AddError("Invalid host for joining node", err.Error())
+				return
+			}
+			joiningNodePubAddress, err := extractHost(node.PublicAddress.ValueString())
+			if err != nil {
+				resp.Diagnostics.AddError("Invalid public_address for joining node", err.Error())
+				return
+			}
+
 			node_username := node.Creds.Username.ValueString()
 			node_password := node.Creds.Password.ValueString()
 			node_domain := node.Creds.Domain.ValueString()
 			node_auth_domain := node.Creds.AuthDomain.ValueString()
-			node_client, err := common.NewClient(ctx, id, &node_address, &node_auth_domain, &node_domain, &node_username, &node_password, true, 180)
+			nodeURL := "https://" + joiningNodeHost
+			node_client, err := common.NewClient(ctx, id, &nodeURL, &node_auth_domain, &node_domain, &node_username, &node_password, true, 180)
 			if err != nil {
 				tflog.Debug(ctx, common.ERR_METHOD_END+err.Error()+" [resource_cluster.go -> Create]["+id+"]")
 				resp.Diagnostics.AddError(
@@ -218,12 +242,8 @@ func (r *resourceCMCluster) Create(ctx context.Context, req resource.CreateReque
 			}
 
 			var payloadCSR NewCSRJSON
-
-			urlLocalNode := regexURL.FindStringSubmatch(node.Host.ValueString())
-			payloadCSR.LocalNodeHost = urlLocalNode[1]
-
-			urlLocalNodePubAddress := regexURL.FindStringSubmatch(node.PublicAddress.ValueString())
-			payloadCSR.PublicAddress = urlLocalNodePubAddress[1]
+			payloadCSR.LocalNodeHost = joiningNodeHost
+			payloadCSR.PublicAddress = joiningNodePubAddress
 
 			payloadCSRJSON, err := json.Marshal(payloadCSR)
 			if err != nil {
@@ -246,13 +266,8 @@ func (r *resourceCMCluster) Create(ctx context.Context, req resource.CreateReque
 			//2. Sign the CSR from an existing node in the cluster
 			var payloadSignCSR SignRequestJSON
 			payloadSignCSR.CSR = gjson.Get(responseCSR, "csr").String()
-
-			urlNewNode := regexURL.FindStringSubmatch(node.Host.ValueString())
-			payloadSignCSR.NewNodeHost = urlNewNode[1]
-
-			urlNewNodePub := regexURL.FindStringSubmatch(node.PublicAddress.ValueString())
-			payloadSignCSR.PublicAddress = urlNewNodePub[1]
-
+			payloadSignCSR.NewNodeHost = joiningNodeHost
+			payloadSignCSR.PublicAddress = joiningNodePubAddress
 			payloadSignCSR.SharedHSMPartition = false
 			payloadSignCSRJSON, err := json.Marshal(payloadSignCSR)
 			if err != nil {
@@ -299,16 +314,14 @@ func (r *resourceCMCluster) Create(ctx context.Context, req resource.CreateReque
 			payloadJoinNode.CAChain = gjson.Get(responseSignCSR, "cachain").String()
 			payloadJoinNode.Cert = gjson.Get(responseSignCSR, "cert").String()
 			payloadJoinNode.MKEKBlob = gjson.Get(responseSignCSR, "mkek_blob").String()
-			urlJoinNode := regexURL.FindStringSubmatch(node.Host.ValueString())
-			payloadJoinNode.LocalNodeHost = urlJoinNode[1]
+			payloadJoinNode.LocalNodeHost = joiningNodeHost
 			payloadJoinNode.MemberNodeHost = originalNodeHost
 			payloadJoinNode.MemberNodePort = originalNodePort
 
 			if node.Port.ValueInt64() != types.Int64Null().ValueInt64() {
 				payloadJoinNode.LocalNodePort = node.Port.ValueInt64()
 			}
-			urlLocalNodePub := regexURL.FindStringSubmatch(node.PublicAddress.ValueString())
-			payloadJoinNode.LocalNodePublicAddress = urlLocalNodePub[1]
+			payloadJoinNode.LocalNodePublicAddress = joiningNodePubAddress
 			payloadJoinNodeJSON, err := json.Marshal(payloadJoinNode)
 			if err != nil {
 				tflog.Debug(ctx, common.ERR_METHOD_END+err.Error()+" [resource_cluster.go -> Create]["+id+"]")
@@ -318,7 +331,6 @@ func (r *resourceCMCluster) Create(ctx context.Context, req resource.CreateReque
 				)
 				return
 			}
-			//responseJoinNode, err := r.client.PostDataV2(ctx, id, common.URL_CLUSTER_JOIN, payloadJoinNodeJSON)
 			responseJoinNode, err := node_client.PostDataV2(ctx, id, common.URL_CLUSTER_JOIN, payloadJoinNodeJSON)
 			if err != nil {
 				tflog.Debug(ctx, common.ERR_METHOD_END+err.Error()+" [resource_cluster.go -> Create]["+id+"]")
@@ -421,4 +433,26 @@ func (d *resourceCMCluster) Configure(_ context.Context, req resource.ConfigureR
 	}
 
 	d.client = client
+}
+
+// extractHost extracts the bare hostname or IP from either a plain hostname/IP
+// string or a URL string (e.g. "https://1.2.3.4/" or "https://cm.example.com").
+// Both IP addresses and FQDNs are accepted as bare values.
+func extractHost(input string) (string, error) {
+	if strings.Contains(input, "://") {
+		u, err := url.Parse(input)
+		if err != nil {
+			return "", fmt.Errorf("invalid URL %q: %w", input, err)
+		}
+		return u.Hostname(), nil
+	}
+	// Bare IP address.
+	if net.ParseIP(input) != nil {
+		return input, nil
+	}
+	// Bare hostname — non-empty is sufficient; the API will reject invalid values.
+	if input != "" {
+		return input, nil
+	}
+	return "", fmt.Errorf("host must not be empty")
 }
