@@ -37,30 +37,30 @@ resource "ciphertrust_cluster" "cluster_info" {
   # or new cluster operation will happen on this node
 	nodes = [
 		{
-			host = "https://10.10.10.11"
+			host = "10.10.10.11"
 			port = 5432
 			original = true
-			public_address = "https://10.10.10.11"
+			public_address = "10.10.10.11"
 			credentials = {
 				username = "admin"
 				password = "ChangeMe101!"
 			}
 		},
 		{
-			host = "https://10.10.10.12"
+			host = "10.10.10.12"
 			port = 5432
 			original = false
-			public_address = "https://10.10.10.12"
+			public_address = "10.10.10.12"
 			credentials = {
 				username = "admin"
 				password = "ChangeMe102!"
 			}
 		},
 		{
-			host = "https://10.10.10.13"
+			host = "10.10.10.13"
 			port = 5432
 			original = false
-			public_address = "https://10.10.10.13"
+			public_address = "10.10.10.13"
 			credentials = {
 				username = "admin"
 				password = "ChangeMe103!"
