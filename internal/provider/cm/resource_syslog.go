@@ -55,17 +55,14 @@ func (r *resourceCMSyslog) Schema(_ context.Context, _ resource.SchemaRequest, r
 			},
 			"ca_cert": schema.StringAttribute{
 				Optional:    true,
-				Computed:    true,
 				Description: "The trusted CA cert in PEM format. Only used in TLS transport mode",
 			},
 			"message_format": schema.StringAttribute{
 				Optional:    true,
-				Computed:    true,
 				Description: "The log message format for new log messages: rfc5424 (default) plain_message cef leef.",
 			},
 			"port": schema.Int64Attribute{
 				Optional:    true,
-				Computed:    true,
 				Description: "The port to use for the connection. Defaults to 514 for udp, 601 for tcp and 6514 for tls",
 			},
 			"account": schema.StringAttribute{
@@ -148,11 +145,6 @@ func (r *resourceCMSyslog) Create(ctx context.Context, req resource.CreateReques
 	if !plan.Port.IsNull() {
 		plan.Port = types.Int64Value(gjson.Get(response, "port").Int())
 	}
-
-	// Read back computed values from API
-	plan.CACert = types.StringValue(gjson.Get(response, "caCert").String())
-	plan.MessageFormat = types.StringValue(gjson.Get(response, "messageFormat").String())
-	plan.Port = types.Int64Value(gjson.Get(response, "port").Int())
 
 	tflog.Debug(ctx, "[resource_syslog.go -> Create Output]["+response+"]")
 
