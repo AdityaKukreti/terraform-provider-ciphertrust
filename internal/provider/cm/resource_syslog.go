@@ -55,21 +55,28 @@ func (r *resourceCMSyslog) Schema(_ context.Context, _ resource.SchemaRequest, r
 			},
 			"ca_cert": schema.StringAttribute{
 				Optional:    true,
-				Computed:    true,
 				Description: "The trusted CA cert in PEM format. Only used in TLS transport mode",
 			},
 			"message_format": schema.StringAttribute{
 				Optional:    true,
-				Computed:    true,
 				Description: "The log message format for new log messages: rfc5424 (default) plain_message cef leef.",
 			},
 			"port": schema.Int64Attribute{
 				Optional:    true,
-				Computed:    true,
 				Description: "The port to use for the connection. Defaults to 514 for udp, 601 for tcp and 6514 for tls",
 			},
-			"account":    schema.StringAttribute{Computed: true},
-			"created_at": schema.StringAttribute{Computed: true},
+			"account": schema.StringAttribute{
+				Computed: true,
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.UseStateForUnknown(),
+				},
+			},
+			"created_at": schema.StringAttribute{
+				Computed: true,
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.UseStateForUnknown(),
+				},
+			},
 			"updated_at": schema.StringAttribute{Computed: true},
 		},
 	}
@@ -132,11 +139,12 @@ func (r *resourceCMSyslog) Create(ctx context.Context, req resource.CreateReques
 	plan.Account = types.StringValue(gjson.Get(response, "account").String())
 	plan.CreatedAt = types.StringValue(gjson.Get(response, "createdAt").String())
 	plan.UpdatedAt = types.StringValue(gjson.Get(response, "updatedAt").String())
-
-	// Read back computed values from API
-	plan.CACert = types.StringValue(gjson.Get(response, "caCert").String())
-	plan.MessageFormat = types.StringValue(gjson.Get(response, "messageFormat").String())
-	plan.Port = types.Int64Value(gjson.Get(response, "port").Int())
+	if !plan.MessageFormat.IsNull() {
+		plan.MessageFormat = types.StringValue(gjson.Get(response, "messageFormat").String())
+	}
+	if !plan.Port.IsNull() {
+		plan.Port = types.Int64Value(gjson.Get(response, "port").Int())
+	}
 
 	tflog.Debug(ctx, "[resource_syslog.go -> Create Output]["+response+"]")
 
@@ -172,9 +180,17 @@ func (r *resourceCMSyslog) Read(ctx context.Context, req resource.ReadRequest, r
 	state.ID = types.StringValue(gjson.Get(response, "id").String())
 	state.Host = types.StringValue(gjson.Get(response, "host").String())
 	state.Transport = types.StringValue(gjson.Get(response, "transport").String())
-	state.CACert = types.StringValue(gjson.Get(response, "caCert").String())
-	state.MessageFormat = types.StringValue(gjson.Get(response, "messageFormat").String())
-	state.Port = types.Int64Value(gjson.Get(response, "port").Int())
+	if caCert := gjson.Get(response, "caCert"); caCert.Exists() && caCert.String() != "" {
+		state.CACert = types.StringValue(caCert.String())
+	} else {
+		state.CACert = types.StringNull()
+	}
+	if !state.MessageFormat.IsNull() {
+		state.MessageFormat = types.StringValue(gjson.Get(response, "messageFormat").String())
+	}
+	if !state.Port.IsNull() {
+		state.Port = types.Int64Value(gjson.Get(response, "port").Int())
+	}
 	state.Account = types.StringValue(gjson.Get(response, "account").String())
 	state.CreatedAt = types.StringValue(gjson.Get(response, "createdAt").String())
 	state.UpdatedAt = types.StringValue(gjson.Get(response, "updatedAt").String())
@@ -246,8 +262,8 @@ func (r *resourceCMSyslog) Update(ctx context.Context, req resource.UpdateReques
 
 	response, err := r.client.UpdateDataV2(
 		ctx,
-		id,
-		common.URL_CM_SYSLOG+"/"+plan.ID.ValueString(),
+		plan.ID.ValueString(),
+		common.URL_CM_SYSLOG,
 		payloadJSON)
 	if err != nil {
 		tflog.Debug(ctx, common.ERR_METHOD_END+err.Error()+" [resource_syslog.go -> Update]["+plan.ID.ValueString()+"]")
