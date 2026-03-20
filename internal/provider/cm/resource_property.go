@@ -50,8 +50,8 @@ func (r *resourceCMProperty) Schema(_ context.Context, _ resource.SchemaRequest,
 				Description: "Value to be set",
 			},
 			"description": schema.StringAttribute{
-				Optional:    true,
-				Description: "Description of the property and its value",
+				Computed:    true,
+				Description: "Description of the property and its value (read-only from API)",
 			},
 		},
 	}
@@ -100,6 +100,23 @@ func (r *resourceCMProperty) Create(ctx context.Context, req resource.CreateRequ
 	}
 
 	tflog.Debug(ctx, "[resource_property.go -> Create Output -> Response]["+response+"]")
+
+	// Read back the property to get the description and other computed fields
+	readResponse, err := r.client.ReadDataByParam(ctx, id, plan.Name.ValueString(), common.URL_CM_PROPERTIES)
+	if err != nil {
+		tflog.Debug(ctx, common.ERR_METHOD_END+err.Error()+" [resource_property.go -> Create -> Read]["+id+"]")
+		resp.Diagnostics.AddError(
+			"Error reading CM Property on CipherTrust Manager after creation: ",
+			"Could not read CM Property: "+plan.Name.ValueString()+", unexpected error: "+err.Error(),
+		)
+		return
+	}
+
+	// Update plan with values from API response
+	plan.Value = types.StringValue(gjson.Get(readResponse, "value").String())
+	plan.Name = types.StringValue(gjson.Get(readResponse, "name").String())
+	plan.Description = types.StringValue(gjson.Get(readResponse, "description").String())
+
 	tflog.Trace(ctx, common.MSG_METHOD_END+"[resource_property.go -> Create]["+id+"]")
 	diags = resp.State.Set(ctx, plan)
 	resp.Diagnostics.Append(diags...)
@@ -181,6 +198,23 @@ func (r *resourceCMProperty) Update(ctx context.Context, req resource.UpdateRequ
 		)
 		return
 	}
+
+	// Read back the property to get the description and other computed fields
+	readResponse, err := r.client.ReadDataByParam(ctx, id, plan.Name.ValueString(), common.URL_CM_PROPERTIES)
+	if err != nil {
+		tflog.Debug(ctx, common.ERR_METHOD_END+err.Error()+" [resource_property.go -> Update -> Read]["+id+"]")
+		resp.Diagnostics.AddError(
+			"Error reading CM Property on CipherTrust Manager after update: ",
+			"Could not read CM Property: "+plan.Name.ValueString()+", unexpected error: "+err.Error(),
+		)
+		return
+	}
+
+	// Update plan with values from API response
+	plan.Value = types.StringValue(gjson.Get(readResponse, "value").String())
+	plan.Name = types.StringValue(gjson.Get(readResponse, "name").String())
+	plan.Description = types.StringValue(gjson.Get(readResponse, "description").String())
+
 	diags = resp.State.Set(ctx, plan)
 	resp.Diagnostics.Append(diags...)
 	if resp.Diagnostics.HasError() {

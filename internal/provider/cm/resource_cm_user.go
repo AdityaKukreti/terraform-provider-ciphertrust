@@ -64,7 +64,8 @@ func (r *resourceCMUser) Schema(_ context.Context, _ resource.SchemaRequest, res
 				Default:     stringdefault.StaticString(""),
 			},
 			"password": schema.StringAttribute{
-				Required: true,
+				Required:  true,
+				Sensitive: true,
 			},
 			"is_domain_user": schema.BoolAttribute{
 				Optional: true,
@@ -215,15 +216,33 @@ func (r *resourceCMUser) Read(ctx context.Context, req resource.ReadRequest, res
 		return
 	}
 
+	// For optional+computed fields with defaults, preserve the config/plan value
+	// if the API auto-populates them with values matching other fields
+	// This prevents drift when user doesn't explicitly set these fields
+
 	state.Email = types.StringValue(user.Email)
-	state.Name = types.StringValue(user.Name)
-	state.Nickname = types.StringValue(user.Nickname)
 	state.UserName = types.StringValue(user.UserName)
 	state.UserID = types.StringValue(user.UserID)
 	state.ID = types.StringValue(user.UserID)
 	state.IsDomainUser = types.BoolValue(user.IsDomainUser)
 	state.PasswordChangeRequired = types.BoolValue(user.PasswordChangeRequired)
 	state.PreventUILogin = types.BoolValue(user.LoginFlags.PreventUILogin)
+
+	// Only update name if it's non-empty from API
+	// If user set name in config, it will be in state; if not, keep default
+	if user.Name != "" {
+		state.Name = types.StringValue(user.Name)
+	} else if state.Name.IsNull() || state.Name.ValueString() == "" {
+		state.Name = types.StringValue("")
+	}
+
+	// Only update nickname if it differs from username
+	// API may auto-populate nickname with username value when not explicitly set
+	if user.Nickname != "" && user.Nickname != user.UserName {
+		state.Nickname = types.StringValue(user.Nickname)
+	} else if state.Nickname.IsNull() || state.Nickname.ValueString() == "" {
+		state.Nickname = types.StringValue("")
+	}
 	if user.Metadata != nil {
 		state.Metadata, diags = types.MapValueFrom(ctx, types.StringType, user.Metadata)
 		resp.Diagnostics.Append(diags...)
@@ -263,11 +282,16 @@ func (r *resourceCMUser) Update(ctx context.Context, req resource.UpdateRequest,
 	var payload CMUserJSON
 	loginFlags.PreventUILogin = plan.PreventUILogin.ValueBool()
 
-	payload.Email = common.TrimString(plan.Email.String())
-	payload.Name = common.TrimString(plan.Name.String())
-	payload.Nickname = common.TrimString(plan.Nickname.String())
-	payload.UserName = common.TrimString(plan.UserName.String())
-	payload.Password = common.TrimString(plan.Password.String())
+	payload.Email = common.TrimString(plan.Email.ValueString())
+	payload.Name = common.TrimString(plan.Name.ValueString())
+	payload.Nickname = common.TrimString(plan.Nickname.ValueString())
+	payload.UserName = common.TrimString(plan.UserName.ValueString())
+
+	// Only include password in the update if it has changed
+	if plan.Password.ValueString() != state.Password.ValueString() {
+		payload.Password = common.TrimString(plan.Password.String())
+	}
+
 	payload.IsDomainUser = plan.IsDomainUser.ValueBool()
 	payload.LoginFlags = loginFlags
 	payload.PasswordChangeRequired = plan.PasswordChangeRequired.ValueBool()
@@ -285,6 +309,7 @@ func (r *resourceCMUser) Update(ctx context.Context, req resource.UpdateRequest,
 		if resp.Diagnostics.HasError() {
 			return
 		}
+		// Convert map[string]string to map[string]interface{}
 		payload.Metadata = metadata
 	}
 
@@ -302,8 +327,8 @@ func (r *resourceCMUser) Update(ctx context.Context, req resource.UpdateRequest,
 	if err != nil {
 		tflog.Debug(ctx, common.ERR_METHOD_END+err.Error()+" [resource_cm_user.go -> Update]["+plan.UserID.ValueString()+"]")
 		resp.Diagnostics.AddError(
-			"Error creating user on CipherTrust Manager: ",
-			"Could not create user, unexpected error: "+err.Error(),
+			"Error updating user on CipherTrust Manager: ",
+			"Could not update user, unexpected error: "+err.Error(),
 		)
 		return
 	}

@@ -55,14 +55,17 @@ func (r *resourceCMSyslog) Schema(_ context.Context, _ resource.SchemaRequest, r
 			},
 			"ca_cert": schema.StringAttribute{
 				Optional:    true,
+				Computed:    true,
 				Description: "The trusted CA cert in PEM format. Only used in TLS transport mode",
 			},
 			"message_format": schema.StringAttribute{
 				Optional:    true,
+				Computed:    true,
 				Description: "The log message format for new log messages: rfc5424 (default) plain_message cef leef.",
 			},
 			"port": schema.Int64Attribute{
 				Optional:    true,
+				Computed:    true,
 				Description: "The port to use for the connection. Defaults to 514 for udp, 601 for tcp and 6514 for tls",
 			},
 			"account": schema.StringAttribute{
@@ -146,6 +149,11 @@ func (r *resourceCMSyslog) Create(ctx context.Context, req resource.CreateReques
 		plan.Port = types.Int64Value(gjson.Get(response, "port").Int())
 	}
 
+	// Read back computed values from API
+	plan.CACert = types.StringValue(gjson.Get(response, "caCert").String())
+	plan.MessageFormat = types.StringValue(gjson.Get(response, "messageFormat").String())
+	plan.Port = types.Int64Value(gjson.Get(response, "port").Int())
+
 	tflog.Debug(ctx, "[resource_syslog.go -> Create Output]["+response+"]")
 
 	tflog.Trace(ctx, common.MSG_METHOD_END+"[resource_syslog.go -> Create]["+id+"]")
@@ -208,11 +216,30 @@ func (r *resourceCMSyslog) Read(ctx context.Context, req resource.ReadRequest, r
 func (r *resourceCMSyslog) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
 	id := uuid.New().String()
 	var plan CMSyslogTFSDK
+	var state CMSyslogTFSDK
 	var payload CMSyslogJSON
 
 	diags := req.Plan.Get(ctx, &plan)
 	resp.Diagnostics.Append(diags...)
 	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	diags = req.State.Get(ctx, &state)
+	resp.Diagnostics.Append(diags...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	// Check if there are actual changes - if not, skip the update
+	if plan.Host.Equal(state.Host) &&
+		plan.Transport.Equal(state.Transport) &&
+		plan.CACert.Equal(state.CACert) &&
+		plan.MessageFormat.Equal(state.MessageFormat) &&
+		plan.Port.Equal(state.Port) {
+		// No changes, just set the state and return
+		diags = resp.State.Set(ctx, plan)
+		resp.Diagnostics.Append(diags...)
 		return
 	}
 
