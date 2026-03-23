@@ -11,7 +11,6 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/booldefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
-	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringdefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-log/tflog"
@@ -50,18 +49,15 @@ func (r *resourceCMUser) Schema(_ context.Context, _ resource.SchemaRequest, res
 			"nickname": schema.StringAttribute{
 				Optional: true,
 				Computed: true,
-				Default:  stringdefault.StaticString(""),
 			},
 			"email": schema.StringAttribute{
 				Optional: true,
 				Computed: true,
-				Default:  stringdefault.StaticString(""),
 			},
 			"name": schema.StringAttribute{
 				Optional:    true,
-				Description: "Users full name",
 				Computed:    true,
-				Default:     stringdefault.StaticString(""),
+				Description: "Users full name",
 			},
 			"password": schema.StringAttribute{
 				Required:  true,
@@ -179,6 +175,16 @@ func (r *resourceCMUser) Create(ctx context.Context, req resource.CreateRequest,
 
 	plan.UserID = types.StringValue(response)
 	plan.ID = types.StringValue(response)
+
+	userResponse, err := r.client.GetById(ctx, response, response, common.URL_USER_MANAGEMENT)
+	if err == nil {
+		var user CMUserJSON
+		if json.Unmarshal([]byte(userResponse), &user) == nil {
+			plan.Nickname = types.StringValue(user.Nickname)
+			plan.Name = types.StringValue(user.Name)
+			plan.Email = types.StringValue(user.Email)
+		}
+	}
 
 	tflog.Trace(ctx, common.MSG_METHOD_END+"[resource_cm_user.go -> Create]["+id+"]")
 	diags = resp.State.Set(ctx, plan)
@@ -333,6 +339,16 @@ func (r *resourceCMUser) Update(ctx context.Context, req resource.UpdateRequest,
 		return
 	}
 	plan.UserID = types.StringValue(response)
+
+	userResponse, err := r.client.GetById(ctx, plan.ID.ValueString(), plan.ID.ValueString(), common.URL_USER_MANAGEMENT)
+	if err == nil {
+		var user CMUserJSON
+		if json.Unmarshal([]byte(userResponse), &user) == nil {
+			plan.Nickname = types.StringValue(user.Nickname)
+			plan.Name = types.StringValue(user.Name)
+			plan.Email = types.StringValue(user.Email) 
+		}
+	}
 
 	diags = resp.State.Set(ctx, plan)
 	resp.Diagnostics.Append(diags...)
