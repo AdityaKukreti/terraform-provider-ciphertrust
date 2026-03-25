@@ -8,9 +8,9 @@ import (
 const (
 	providerConfig = `
 provider "ciphertrust" {
-	address = "https://44.220.139.117"
+	address = "https://192.168.2.135"
 	username = "admin"
-	password = "Asdf@1234"
+	password = "ChangeIt01!"
 	bootstrap = "no"
 }
 `
