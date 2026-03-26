@@ -147,6 +147,12 @@ func (r *resourceCMPolicyAttachment) Create(ctx context.Context, req resource.Cr
 	plan.URI = types.StringValue(gjson.Get(response, "uri").String())
 	plan.Account = types.StringValue(gjson.Get(response, "account").String())
 	plan.CreatedAt = types.StringValue(gjson.Get(response, "createdAt").String())
+	if plan.Actions.IsUnknown() {
+		plan.Actions = types.ListNull(types.StringType)
+	}
+	if plan.Resources.IsUnknown() {
+		plan.Resources = types.ListNull(types.StringType)
+	}
 
 	tflog.Debug(ctx, "[resource_policy_attachments.go -> Create Output]["+response+"]")
 
