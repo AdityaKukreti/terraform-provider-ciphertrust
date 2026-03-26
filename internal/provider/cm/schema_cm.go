@@ -962,15 +962,15 @@ type CMPolicyJSON struct {
 }
 
 type CMPolicyAttachmentTFSDK struct {
-	ID                types.String   `tfsdk:"id"`
-	Policy            types.String   `tfsdk:"policy"`
-	PrincipalSelector types.Map      `tfsdk:"principal_selector"`
-	Jurisdiction      types.String   `tfsdk:"jurisdiction"`
-	Actions           []types.String `tfsdk:"actions"`
-	Resources         []types.String `tfsdk:"resources"`
-	URI               types.String   `tfsdk:"uri"`
-	Account           types.String   `tfsdk:"account"`
-	CreatedAt         types.String   `tfsdk:"created_at"`
+	ID                types.String `tfsdk:"id"`
+	Policy            types.String `tfsdk:"policy"`
+	PrincipalSelector types.Map    `tfsdk:"principal_selector"`
+	Jurisdiction      types.String `tfsdk:"jurisdiction"`
+	Actions           types.List   `tfsdk:"actions"`
+	Resources         types.List   `tfsdk:"resources"`
+	URI               types.String `tfsdk:"uri"`
+	Account           types.String `tfsdk:"account"`
+	CreatedAt         types.String `tfsdk:"created_at"`
 }
 
 type CMPolicyAttachmentJSON struct {

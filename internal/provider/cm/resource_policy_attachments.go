@@ -60,17 +60,34 @@ func (r *resourceCMPolicyAttachment) Schema(_ context.Context, _ resource.Schema
 			},
 			"actions": schema.ListAttribute{
 				Optional:    true,
+				Computed:    true,
 				Description: "Action attribute of an operation is a string, in the form of VerbResource e.g. CreateKey, or VerbWithResource e.g. EncryptWithKey",
 				ElementType: types.StringType,
 			},
 			"resources": schema.ListAttribute{
 				Optional:    true,
+				Computed:    true,
 				Description: "Resources is a list of URI strings, which must be in URI format.",
 				ElementType: types.StringType,
 			},
-			"uri":        schema.StringAttribute{Computed: true},
-			"account":    schema.StringAttribute{Computed: true},
-			"created_at": schema.StringAttribute{Computed: true},
+			"uri": schema.StringAttribute{
+				Computed: true,
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.UseStateForUnknown(),
+				},
+			},
+			"account": schema.StringAttribute{
+				Computed: true,
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.UseStateForUnknown(),
+				},
+			},
+			"created_at": schema.StringAttribute{
+				Computed: true,
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.UseStateForUnknown(),
+				},
+			},
 		},
 	}
 }
@@ -100,7 +117,7 @@ func (r *resourceCMPolicyAttachment) Create(ctx context.Context, req resource.Cr
 	payload.PrincipalSelector = selectorsPayload
 
 	if plan.Jurisdiction.ValueString() != "" && plan.Jurisdiction.ValueString() != types.StringNull().ValueString() {
-		payload.Jurisdiction = common.TrimString(plan.Jurisdiction.String())
+		payload.Jurisdiction = plan.Jurisdiction.ValueString()
 	}
 
 	payloadJSON, err := json.Marshal(payload)
@@ -130,6 +147,12 @@ func (r *resourceCMPolicyAttachment) Create(ctx context.Context, req resource.Cr
 	plan.URI = types.StringValue(gjson.Get(response, "uri").String())
 	plan.Account = types.StringValue(gjson.Get(response, "account").String())
 	plan.CreatedAt = types.StringValue(gjson.Get(response, "createdAt").String())
+	if plan.Actions.IsUnknown() {
+		plan.Actions = types.ListNull(types.StringType)
+	}
+	if plan.Resources.IsUnknown() {
+		plan.Resources = types.ListNull(types.StringType)
+	}
 
 	tflog.Debug(ctx, "[resource_policy_attachments.go -> Create Output]["+response+"]")
 
@@ -157,7 +180,7 @@ func (r *resourceCMPolicyAttachment) Read(ctx context.Context, req resource.Read
 		tflog.Debug(ctx, common.ERR_METHOD_END+err.Error()+" [resource_policy_attachments.go -> Read]["+id+"]")
 		resp.Diagnostics.AddError(
 			"Error reading CM Policy Attachment on CipherTrust Manager: ",
-			"Could not read Attachment for CM Policy : ,"+state.ID.ValueString()+"unexpected error: "+err.Error(),
+			"Could not read Attachment for CM Policy: "+state.ID.ValueString()+", unexpected error: "+err.Error(),
 		)
 		return
 	}
@@ -166,20 +189,6 @@ func (r *resourceCMPolicyAttachment) Read(ctx context.Context, req resource.Read
 	state.URI = types.StringValue(gjson.Get(response, "uri").String())
 	state.Account = types.StringValue(gjson.Get(response, "account").String())
 	state.CreatedAt = types.StringValue(gjson.Get(response, "createdAt").String())
-
-	arrResources := (gjson.Get(response, "createdAt").Array())
-	var resources []types.String
-	for _, resource := range arrResources {
-		resources = append(resources, types.StringValue(resource.String()))
-	}
-	state.Resources = resources
-
-	arrActions := gjson.Get(response, "actions").Array()
-	var actions []types.String
-	for _, action := range arrActions {
-		actions = append(actions, types.StringValue(action.String()))
-	}
-	state.Actions = actions
 
 	tflog.Trace(ctx, common.MSG_METHOD_END+"[resource_policy_attachments.go -> Read]["+id+"]")
 	// Set refreshed state
@@ -204,7 +213,6 @@ func (r *resourceCMPolicyAttachment) Delete(ctx context.Context, req resource.De
 		return
 	}
 
-	// Delete existing order
 	url := fmt.Sprintf("%s/%s/%s", r.client.CipherTrustURL, common.URL_CM_POLICY_ATTACHMENTS, state.ID.ValueString())
 	output, err := r.client.DeleteByID(ctx, "DELETE", state.ID.ValueString(), url, nil)
 	tflog.Trace(ctx, common.MSG_METHOD_END+"[resource_policy_attachments.go -> Delete]["+state.ID.ValueString()+"]["+output+"]")
