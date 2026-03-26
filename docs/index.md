@@ -10,13 +10,11 @@ description: |-
 
 Use the navigation to the left to read about the available resources.
 
-[Sample scripts](https://github.com/ThalesGroup/terraform-provider-ciphertrust/tree/main/sample-scripts) allow you to easily create CipherTrust Manager resources for your cloud and includes some practical examples of using the CipherTrust provider.
+Refer to the [change log](https://github.com/ThalesGroup/terraform-provider-ciphertrust/blob/main/changelog.md) for changes in this version.
 
 ## Thales Devices
 The following devices can be used to create keys for the above public clouds.
 - CipherTrust Manager
-- HSM Luna
-- DSM
 
 ## Provider Initialization
 
@@ -136,8 +134,16 @@ provider "ciphertrust" {}
 - `address` (String) HTTPS URL of the CipherTrust instance. An address need not be provided when creating a cluster of CipherTrust instances. address can be set in the provider block, via the CM_ADDRESS environment variable or in ~/.ciphertrust/config
 - `auth_domain` (String) CipherTrust authentication domain of the user. This is the domain where the user was created. auth_domain can be set in the provider block, via the CM_AUTH_DOMAIN environment variable or in ~/.ciphertrust/config. Default is the empty string (root domain).
 - `aws_operation_timeout` (Number) Some AWS key operations, for example, replication, can take some time to complete. This specifies how long to wait for an operation to complete in seconds. aws_operation_timeout can be set in the provider block or in ~/.ciphertrust/config. Default is 480.
+- `bootstrap` (String) Enables bootstrap mode for CipherTrust Manager setup operations that don't require user authentication for scenarios like following:
+
+  1. **SSH Key Registration** (`ciphertrust_cm_ssh_key`) - Adding SSH public keys to the CipherTrust Manager before user authentication is configured
+  2. **Password Changes** (`ciphertrust_cm_user_password_change`) - Changing a user's password when you only have the current credentials (not a session token)
+
+  The `bootstrap` value can be set in the provider block, via `BOOTSTRAP` environment variable or in ~/.ciphertrust/config file. Default value for `bootstrap` variable is "no". 
 - `domain` (String) CipherTrust domain to log in to. domain can be set in the provider block, via the CM_DOMAIN environment variable or in ~/.ciphertrust/config. Default is the empty string (root domain).
 - `no_ssl_verify` (Boolean) Set as false to verify the server's certificate chain and host name. no_ssl_verify can be set in the provider block or in ~/.ciphertrust/config. Default is true.
-- `oci_operation_timeout` (Number) Some OCI key operations can take some time to complete. This specifies how long to wait for an operation to complete in seconds. oci_operation_timeout can be set in the provider block or in ~/.ciphertrust/config. Default is 480.- 
+- `oci_operation_timeout` (Number) Some OCI key operations can take some time to complete. This specifies how long to wait for an operation to complete in seconds. oci_operation_timeout can be set in the provider block or in ~/.ciphertrust/config. Default is 480.
+- `password` (String, Sensitive) Password of a CipherTrust user. password can be set in the provider block, via the CM_PASSWORD environment variable or in ~/.ciphertrust/config
 - `replication_delay_ms` (Number) In the case of a CipherTrust Manager cluster behind a load balancer a small delay after creating CipherTrust Manager resources may be required to allow for replication to other cluster instances. replication_delay_ms can be set in the provider block, via the CM_REPLICATION_DELAY environment variable or in ~/.ciphertrust/config. Default is 100.
 - `rest_api_timeout` (Number) CipherTrust rest api timeout in seconds. rest_api_timeout can be set in the provider block or in ~/.ciphertrust/config. Default is 60.
+- `username` (String) Username of a CipherTrust user. username can be set in the provider block, via the CM_USERNAME environment variable or in ~/.ciphertrust/config
