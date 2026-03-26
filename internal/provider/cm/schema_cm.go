@@ -47,8 +47,8 @@ type CMGroupsListModelTFSDK struct {
 }
 
 type CMGroupsDataSourceModelTFSDK struct {
-	Filters types.Map                `tfsdk:"filters"`
 	Groups  []CMGroupsListModelTFSDK `tfsdk:"groups"`
+	Filters types.Map                `tfsdk:"filters"`
 }
 
 type CMGroupTFSDK struct {
