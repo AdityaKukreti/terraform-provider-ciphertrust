@@ -62,11 +62,12 @@ output "casList" {
 resource "ciphertrust_cm_reg_token" "reg_token" {
   ca_id = tolist(data.ciphertrust_cm_local_ca_list.groups_local_cas.cas)[0].id
 }
-`, Check: resource.ComposeAggregateTestCheckFunc(
-				// Verify first order item updated
-				//resource.TestCheckResourceAttrSet("ciphertrust_cm_reg_token.reg_token", "token"),
-				resource.TestCheckResourceAttrSet("ciphertrust_cm_reg_token.reg_token", "id"),
-			),
+`,
+				Check: resource.ComposeAggregateTestCheckFunc(
+					// Verify first order item updated
+					//resource.TestCheckResourceAttrSet("ciphertrust_cm_reg_token.reg_token", "token"),
+					resource.TestCheckResourceAttrSet("ciphertrust_cm_reg_token.reg_token", "id"),
+				),
 			},
 			// Delete testing automatically occurs in TestCase
 		},
