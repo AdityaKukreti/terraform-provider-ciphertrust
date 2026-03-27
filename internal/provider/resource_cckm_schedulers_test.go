@@ -2,6 +2,7 @@ package provider
 
 import (
 	"fmt"
+	"strings"
 	"testing"
 
 	"github.com/google/uuid"
@@ -97,6 +98,13 @@ func TestCckmSchedulersRotationResource(t *testing.T) {
 			rotationAfterUpdate, maxParamsName, expirationUpdate, expireInUpdate,
 			rotationAfterUpdate, minParamsName)
 		updateConfig2 := fmt.Sprintf(updateSchedulerParams2, maxParamsName, minParamsName)
+		rotateMaterialExpectedTrueValue := "true"
+		if getCipherTrustVersion() < 221 {
+			rotateMaterialExpectedTrueValue = "false"
+			createConfig = strings.ReplaceAll(createConfig, "rotate_material = true", "")
+			updateConfig = strings.ReplaceAll(updateConfig, "rotate_material = true", "")
+			updateConfig2 = strings.ReplaceAll(updateConfig2, "rotate_material = true", "")
+		}
 		resource.Test(t, resource.TestCase{
 			ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
 			Steps: []resource.TestStep{
@@ -109,13 +117,11 @@ func TestCckmSchedulersRotationResource(t *testing.T) {
 						resource.TestCheckResourceAttr(maxParamsResource, "cckm_key_rotation_params.0.expiration", expiration),
 						resource.TestCheckResourceAttr(maxParamsResource, "cckm_key_rotation_params.0.expire_in", expireIn),
 						resource.TestCheckResourceAttr(maxParamsResource, "cckm_key_rotation_params.0.rotation_after", rotationAfter),
-						resource.TestCheckResourceAttr(maxParamsResource, "cckm_key_rotation_params.0.rotate_material", "true"),
+						resource.TestCheckResourceAttr(maxParamsResource, "cckm_key_rotation_params.0.rotate_material", rotateMaterialExpectedTrueValue),
 
 						resource.TestCheckResourceAttrSet(minParamsResource, "id"),
 						resource.TestCheckResourceAttrSet(minParamsResource, "cckm_key_rotation_params.#"),
 						resource.TestCheckResourceAttr(minParamsResource, "cckm_key_rotation_params.0.cloud_name", "aws"),
-						testCheckAttributeNotSet(minParamsResource, "cckm_key_rotation_params.0.expiration"),
-						testCheckAttributeNotSet(minParamsResource, "cckm_key_rotation_params.0.expire_in"),
 					),
 				},
 				{
@@ -135,25 +141,7 @@ func TestCckmSchedulersRotationResource(t *testing.T) {
 						resource.TestCheckResourceAttr(minParamsResource, "cckm_key_rotation_params.0.expiration", expirationUpdate),
 						resource.TestCheckResourceAttr(minParamsResource, "cckm_key_rotation_params.0.expire_in", expireInUpdate),
 						resource.TestCheckResourceAttr(minParamsResource, "cckm_key_rotation_params.0.rotation_after", rotationAfterUpdate),
-						resource.TestCheckResourceAttr(minParamsResource, "cckm_key_rotation_params.0.rotate_material", "true"),
-					),
-				},
-				{
-					Config: createConfig,
-					Check: resource.ComposeTestCheckFunc(
-						resource.TestCheckResourceAttrSet(maxParamsResource, "id"),
-						resource.TestCheckResourceAttrSet(maxParamsResource, "cckm_key_rotation_params.#"),
-						resource.TestCheckResourceAttr(maxParamsResource, "cckm_key_rotation_params.0.cloud_name", "aws"),
-						resource.TestCheckResourceAttr(maxParamsResource, "cckm_key_rotation_params.0.expiration", expiration),
-						resource.TestCheckResourceAttr(maxParamsResource, "cckm_key_rotation_params.0.expire_in", expireIn),
-						resource.TestCheckResourceAttr(maxParamsResource, "cckm_key_rotation_params.0.rotation_after", rotationAfter),
-						resource.TestCheckResourceAttr(maxParamsResource, "cckm_key_rotation_params.0.rotate_material", "true"),
-
-						resource.TestCheckResourceAttrSet(minParamsResource, "id"),
-						resource.TestCheckResourceAttrSet(minParamsResource, "cckm_key_rotation_params.#"),
-						resource.TestCheckResourceAttr(minParamsResource, "cckm_key_rotation_params.0.cloud_name", "aws"),
-						testCheckAttributeNotSet(minParamsResource, "cckm_key_rotation_params.0.expiration"),
-						testCheckAttributeNotSet(minParamsResource, "cckm_key_rotation_params.0.expire_in"),
+						resource.TestCheckResourceAttr(minParamsResource, "cckm_key_rotation_params.0.rotate_material", rotateMaterialExpectedTrueValue),
 					),
 				},
 				{

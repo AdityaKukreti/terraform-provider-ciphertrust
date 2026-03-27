@@ -2,6 +2,7 @@ package provider
 
 import (
 	"fmt"
+	"strings"
 	"testing"
 
 	"github.com/google/uuid"
@@ -28,13 +29,19 @@ func TestCckmSchedulersRotationDataSource(t *testing.T) {
 				filters = {
 					id = ciphertrust_scheduler.aws_scheduled_rotation_job.id
 				}
+
 			}`
 		resourceName := "ciphertrust_scheduler.aws_scheduled_rotation_job"
 		datasourceName := "data.ciphertrust_scheduler_list.aws_scheduled_rotation_job"
 		schedulerName := "aws-key-rotation-" + uuid.New().String()[:8]
 		expiration := "44d"
 		expireIn := "22h"
+		rotateMaterialExpectedValue := "true"
 		createConfig := fmt.Sprintf(createSchedulerParams, expiration, expireIn, schedulerName)
+		if getCipherTrustVersion() < 221 {
+			rotateMaterialExpectedValue = "false"
+			createConfig = strings.ReplaceAll(createConfig, "rotate_material = true", "")
+		}
 		resource.Test(t, resource.TestCase{
 			ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
 			Steps: []resource.TestStep{
@@ -45,7 +52,7 @@ func TestCckmSchedulersRotationDataSource(t *testing.T) {
 						resource.TestCheckResourceAttr(resourceName, "cckm_key_rotation_params.0.cloud_name", "aws"),
 						resource.TestCheckResourceAttr(resourceName, "cckm_key_rotation_params.0.expiration", expiration),
 						resource.TestCheckResourceAttr(resourceName, "cckm_key_rotation_params.0.rotation_after", "6d"),
-						resource.TestCheckResourceAttr(resourceName, "cckm_key_rotation_params.0.rotate_material", "true"),
+						resource.TestCheckResourceAttr(resourceName, "cckm_key_rotation_params.0.rotate_material", rotateMaterialExpectedValue),
 						resource.TestCheckResourceAttr(resourceName, "cckm_key_rotation_params.0.aws_retain_alias", "true"),
 						resource.TestCheckResourceAttr(resourceName, "cckm_key_rotation_params.0.expire_in", expireIn),
 
@@ -55,7 +62,7 @@ func TestCckmSchedulersRotationDataSource(t *testing.T) {
 						resource.TestCheckResourceAttr(datasourceName, "scheduler.0.cckm_key_rotation_params.expiration", expiration),
 						resource.TestCheckResourceAttr(datasourceName, "scheduler.0.cckm_key_rotation_params.rotation_after", "6d"),
 						resource.TestCheckResourceAttr(datasourceName, "scheduler.0.cckm_key_rotation_params.expire_in", expireIn),
-						resource.TestCheckResourceAttr(datasourceName, "scheduler.0.cckm_key_rotation_params.aws_params.rotate_material", "true"),
+						resource.TestCheckResourceAttr(datasourceName, "scheduler.0.cckm_key_rotation_params.aws_params.rotate_material", rotateMaterialExpectedValue),
 						resource.TestCheckResourceAttr(datasourceName, "scheduler.0.cckm_key_rotation_params.aws_params.retain_alias", "true"),
 					),
 				},
