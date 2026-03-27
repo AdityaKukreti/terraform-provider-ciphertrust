@@ -189,14 +189,14 @@ func (r *resourceCMTrialLicense) Delete(ctx context.Context, req resource.Delete
 		return
 	}
 
-	// Delete existing license
-	url := fmt.Sprintf("%s/%s/%s", r.client.CipherTrustURL, common.URL_TRIAL_LICENSE, state.ID.ValueString())
-	output, err := r.client.DeleteByID(ctx, "DELETE", state.ID.ValueString(), url, nil)
-	tflog.Trace(ctx, common.MSG_METHOD_END+"[resource_trial_license.go -> Delete]["+state.ID.ValueString()+"]["+output+"]")
+	// Deactivate the trial license
+	URLDeactivateLicense := common.URL_TRIAL_LICENSE + "/" + state.ID.ValueString() + "/deactivate"
+	response, err := r.client.PostDataV2(ctx, state.ID.ValueString(), URLDeactivateLicense, nil)
+	tflog.Trace(ctx, common.MSG_METHOD_END+"[resource_trial_license.go -> Delete]["+state.ID.ValueString()+"]["+response+"]")
 	if err != nil {
 		resp.Diagnostics.AddError(
-			"Error Deleting CipherTrust NTP",
-			"Could not delete NTP, unexpected error: "+err.Error(),
+			"Error Deactivating CipherTrust Trial License",
+			"Could not deactivate trial license, unexpected error: "+err.Error(),
 		)
 		return
 	}
