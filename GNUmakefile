@@ -3,7 +3,7 @@ default: fmt  install
 
 
 build:
-	go build -v ./...
+	go build -o terraform-provider-ciphertrust .
 
 install: build
 	go install -v ./...
@@ -24,3 +24,4 @@ testacc:
 	TF_ACC=1 go test -v -cover -timeout 120m ./...
 
 .PHONY: fmt lint test testacc build install generate
+

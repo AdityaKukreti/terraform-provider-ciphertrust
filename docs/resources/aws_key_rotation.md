@@ -4,7 +4,7 @@ page_title: "ciphertrust_aws_key_rotation Resource - terraform-provider-ciphertr
 subcategory: ""
 description: |-
   Use this resource to create a new version of the key material. This is only applicable to single or multi-region native symmetric keys. This resource will only submit the request to AWS and AWS will rotate the key-material asynchronously. Use the aws_key_rotation_list datasource to view key material rotation history of EXTERNAL SYMMETRIC_DEFAULT keys.
-  Note: This resource and the datasource are only available for CipherTrust Manager version 2.22 and greater.
+  Note: This resource and the datasource are only available for CipherTrust Manager version 2.20 and greater.
 ---
 
 # ciphertrust_aws_key_rotation (Resource)
@@ -13,7 +13,7 @@ Use this resource to create a new version of the key material. This is only appl
 
 
 
-Note: This resource and the datasource are only available for CipherTrust Manager version 2.22 and greater.
+Note: This resource and the datasource are only available for CipherTrust Manager version 2.20 and greater.
 
 ## Example Usage
 

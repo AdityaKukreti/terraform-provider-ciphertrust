@@ -359,6 +359,7 @@ type CommonAWSParamsJSON struct {
 	Alias                          string               `json:"Alias"`
 	BypassPolicyLockoutSafetyCheck bool                 `json:"BypassPolicyLockoutSafetyCheck"`
 	CustomerMasterKeySpec          string               `json:"CustomerMasterKeySpec"`
+	MasterKeySpec                  string               `json:"MasterKeySpec"`
 	Description                    string               `json:"Description"`
 	KeyUsage                       string               `json:"KeyUsage"`
 	MultiRegion                    bool                 `json:"MultiRegion"`

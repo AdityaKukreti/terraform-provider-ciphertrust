@@ -18,6 +18,8 @@ func TestCckmAWSDataSourceKey(t *testing.T) {
 		  alias  = [local.alias, "%s"]
 		  kms    = ciphertrust_aws_kms.kms.id
 		  region = ciphertrust_aws_kms.kms.regions[0]
+          origin = "AWS_KMS"
+          customer_master_key_spec = "SYMMETRIC_DEFAULT"
 		}`
 	datasourceConfig := `
 		resource "ciphertrust_aws_key" "aws_key" {
@@ -25,6 +27,8 @@ func TestCckmAWSDataSourceKey(t *testing.T) {
 			description = "Updated"
 			kms         = ciphertrust_aws_kms.kms.id
 			region      = ciphertrust_aws_kms.kms.regions[0]
+            origin      = "AWS_KMS"
+            customer_master_key_spec = "SYMMETRIC_DEFAULT"
 		}
 		data "ciphertrust_aws_key" "by_alias_ex1" {
 			alias = [local.alias]

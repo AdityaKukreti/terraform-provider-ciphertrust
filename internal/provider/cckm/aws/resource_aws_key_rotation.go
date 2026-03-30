@@ -56,7 +56,7 @@ func (r *resourceAWSKeyRotation) Schema(_ context.Context, _ resource.SchemaRequ
 			"This is only applicable to single or multi-region native symmetric keys. " +
 			"This resource will only submit the request to AWS and AWS will rotate the key-material asynchronously. " +
 			"Use the aws_key_rotation_list datasource to view key material rotation history of EXTERNAL SYMMETRIC_DEFAULT keys. " +
-			"\n\n\n\nNote: This resource and the datasource are only available for CipherTrust Manager version 2.22 and greater.",
+			"\n\n\n\nNote: This resource and the datasource are only available for CipherTrust Manager version 2.20 and greater.",
 		Attributes: map[string]schema.Attribute{
 			"id": schema.StringAttribute{
 				Computed:    true,
