@@ -1,4 +1,4 @@
-# 1.0.1-pre1
+# 1.0.1
 
 ## New Resources
     ciphertrust_aws_acl
