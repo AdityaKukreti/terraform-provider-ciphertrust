@@ -40,6 +40,7 @@ var (
 )
 
 var importStateVerifyIgnoreAwsKey = []string{
+	"auto_rotate",
 	"auto_rotation_period_in_days",
 	"enable_rotation",
 	"import_key_material",

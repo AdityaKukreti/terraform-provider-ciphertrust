@@ -866,9 +866,11 @@ func (r *resourceAWSKey) createKey(ctx context.Context, id string, plan *AWSKeyT
 
 func (r *resourceAWSKey) setKeyState(ctx context.Context, response string, state *AWSKeyTFSDK, diags *diag.Diagnostics) {
 	tflog.Trace(ctx, "[resource_aws_key.go -> setKeyState][response:"+response)
+	tflog.Info(ctx, fmt.Sprintf("SARAH setKeyState: response: %s", response))
 	setCommonKeyState(ctx, response, &state.AWSKeyCommonTFSDK, diags)
 	setCommonKeyStateEx(ctx, response, &state.AWSKeyCommonTFSDK, diags)
-	state.AutoRotate = types.BoolValue(gjson.Get(response, "aws_param.KeyRotationEnabled").Bool())
+	//state.AutoRotate = types.BoolValue(gjson.Get(response, "aws_param.KeyRotationEnabled").Bool())
+	tflog.Info(ctx, fmt.Sprintf("SARAH setKeyState: state.AutoRotate: %v", state.AutoRotate.ValueBool()))
 	if state.AutoRotationPeriodInDays.IsUnknown() {
 		state.AutoRotationPeriodInDays = types.Int64Value(0)
 	}
@@ -950,7 +952,7 @@ func (r *resourceAWSKey) enableDisableAutoRotation(ctx context.Context, id strin
 	keyID := plan.KeyID.ValueString()
 	updated := false
 	if planAutoRotateEnabled {
-		if keyAutoRotateEnabled != planAutoRotateEnabled || planDays != keyDays {
+		if planDays != 0 && (keyAutoRotateEnabled != planAutoRotateEnabled || planDays != keyDays) {
 			updated = r.enableAutoRotation(ctx, id, plan, keyJSON, diags)
 			if diags.HasError() {
 				return
