@@ -58,7 +58,7 @@ func (d *dataSourceAWSKeyRotationList) Schema(_ context.Context, _ datasource.Sc
 	resp.Schema = schema.Schema{
 		Description: "Use this data source to retrieve a list of CipherTrust Manager AWS key rotations.\n\n" +
 			"Give a filter of 'limit=-1' to list more than 10 matches." +
-			"\n\n\n\nNote: This list is only available for CipherTrust Manager version 2.22 and greater.",
+			"\n\n\n\nNote: This list is only available for CipherTrust Manager version 2.20 and greater.",
 		Attributes: map[string]schema.Attribute{
 			"filters": schema.MapAttribute{
 				Optional:    true,

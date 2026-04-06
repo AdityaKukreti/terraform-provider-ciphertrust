@@ -866,10 +866,14 @@ func (r *resourceAWSKey) createKey(ctx context.Context, id string, plan *AWSKeyT
 
 func (r *resourceAWSKey) setKeyState(ctx context.Context, response string, state *AWSKeyTFSDK, diags *diag.Diagnostics) {
 	tflog.Trace(ctx, "[resource_aws_key.go -> setKeyState][response:"+response)
+	tflog.Info(ctx, fmt.Sprintf("SARAH setKeyState: response: %s", response))
 	setCommonKeyState(ctx, response, &state.AWSKeyCommonTFSDK, diags)
 	setCommonKeyStateEx(ctx, response, &state.AWSKeyCommonTFSDK, diags)
-	state.AutoRotate = types.BoolValue(gjson.Get(response, "aws_param.KeyRotationEnabled").Bool())
-	state.AutoRotationPeriodInDays = types.Int64Value(gjson.Get(response, "aws_param.RotationPeriodInDays").Int())
+	//state.AutoRotate = types.BoolValue(gjson.Get(response, "aws_param.KeyRotationEnabled").Bool())
+	tflog.Info(ctx, fmt.Sprintf("SARAH setKeyState: state.AutoRotate: %v", state.AutoRotate.ValueBool()))
+	if state.AutoRotationPeriodInDays.IsUnknown() {
+		state.AutoRotationPeriodInDays = types.Int64Value(0)
+	}
 	state.MultiRegion = types.BoolValue(gjson.Get(response, "aws_param.MultiRegion").Bool())
 	state.MultiRegionKeyType = types.StringValue(gjson.Get(response, "aws_param.MultiRegionConfiguration.MultiRegionKeyType").String())
 	setMultiRegionConfiguration(ctx, response, &state.MultiRegionPrimaryKey, &state.MultiRegionReplicaKeys, diags)
@@ -885,6 +889,9 @@ func setCommonKeyState(ctx context.Context, response string, state *AWSKeyCommon
 	state.CloudName = types.StringValue(gjson.Get(response, "cloud_name").String())
 	state.CreatedAt = types.StringValue(gjson.Get(response, "createdAt").String())
 	state.CustomerMasterKeySpec = types.StringValue(gjson.Get(response, "aws_param.CustomerMasterKeySpec").String())
+	if state.CustomerMasterKeySpec.ValueString() == "" {
+		state.CustomerMasterKeySpec = types.StringValue(gjson.Get(response, "aws_param.MasterKeySpec").String())
+	}
 	state.DeletionDate = types.StringValue(gjson.Get(response, "deletion_date").String())
 	state.EncryptionAlgorithms = utils.StringSliceJSONToListValue(gjson.Get(response, "aws_param.EncryptionAlgorithms").Array(), diags)
 	state.ExpirationModel = types.StringValue(gjson.Get(response, "aws_param.ExpirationModel").String())
@@ -945,7 +952,7 @@ func (r *resourceAWSKey) enableDisableAutoRotation(ctx context.Context, id strin
 	keyID := plan.KeyID.ValueString()
 	updated := false
 	if planAutoRotateEnabled {
-		if keyAutoRotateEnabled != planAutoRotateEnabled || planDays != keyDays {
+		if planDays != 0 && (keyAutoRotateEnabled != planAutoRotateEnabled || planDays != keyDays) {
 			updated = r.enableAutoRotation(ctx, id, plan, keyJSON, diags)
 			if diags.HasError() {
 				return
@@ -974,16 +981,16 @@ func (r *resourceAWSKey) enableDisableAutoRotation(ctx context.Context, id strin
 						return
 					}
 					tStart = time.Now()
-					response, err = r.client.GetById(ctx, id, keyID, common.URL_AWS_KEY)
-					if err != nil {
-						msg := "Error reading AWS key."
-						details := utils.ApiError(msg, map[string]interface{}{"error": err.Error(), "key_id": keyID})
-						diags.AddError(details, "")
-						return
-					}
-					keyAutoRotateEnabled = gjson.Get(response, "aws_param.KeyRotationEnabled").Bool()
-					keyDays = gjson.Get(response, "aws_param.RotationPeriodInDays").Int()
 				}
+				response, err = r.client.GetById(ctx, id, keyID, common.URL_AWS_KEY)
+				if err != nil {
+					msg := "Error reading AWS key."
+					details := utils.ApiError(msg, map[string]interface{}{"error": err.Error(), "key_id": keyID})
+					diags.AddError(details, "")
+					return
+				}
+				keyAutoRotateEnabled = gjson.Get(response, "aws_param.KeyRotationEnabled").Bool()
+				keyDays = gjson.Get(response, "aws_param.RotationPeriodInDays").Int()
 			}
 		}
 	}
@@ -1986,6 +1993,7 @@ func (r *resourceAWSKey) getCommonAWSParams(ctx context.Context, plan *AWSKeyTFS
 	}
 	if plan.CustomerMasterKeySpec.ValueString() != "" && plan.CustomerMasterKeySpec.ValueString() != types.StringNull().ValueString() {
 		awsParams.CustomerMasterKeySpec = plan.CustomerMasterKeySpec.ValueString()
+		awsParams.MasterKeySpec = plan.CustomerMasterKeySpec.ValueString()
 	}
 	if plan.Description.ValueString() != "" && plan.Description.ValueString() != types.StringNull().ValueString() {
 		awsParams.Description = plan.Description.ValueString()

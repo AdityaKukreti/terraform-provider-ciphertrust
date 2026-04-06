@@ -236,10 +236,12 @@ func (r *resourceScheduler) Schema(_ context.Context, _ resource.SchemaRequest, 
 							Optional: true,
 							Description: "Retain the alias and timestamp on the archived key after rotation. " +
 								"Applicable only to AWS key rotation.",
+							Computed: true,
 						},
 						"rotate_material": schema.BoolAttribute{
 							Optional:    true,
-							Description: "If true, rotate the key material during the key rotation job.",
+							Description: "If true, rotate the key material during the key rotation job. The attribute is only valid for CipherTrustManager version 2.21 or later.",
+							Computed:    true,
 						},
 						"cloud_name": schema.StringAttribute{
 							Required:    true,
@@ -254,6 +256,7 @@ func (r *resourceScheduler) Schema(_ context.Context, _ resource.SchemaRequest, 
 								"For example, if you want the scheduler to the rotate keys that are expiring within six hours of its run, " +
 								"set expire_in to 6h. Use either 'Xd' for x days or 'Yh' for y hours. " +
 								"To remove the setting, set to an empty string.",
+							Computed: true,
 						},
 						"expire_in": schema.StringAttribute{
 							Optional: true,
@@ -263,6 +266,7 @@ func (r *resourceScheduler) Schema(_ context.Context, _ resource.SchemaRequest, 
 								"For example, if you want the scheduler to rotate the keys that are expiring " +
 								"within six hours of its run, set expire_in to 6h. Use either 'Xd' for x days or 'Yh' for y hours. " +
 								"To remove the setting, set to an empty string.",
+							Computed: true,
 						},
 						"rotation_after": schema.StringAttribute{
 							Optional: true,
@@ -272,6 +276,7 @@ func (r *resourceScheduler) Schema(_ context.Context, _ resource.SchemaRequest, 
 								"For example, if you set rotation_after to 6d, the first key rotation will happen after six days of key creation. " +
 								"Subsequently, the keys will be rotated after every six days. " +
 								"To remove the setting, set to an empty string.",
+							Computed: true,
 						},
 					},
 				},
@@ -354,7 +359,7 @@ func (r *resourceScheduler) Create(ctx context.Context, req resource.CreateReque
 			payload.DatabaseBackupParams = dbBackupParams
 		}
 	case "cckm_key_rotation":
-		payload.CCKMKeyRotationParams = getCckmKeyRotationOperationParams(ctx, plan, &resp.Diagnostics)
+		payload.CCKMKeyRotationParams = getCckmKeyRotationOperationParams(ctx, plan, nil, &resp.Diagnostics)
 		if diags.HasError() {
 			return
 		}
@@ -487,7 +492,7 @@ func (r *resourceScheduler) Update(ctx context.Context, req resource.UpdateReque
 		return
 	}
 
-	diags = req.Plan.Get(ctx, &state)
+	diags = req.State.Get(ctx, &state)
 	resp.Diagnostics.Append(diags...)
 	if resp.Diagnostics.HasError() {
 		return
@@ -512,7 +517,7 @@ func (r *resourceScheduler) Update(ctx context.Context, req resource.UpdateReque
 			payload.DatabaseBackupParams = dbBackupParams
 		}
 	case "cckm_key_rotation":
-		payload.CCKMRotationParams = getCckmKeyRotationOperationParams(ctx, plan, &resp.Diagnostics)
+		payload.CCKMRotationParams = getCckmKeyRotationOperationParams(ctx, plan, &state, &resp.Diagnostics)
 		if diags.HasError() {
 			return
 		}
@@ -681,7 +686,7 @@ func getDatabaseOperationBackupParams(plan CreateJobConfigParamsTFSDK) *Database
 	return nil
 }
 
-func getCckmKeyRotationOperationParams(ctx context.Context, plan CreateJobConfigParamsTFSDK, diags *diag.Diagnostics) *CCKMKeyRotationParamsJSON {
+func getCckmKeyRotationOperationParams(ctx context.Context, plan CreateJobConfigParamsTFSDK, state *CreateJobConfigParamsTFSDK, diags *diag.Diagnostics) *CCKMKeyRotationParamsJSON {
 	if len(plan.CCKMKeyRotationParams.Elements()) != 0 {
 		var rotationParams CCKMKeyRotationParamsTFSDK
 		for _, v := range plan.CCKMKeyRotationParams.Elements() {
@@ -697,9 +702,30 @@ func getCckmKeyRotationOperationParams(ctx context.Context, plan CreateJobConfig
 		rotationParamsJSON := CCKMKeyRotationParamsJSON{
 			CloudName:                 rotationParams.CloudName.ValueString(),
 			CCKMRotationAwsParamsJSON: awsParams,
-			Expiration:                rotationParams.Expiration.ValueStringPointer(),
-			ExpireIn:                  rotationParams.ExpireIn.ValueStringPointer(),
-			RotationAfter:             rotationParams.RotationAfter.ValueStringPointer(),
+		}
+		var stateRotationParams CCKMKeyRotationParamsTFSDK
+		if state != nil {
+			for _, v := range state.CCKMKeyRotationParams.Elements() {
+				diags.Append(tfsdk.ValueAs(ctx, v, &stateRotationParams)...)
+				if diags.HasError() {
+					return nil
+				}
+			}
+		}
+		if rotationParams.Expiration.ValueString() != "" {
+			rotationParamsJSON.Expiration = rotationParams.Expiration.ValueStringPointer()
+		} else if state != nil && stateRotationParams.Expiration.ValueString() != "" {
+			rotationParamsJSON.Expiration = rotationParams.Expiration.ValueStringPointer()
+		}
+		if rotationParams.ExpireIn.ValueString() != "" {
+			rotationParamsJSON.ExpireIn = rotationParams.ExpireIn.ValueStringPointer()
+		} else if state != nil && stateRotationParams.ExpireIn.ValueString() != "" {
+			rotationParamsJSON.ExpireIn = rotationParams.ExpireIn.ValueStringPointer()
+		}
+		if rotationParams.RotationAfter.ValueString() != "" {
+			rotationParamsJSON.RotationAfter = rotationParams.RotationAfter.ValueStringPointer()
+		} else if state != nil && stateRotationParams.RotationAfter.ValueString() != "" {
+			rotationParamsJSON.RotationAfter = rotationParams.RotationAfter.ValueStringPointer()
 		}
 		return &rotationParamsJSON
 	}
@@ -788,13 +814,14 @@ func getParamsFromResponse(ctx context.Context, response string, plan *CreateJob
 		}
 		dbParams.Filters = filters
 		plan.DatabaseBackupParams = dbParams
-	case "cckm_key_rotation_params":
+	case "cckm_key_rotation":
 		cckmParams := &CCKMKeyRotationParamsTFSDK{
 			CloudName:      types.StringValue(gjson.Get(response, "job_config_params.cloud_name").String()),
-			RetainAlias:    types.BoolValue(gjson.Get(response, "job_config_params.aw_param.retain_alias").Bool()),
-			RotateMaterial: types.BoolValue(gjson.Get(response, "job_config_params.aw_param.rotate_material").Bool()),
+			RetainAlias:    types.BoolValue(gjson.Get(response, "job_config_params.aws_param.retain_alias").Bool()),
+			RotateMaterial: types.BoolValue(gjson.Get(response, "job_config_params.aws_param.rotate_material").Bool()),
 			Expiration:     types.StringValue(gjson.Get(response, "job_config_params.expiration").String()),
 			ExpireIn:       types.StringValue(gjson.Get(response, "job_config_params.expire_in").String()),
+			RotationAfter:  types.StringValue(gjson.Get(response, "job_config_params.rotation_after").String()),
 		}
 		cckmParamsList := types.ListNull(types.ObjectType{
 			AttrTypes: map[string]attr.Type{
@@ -802,6 +829,8 @@ func getParamsFromResponse(ctx context.Context, response string, plan *CreateJob
 				"aws_retain_alias": types.BoolType,
 				"expiration":       types.StringType,
 				"expire_in":        types.StringType,
+				"rotate_material":  types.BoolType,
+				"rotation_after":   types.StringType,
 			},
 		})
 		diags.Append(tfsdk.ValueFrom(ctx, []CCKMKeyRotationParamsTFSDK{*cckmParams}, cckmParamsList.Type(ctx), &cckmParamsList)...)
