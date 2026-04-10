@@ -42,6 +42,7 @@ data "ciphertrust_aws_cloudhsm_key" "ciphertrust_aws_cloudhsm_key_by_key_id" {
 
 - `alias` (Set of String) Alias(es) of the key. To allow for key rotation changing or removing original aliases, all aliases already assigned to another key will be ignored.
 - `arn` (String) The Amazon Resource Name (ARN) of the key.
+- `aws_key_id` (String) AWS key ID.
 - `key_id` (String) CipherTrust Manager Key ID.
 - `region` (String) AWS region to which the key belongs.
 
@@ -49,7 +50,6 @@ data "ciphertrust_aws_cloudhsm_key" "ciphertrust_aws_cloudhsm_key_by_key_id" {
 
 - `aws_account_id` (String) AWS account ID.
 - `aws_custom_key_store_id` (String) Custom keystore ID in AWS.
-- `aws_key_id` (String) AWS key ID.
 - `blocked` (Boolean) Parameter to indicate if AWS CloudHSM  key is blocked for any data plane operation.
 - `cloud_name` (String) AWS cloud.
 - `created_at` (String) Date the key was created.

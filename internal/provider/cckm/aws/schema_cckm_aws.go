@@ -697,6 +697,7 @@ type KeyRotationJSON struct {
 	KeyMaterialOrigin       string `json:"key_material_origin"`
 	KeySource               string `json:"key_source"`
 	KeySourceContainerID    string `json:"key_source_container_id"`
+	KeySourceContainerName  string `json:"key_source_container_name,omitempty"`
 	KmsID                   string `json:"kms_id"`
 	SourceKeyID             string `json:"source_key_identifier"`
 	SourceKeyName           string `json:"source_key_name"`

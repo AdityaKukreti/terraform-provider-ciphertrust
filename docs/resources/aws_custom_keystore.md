@@ -150,7 +150,7 @@ resource "ciphertrust_aws_custom_keystore" "imported_external_custom_keystore" {
 - `connect_disconnect_keystore` (String) (Updatable) Indicates whether to connect or disconnect the custom key store.
 - `enable_credential_rotation` (Block List) (Updatable) Enable the custom key store for scheduled credential rotation job. (see [below for nested schema](#nestedblock--enable_credential_rotation))
 - `enable_success_audit_event` (Boolean) (Updatable) Enable or disable audit recording of successful operations within an external key store. Default value is false. Recommended value is false as enabling it can affect performance.
-- `linked_state` (Boolean) (Updatable) Indicates whether the custom key store is linked with AWS. Applicable to a custom key store of type EXTERNAL_KEY_STORE. Default value is false. When false, creating a custom key store in the CCKM does not trigger the AWS KMS to create a new key store. Also, the new custom key store will not synchronize with any key stores within the AWS KMS until the new key store is linked.
+- `linked_state` (Boolean) (Updatable) Indicates whether the custom key store is linked with AWS. Applicable to a custom key store of type EXTERNAL_KEY_STORE. Default value is false. When false, creating a custom key store in the CCKM does not trigger the AWS KMS to create a new key store. Once linked, it's not possible to unlink a key store. Also, the new custom key store will not synchronize with any key stores within the AWS KMS until the new key store is linked.
 - `local_hosted_params` (Block List) Parameters related to AWS interaction with a custom key store. (see [below for nested schema](#nestedblock--local_hosted_params))
 - `timeouts` (Block, Optional) (see [below for nested schema](#nestedblock--timeouts))
 

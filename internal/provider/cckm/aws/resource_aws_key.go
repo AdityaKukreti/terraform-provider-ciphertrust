@@ -511,7 +511,7 @@ func (r *resourceAWSKey) Schema(_ context.Context, _ resource.SchemaRequest, res
 						},
 						"key_source": schema.StringAttribute{
 							Required:    true,
-							Description: "Key source from where the key will be uploaded. Options are 'ciphertrust' and 'local' which both rotate using CipherTrust Managers keys.",
+							Description: "Key source from where the key will be uploaded. Options are 'ciphertrust' and 'local'. Both use CipherTrust Manager as the key source.",
 							Validators:  []validator.String{stringvalidator.OneOf([]string{"ciphertrust", "local"}...)},
 						},
 						"disable_encrypt": schema.BoolAttribute{

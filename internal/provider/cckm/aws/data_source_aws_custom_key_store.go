@@ -317,6 +317,12 @@ func (d *datasourceAWSCustomKeyStoreDataSource) setCustomKeyStoreState(ctx conte
 		return
 	}
 
+	if awsParamJSONResponse.ConnectionState == "CONNECTED" {
+		plan.ConnectDisconnectKeystore = types.StringValue("CONNECT_KEYSTORE")
+	} else {
+		plan.ConnectDisconnectKeystore = types.StringValue("DISCONNECT_KEYSTORE")
+	}
+
 	keyStoreID := gjson.Get(response, "id").String()
 	var labels types.Map
 	setKeyStoreLabels(ctx, response, keyStoreID, &labels, diags)

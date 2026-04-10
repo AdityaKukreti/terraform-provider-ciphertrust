@@ -72,7 +72,7 @@ resource "ciphertrust_aws_key" "aws_key" {
 
 ### Required
 
-- `name` (String) A name for the template.
+- `name` (String) A name for the template. Changing this value requires the resource to be replaced.
 
 ### Optional
 

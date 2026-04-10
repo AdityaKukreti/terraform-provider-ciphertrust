@@ -25,15 +25,10 @@ Give a filter of 'limit=-1' to list all KMS resources that match the filter. Def
 ### Read-Only
 
 - `kms` (Attributes List) (see [below for nested schema](#nestedatt--kms))
-- `matched` (Number) The number of vaults which matched the filters.
+- `matched` (Number) The number of KMS resources which matched the filters.
 
 <a id="nestedatt--kms"></a>
 ### Nested Schema for `kms`
-
-Optional:
-
-- `assume_role_arn` (String) Amazon Resource Name (ARN) of the role to be assumed.
-- `assume_role_external_id` (String) External ID for the role to be assumed. This parameter can be specified only with "assume_role_arn".
 
 Read-Only:
 
@@ -42,6 +37,8 @@ Read-Only:
 - `acls` (Attributes Set) List of ACLs that have been added to the KMS. (see [below for nested schema](#nestedatt--kms--acls))
 - `application` (String) The application this resource belongs to.
 - `arn` (String) Amazon Resource Name.
+- `assume_role_arn` (String) Amazon Resource Name (ARN) of the role to be assumed.
+- `assume_role_external_id` (String) External ID for the role to be assumed.
 - `auto_added` (Boolean) True if the KMS was added by a scheduler.
 - `aws_connection` (String) CipherTrust Manager resource ID of the connection which manages this account.
 - `created_at` (String) Date/time the application was created
