@@ -3,12 +3,12 @@
 page_title: "ciphertrust_aws_policy_template Resource - terraform-provider-ciphertrust"
 subcategory: ""
 description: |-
-  Use this resource to create and managa AWS key policy templates that can be used by multiple AWS keys.
+  Use this resource to create and manage AWS key policy templates that can be used by multiple AWS keys.
 ---
 
 # ciphertrust_aws_policy_template (Resource)
 
-Use this resource to create and managa AWS key policy templates that can be used by multiple AWS keys.
+Use this resource to create and manage AWS key policy templates that can be used by multiple AWS keys.
 
 ## Example Usage
 

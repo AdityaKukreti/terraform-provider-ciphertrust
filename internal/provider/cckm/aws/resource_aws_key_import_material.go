@@ -315,8 +315,8 @@ func (r *resourceAWSKeyImportMaterial) Schema(_ context.Context, _ resource.Sche
 
 func (r *resourceAWSKeyImportMaterial) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
 	id := uuid.New().String()
-	tflog.Trace(ctx, common.MSG_METHOD_START+"[resource_aws_key_import_material.go -> Create]["+id+"]")
-	defer tflog.Trace(ctx, common.MSG_METHOD_END+"[resource_aws_key_import_material.go -> Create]["+id+"]")
+	tflog.Debug(ctx, common.MSG_METHOD_START+"[resource_aws_key_import_material.go -> Create]["+id+"]")
+	defer tflog.Debug(ctx, common.MSG_METHOD_END+"[resource_aws_key_import_material.go -> Create]["+id+"]")
 	var (
 		plan     AWSKeyForImportMaterialTFSDK
 		response string
@@ -348,13 +348,13 @@ func (r *resourceAWSKeyImportMaterial) Create(ctx context.Context, req resource.
 		resp.Diagnostics.AddWarning(d.Summary(), d.Detail())
 	}
 	resp.Diagnostics.Append(resp.State.Set(ctx, plan)...)
-	tflog.Trace(ctx, "[resource_aws_key_import_material.go -> Create][response:"+response)
+	tflog.Debug(ctx, "[resource_aws_key_import_material.go -> Create][response:"+response)
 }
 
 func (r *resourceAWSKeyImportMaterial) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
 	id := uuid.New().String()
-	tflog.Trace(ctx, common.MSG_METHOD_START+"[resource_aws_key_import_material.go -> Read]["+id+"]")
-	defer tflog.Trace(ctx, common.MSG_METHOD_END+"[resource_aws_key_import_material.go -> Read]["+id+"]")
+	tflog.Debug(ctx, common.MSG_METHOD_START+"[resource_aws_key_import_material.go -> Read]["+id+"]")
+	defer tflog.Debug(ctx, common.MSG_METHOD_END+"[resource_aws_key_import_material.go -> Read]["+id+"]")
 	var state AWSKeyForImportMaterialTFSDK
 	resp.Diagnostics.Append(req.State.Get(ctx, &state)...)
 	if resp.Diagnostics.HasError() {
@@ -381,13 +381,13 @@ func (r *resourceAWSKeyImportMaterial) Read(ctx context.Context, req resource.Re
 	if resp.Diagnostics.HasError() {
 		return
 	}
-	tflog.Trace(ctx, "[resource_aws_key_import_material.go -> Read][response:"+response)
+	tflog.Debug(ctx, "[resource_aws_key_import_material.go -> Read][response:"+response)
 }
 
 func (r *resourceAWSKeyImportMaterial) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
 	id := uuid.New().String()
-	tflog.Trace(ctx, common.MSG_METHOD_START+"[resource_aws_key_import_material.go -> Update]["+id+"]")
-	defer tflog.Trace(ctx, common.MSG_METHOD_END+"[resource_aws_key_import_material.go -> Update]["+id+"]")
+	tflog.Debug(ctx, common.MSG_METHOD_START+"[resource_aws_key_import_material.go -> Update]["+id+"]")
+	defer tflog.Debug(ctx, common.MSG_METHOD_END+"[resource_aws_key_import_material.go -> Update]["+id+"]")
 	var (
 		plan  AWSKeyForImportMaterialTFSDK
 		state AWSKeyForImportMaterialTFSDK
@@ -416,14 +416,14 @@ func (r *resourceAWSKeyImportMaterial) Update(ctx context.Context, req resource.
 	if resp.Diagnostics.HasError() {
 		return
 	}
-	tflog.Trace(ctx, "[resource_aws_key_import_material.go -> Update][response:"+response)
+	tflog.Debug(ctx, "[resource_aws_key_import_material.go -> Update][response:"+response)
 }
 
 func (r *resourceAWSKeyImportMaterial) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
 }
 
 func (r *resourceAWSKeyImportMaterial) setKeyState(ctx context.Context, response string, state *AWSKeyForImportMaterialTFSDK, diags *diag.Diagnostics) {
-	tflog.Trace(ctx, "[resource_aws_key_import_material.go -> setKeyState][response:"+response)
+	tflog.Debug(ctx, "[resource_aws_key_import_material.go -> setKeyState][response:"+response)
 	setCommonKeyStateImportMaterial(ctx, response, &state.AWSKeyCommonImportMaterialTFSDK, diags)
 	state.MultiRegion = types.BoolValue(gjson.Get(response, "aws_param.MultiRegion").Bool())
 	state.MultiRegionKeyType = types.StringValue(gjson.Get(response, "aws_param.MultiRegionConfiguration.MultiRegionKeyType").String())
@@ -432,8 +432,8 @@ func (r *resourceAWSKeyImportMaterial) setKeyState(ctx context.Context, response
 }
 
 func (r *resourceAWSKeyImportMaterial) importKeyMaterial(ctx context.Context, id string, plan *AWSKeyForImportMaterialTFSDK, diags *diag.Diagnostics) string {
-	tflog.Trace(ctx, common.MSG_METHOD_START+"[resource_aws_key_import_material.go -> importKeyMaterial]["+id+"]")
-	defer tflog.Trace(ctx, common.MSG_METHOD_END+"[resource_aws_key_import_material.go -> importKeyMaterial]["+id+"]")
+	tflog.Debug(ctx, common.MSG_METHOD_START+"[resource_aws_key_import_material.go -> importKeyMaterial]["+id+"]")
+	defer tflog.Debug(ctx, common.MSG_METHOD_END+"[resource_aws_key_import_material.go -> importKeyMaterial]["+id+"]")
 	var importMaterialPlan AWSKeyImportMaterialTFSDK
 	for _, v := range plan.ImportKeyMaterial.Elements() {
 		diags.Append(tfsdk.ValueAs(ctx, v, &importMaterialPlan)...)
@@ -482,7 +482,7 @@ func (r *resourceAWSKeyImportMaterial) importKeyMaterial(ctx context.Context, id
 		diags.AddError(details, "")
 		return ""
 	}
-	tflog.Trace(ctx, "[resource_aws_key_import_material.go -> importKeyMaterial][response:"+response)
+	tflog.Debug(ctx, "[resource_aws_key_import_material.go -> importKeyMaterial][response:"+response)
 	return response
 }
 

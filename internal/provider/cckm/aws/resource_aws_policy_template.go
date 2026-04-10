@@ -59,7 +59,7 @@ func (r *resourceAWSPolicyTemplate) Configure(_ context.Context, req resource.Co
 
 func (r *resourceAWSPolicyTemplate) Schema(_ context.Context, _ resource.SchemaRequest, resp *resource.SchemaResponse) {
 	resp.Schema = schema.Schema{
-		Description: "Use this resource to create and managa AWS key policy templates that can be used by multiple AWS keys.",
+		Description: "Use this resource to create and manage AWS key policy templates that can be used by multiple AWS keys.",
 		Attributes: map[string]schema.Attribute{
 			"id": schema.StringAttribute{
 				Computed: true,
@@ -142,8 +142,8 @@ func (r *resourceAWSPolicyTemplate) Schema(_ context.Context, _ resource.SchemaR
 
 func (r *resourceAWSPolicyTemplate) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
 	id := uuid.New().String()
-	tflog.Trace(ctx, common.MSG_METHOD_START+"[resource_aws_policy_template.go -> Create]["+id+"]")
-	defer tflog.Trace(ctx, common.MSG_METHOD_END+"[resource_aws_policy_template -> Create]["+id+"]")
+	tflog.Debug(ctx, common.MSG_METHOD_START+"[resource_aws_policy_template.go -> Create]["+id+"]")
+	defer tflog.Debug(ctx, common.MSG_METHOD_END+"[resource_aws_policy_template.go -> Create]["+id+"]")
 	var plan AWSKeyPolicyTemplateTFSDK
 	resp.Diagnostics.Append(req.Plan.Get(ctx, &plan)...)
 	if resp.Diagnostics.HasError() {
@@ -187,8 +187,8 @@ func (r *resourceAWSPolicyTemplate) Create(ctx context.Context, req resource.Cre
 
 func (r *resourceAWSPolicyTemplate) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
 	id := uuid.New().String()
-	tflog.Trace(ctx, common.MSG_METHOD_START+"[resource_aws_policy_template.go -> Read]["+id+"]")
-	defer tflog.Trace(ctx, common.MSG_METHOD_END+"[resource_aws_policy_template -> Read]["+id+"]")
+	tflog.Debug(ctx, common.MSG_METHOD_START+"[resource_aws_policy_template.go -> Read]["+id+"]")
+	defer tflog.Debug(ctx, common.MSG_METHOD_END+"[resource_aws_policy_template.go -> Read]["+id+"]")
 	var state AWSKeyPolicyTemplateTFSDK
 	resp.Diagnostics.Append(req.State.Get(ctx, &state)...)
 	if resp.Diagnostics.HasError() {
@@ -208,7 +208,7 @@ func (r *resourceAWSPolicyTemplate) Read(ctx context.Context, req resource.ReadR
 		resp.Diagnostics.AddError(details, "")
 		return
 	}
-	tflog.Trace(ctx, "[resource_aws_policy_template.go -> Read][response:"+response)
+	tflog.Debug(ctx, "[resource_aws_policy_template.go -> Read][response:"+response+"]")
 	r.setPolicyTemplateState(ctx, response, &state, &resp.Diagnostics)
 	if resp.Diagnostics.HasError() {
 		return
@@ -222,15 +222,15 @@ func (r *resourceAWSPolicyTemplate) Read(ctx context.Context, req resource.ReadR
 
 func (r *resourceAWSPolicyTemplate) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
 	id := uuid.New().String()
-	tflog.Trace(ctx, common.MSG_METHOD_START+"[resource_aws_policy_template.go -> ImportState]["+id+"]")
-	defer tflog.Trace(ctx, common.MSG_METHOD_END+"[resource_aws_policy_template.go -> ImportState]["+id+"]")
+	tflog.Debug(ctx, common.MSG_METHOD_START+"[resource_aws_policy_template.go -> ImportState]["+id+"]")
+	defer tflog.Debug(ctx, common.MSG_METHOD_END+"[resource_aws_policy_template.go -> ImportState]["+id+"]")
 	resource.ImportStatePassthroughID(ctx, path.Root("id"), req, resp)
 }
 
 func (r *resourceAWSPolicyTemplate) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
 	id := uuid.New().String()
-	tflog.Trace(ctx, common.MSG_METHOD_START+"[resource_aws_policy_template -> Update]["+id+"]")
-	defer tflog.Trace(ctx, common.MSG_METHOD_END+"[resource_aws_policy_template -> Update]["+id+"]")
+	tflog.Debug(ctx, common.MSG_METHOD_START+"[resource_aws_policy_template.go -> Update]["+id+"]")
+	defer tflog.Debug(ctx, common.MSG_METHOD_END+"[resource_aws_policy_template.go -> Update]["+id+"]")
 
 	var plan AWSKeyPolicyTemplateTFSDK
 	resp.Diagnostics.Append(req.Plan.Get(ctx, &plan)...)
@@ -252,7 +252,7 @@ func (r *resourceAWSPolicyTemplate) Update(ctx context.Context, req resource.Upd
 		resp.Diagnostics.AddError(details, "")
 		return
 	}
-	tflog.Trace(ctx, "[resource_aws_policy_template.go -> Update][response:"+response)
+	tflog.Debug(ctx, "[resource_aws_policy_template.go -> Update][response:"+response+"]")
 
 	keyPolicyParams := r.getUpdatePolicyTemplateParams(ctx, &plan, &state, &resp.Diagnostics)
 	if resp.Diagnostics.HasError() {
@@ -263,7 +263,7 @@ func (r *resourceAWSPolicyTemplate) Update(ctx context.Context, req resource.Upd
 		keyPolicyParams.KeyAdmins == nil && keyPolicyParams.KeyAdminsRoles == nil &&
 		keyPolicyParams.KeyUsers == nil && keyPolicyParams.KeyUsersRoles == nil {
 		// terraform import can lead to this
-		tflog.Trace(ctx, "[resource_aws_policy_template.go -> Update][nothing to update")
+		tflog.Debug(ctx, "[resource_aws_policy_template.go -> Update][nothing to update]")
 		r.setPolicyTemplateState(ctx, response, &plan, &resp.Diagnostics)
 		resp.Diagnostics.Append(resp.State.Set(ctx, plan)...)
 		return
@@ -301,8 +301,8 @@ func (r *resourceAWSPolicyTemplate) Update(ctx context.Context, req resource.Upd
 
 func (r *resourceAWSPolicyTemplate) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
 	id := uuid.New().String()
-	tflog.Trace(ctx, common.MSG_METHOD_START+"[resource_aws_policy_template -> Delete]["+id+"]")
-	defer tflog.Trace(ctx, common.MSG_METHOD_END+"[resource_aws_policy_template -> Delete]["+id+"]")
+	tflog.Debug(ctx, common.MSG_METHOD_START+"[resource_aws_policy_template.go -> Delete]["+id+"]")
+	defer tflog.Debug(ctx, common.MSG_METHOD_END+"[resource_aws_policy_template.go -> Delete]["+id+"]")
 	var state AWSKeyPolicyTemplateTFSDK
 	diags := req.State.Get(ctx, &state)
 	resp.Diagnostics.Append(diags...)

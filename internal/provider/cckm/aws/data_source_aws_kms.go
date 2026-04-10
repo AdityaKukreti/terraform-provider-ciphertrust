@@ -168,8 +168,8 @@ func (d *dataSourceAWSKms) Schema(_ context.Context, _ datasource.SchemaRequest,
 
 func (d *dataSourceAWSKms) Read(ctx context.Context, req datasource.ReadRequest, resp *datasource.ReadResponse) {
 	id := uuid.New().String()
-	tflog.Trace(ctx, common.MSG_METHOD_START+"[data_source_aws_kms.go -> Read]")
-	defer tflog.Trace(ctx, common.MSG_METHOD_END+"[data_source_aws_kms.go -> Read]")
+	tflog.Debug(ctx, common.MSG_METHOD_START+"[data_source_aws_kms.go -> Read]["+id+"]")
+	defer tflog.Debug(ctx, common.MSG_METHOD_END+"[data_source_aws_kms.go -> Read]["+id+"]")
 
 	var state AWSKmsDataSourceModel
 	diags := req.Config.Get(ctx, &state)

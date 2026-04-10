@@ -394,8 +394,8 @@ func (r *resourceAWSCloudHSMKey) Schema(_ context.Context, _ resource.SchemaRequ
 
 func (r *resourceAWSCloudHSMKey) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
 	id := uuid.New().String()
-	tflog.Trace(ctx, common.MSG_METHOD_START+"[resource_aws_cloudhsm_key.go -> Create]["+id+"]")
-	defer tflog.Trace(ctx, common.MSG_METHOD_END+"[resource_aws_cloudhsm_key.go -> Create]["+id+"]")
+	tflog.Debug(ctx, common.MSG_METHOD_START+"[resource_aws_cloudhsm_key.go -> Create]["+id+"]")
+	defer tflog.Debug(ctx, common.MSG_METHOD_END+"[resource_aws_cloudhsm_key.go -> Create]["+id+"]")
 	var (
 		plan     AWSCloudHSMKeyTFSDK
 		response string
@@ -488,7 +488,7 @@ func (r *resourceAWSCloudHSMKey) Create(ctx context.Context, req resource.Create
 		resp.Diagnostics.AddWarning(details, "")
 	} else {
 		response = getResponse
-		tflog.Trace(ctx, "[resource_aws_cloudhsm_key.go -> Create][response:"+response+"]")
+		tflog.Debug(ctx, "[resource_aws_cloudhsm_key.go -> Create][response:"+response+"]")
 	}
 
 	var diags diag.Diagnostics
@@ -505,8 +505,8 @@ func (r *resourceAWSCloudHSMKey) Create(ctx context.Context, req resource.Create
 
 func (r *resourceAWSCloudHSMKey) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
 	id := uuid.New().String()
-	tflog.Trace(ctx, common.MSG_METHOD_START+"[resource_aws_cloudhsm_key.go -> Read]["+id+"]")
-	defer tflog.Trace(ctx, common.MSG_METHOD_END+"[resource_aws_cloudhsm_key.go -> Read]["+id+"]")
+	tflog.Debug(ctx, common.MSG_METHOD_START+"[resource_aws_cloudhsm_key.go -> Read]["+id+"]")
+	defer tflog.Debug(ctx, common.MSG_METHOD_END+"[resource_aws_cloudhsm_key.go -> Read]["+id+"]")
 	var state AWSCloudHSMKeyTFSDK
 	resp.Diagnostics.Append(req.State.Get(ctx, &state)...)
 	if resp.Diagnostics.HasError() {
@@ -528,7 +528,7 @@ func (r *resourceAWSCloudHSMKey) Read(ctx context.Context, req resource.ReadRequ
 		resp.Diagnostics.AddError(details, "")
 		return
 	}
-	tflog.Trace(ctx, "[resource_aws_cloudhsm_key.go -> Read][response:"+response+"]")
+	tflog.Debug(ctx, "[resource_aws_cloudhsm_key.go -> Read][response:"+response+"]")
 	description := state.Description
 	setCommonKeyStoreKeyState(ctx, response, &state.AWSKeyStoreKeyCommonTFSDK, &resp.Diagnostics)
 	if resp.Diagnostics.HasError() {
@@ -549,15 +549,15 @@ func (r *resourceAWSCloudHSMKey) Read(ctx context.Context, req resource.ReadRequ
 
 func (r *resourceAWSCloudHSMKey) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
 	id := uuid.New().String()
-	tflog.Trace(ctx, common.MSG_METHOD_START+"[resource_aws_cloudhsm_key.go -> ImportState]["+id+"]")
-	defer tflog.Trace(ctx, common.MSG_METHOD_END+"[resource_aws_cloudhsm_key.go -> ImportState]["+id+"]")
+	tflog.Debug(ctx, common.MSG_METHOD_START+"[resource_aws_cloudhsm_key.go -> ImportState]["+id+"]")
+	defer tflog.Debug(ctx, common.MSG_METHOD_END+"[resource_aws_cloudhsm_key.go -> ImportState]["+id+"]")
 	resource.ImportStatePassthroughID(ctx, path.Root("id"), req, resp)
 }
 
 func (r *resourceAWSCloudHSMKey) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
 	id := uuid.New().String()
-	tflog.Trace(ctx, common.MSG_METHOD_START+"[resource_aws_cloudhsm_key.go -> Update]["+id+"]")
-	defer tflog.Trace(ctx, common.MSG_METHOD_END+"[resource_aws_cloudhsm_key.go -> Update]["+id+"]")
+	tflog.Debug(ctx, common.MSG_METHOD_START+"[resource_aws_cloudhsm_key.go -> Update]["+id+"]")
+	defer tflog.Debug(ctx, common.MSG_METHOD_END+"[resource_aws_cloudhsm_key.go -> Update]["+id+"]")
 	var (
 		plan  AWSCloudHSMKeyTFSDK
 		state AWSCloudHSMKeyTFSDK
@@ -654,13 +654,13 @@ func (r *resourceAWSCloudHSMKey) Update(ctx context.Context, req resource.Update
 	if resp.Diagnostics.HasError() {
 		return
 	}
-	tflog.Trace(ctx, "[resource_aws_cloudhsm_key.go -> Update][response:"+response+"]")
+	tflog.Debug(ctx, "[resource_aws_cloudhsm_key.go -> Update][response:"+response+"]")
 }
 
 func (r *resourceAWSCloudHSMKey) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
 	id := uuid.New().String()
-	tflog.Trace(ctx, common.MSG_METHOD_START+"[resource_aws_cloudhsm_key.go -> Delete]["+id+"]")
-	defer tflog.Trace(ctx, common.MSG_METHOD_END+"[resource_aws_cloudhsm_key.go -> Delete]["+id+"]")
+	tflog.Debug(ctx, common.MSG_METHOD_START+"[resource_aws_cloudhsm_key.go -> Delete]["+id+"]")
+	defer tflog.Debug(ctx, common.MSG_METHOD_END+"[resource_aws_cloudhsm_key.go -> Delete]["+id+"]")
 	var state AWSCloudHSMKeyTFSDK
 	resp.Diagnostics.Append(req.State.Get(ctx, &state)...)
 	if resp.Diagnostics.HasError() {
@@ -734,5 +734,5 @@ func (r *resourceAWSCloudHSMKey) Delete(ctx context.Context, req resource.Delete
 			}
 		}
 	}
-	tflog.Trace(ctx, "[resource_aws_cloudhsm_key.go -> Delete][response:"+response+"]")
+	tflog.Debug(ctx, "[resource_aws_cloudhsm_key.go -> Delete][response:"+response+"]")
 }

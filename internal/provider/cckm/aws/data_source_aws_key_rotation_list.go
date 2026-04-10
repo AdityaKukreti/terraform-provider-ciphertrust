@@ -176,8 +176,8 @@ func (d *dataSourceAWSKeyRotationList) Schema(_ context.Context, _ datasource.Sc
 
 func (d *dataSourceAWSKeyRotationList) Read(ctx context.Context, req datasource.ReadRequest, resp *datasource.ReadResponse) {
 	id := uuid.New().String()
-	tflog.Trace(ctx, common.MSG_METHOD_START+"[data_source_aws_key_rotation_list.go -> Read]["+id+"]")
-	defer tflog.Trace(ctx, common.MSG_METHOD_END+"[data_source_aws_key_rotation_list.go -> Read]["+id+"]")
+	tflog.Debug(ctx, common.MSG_METHOD_START+"[data_source_aws_key_rotation_list.go -> Read]["+id+"]")
+	defer tflog.Debug(ctx, common.MSG_METHOD_END+"[data_source_aws_key_rotation_list.go -> Read]["+id+"]")
 
 	var state KeyRotationsDataSourceModel
 	resp.Diagnostics.Append(req.Config.Get(ctx, &state)...)

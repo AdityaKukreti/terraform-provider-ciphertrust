@@ -531,8 +531,8 @@ func (r *resourceAWSKey) Schema(_ context.Context, _ resource.SchemaRequest, res
 
 func (r *resourceAWSKey) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
 	id := uuid.New().String()
-	tflog.Trace(ctx, common.MSG_METHOD_START+"[resource_aws_key.go -> Create]["+id+"]")
-	defer tflog.Trace(ctx, common.MSG_METHOD_END+"[resource_aws_key.go -> Create]["+id+"]")
+	tflog.Debug(ctx, common.MSG_METHOD_START+"[resource_aws_key.go -> Create]["+id+"]")
+	defer tflog.Debug(ctx, common.MSG_METHOD_END+"[resource_aws_key.go -> Create]["+id+"]")
 	var (
 		plan     AWSKeyTFSDK
 		response string
@@ -559,7 +559,7 @@ func (r *resourceAWSKey) Create(ctx context.Context, req resource.CreateRequest,
 	plan.ID = types.StringValue(encodeAWSKeyTerraformResourceID(region, kid))
 	plan.KeyID = types.StringValue(gjson.Get(response, "id").String())
 
-	tflog.Trace(ctx, "[resource_aws_key.go -> Create][response:"+response)
+	tflog.Debug(ctx, "[resource_aws_key.go -> Create][response:"+response)
 
 	// Don't return errors after this
 
@@ -602,7 +602,7 @@ func (r *resourceAWSKey) Create(ctx context.Context, req resource.CreateRequest,
 		resp.Diagnostics.AddWarning(details, "")
 	} else {
 		response = getResponse
-		tflog.Trace(ctx, "[resource_aws_key.go -> Create][response:"+response)
+		tflog.Debug(ctx, "[resource_aws_key.go -> Create][response:"+response)
 	}
 
 	var diags diag.Diagnostics
@@ -611,13 +611,13 @@ func (r *resourceAWSKey) Create(ctx context.Context, req resource.CreateRequest,
 		resp.Diagnostics.AddWarning(d.Summary(), d.Detail())
 	}
 	resp.Diagnostics.Append(resp.State.Set(ctx, plan)...)
-	tflog.Trace(ctx, "[resource_aws_key.go -> Create][response:"+response)
+	tflog.Debug(ctx, "[resource_aws_key.go -> Create][response:"+response)
 }
 
 func (r *resourceAWSKey) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
 	id := uuid.New().String()
-	tflog.Trace(ctx, common.MSG_METHOD_START+"[resource_aws_key.go -> Read]["+id+"]")
-	defer tflog.Trace(ctx, common.MSG_METHOD_END+"[resource_aws_key.go -> Read]["+id+"]")
+	tflog.Debug(ctx, common.MSG_METHOD_START+"[resource_aws_key.go -> Read]["+id+"]")
+	defer tflog.Debug(ctx, common.MSG_METHOD_END+"[resource_aws_key.go -> Read]["+id+"]")
 	var state AWSKeyTFSDK
 	resp.Diagnostics.Append(req.State.Get(ctx, &state)...)
 	if resp.Diagnostics.HasError() {
@@ -629,7 +629,7 @@ func (r *resourceAWSKey) Read(ctx context.Context, req resource.ReadRequest, res
 		resp.Diagnostics.Append(diags...)
 		return
 	}
-	tflog.Trace(ctx, "[resource_aws_key.go -> Read][response:"+response)
+	tflog.Debug(ctx, "[resource_aws_key.go -> Read][response:"+response)
 	r.setKeyState(ctx, response, &state, &resp.Diagnostics)
 	if resp.Diagnostics.HasError() {
 		return
@@ -639,15 +639,15 @@ func (r *resourceAWSKey) Read(ctx context.Context, req resource.ReadRequest, res
 
 func (r *resourceAWSKey) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
 	id := uuid.New().String()
-	tflog.Trace(ctx, common.MSG_METHOD_START+"[resource_aws_key.go -> ImportState]["+id+"]")
-	defer tflog.Trace(ctx, common.MSG_METHOD_END+"[resource_aws_key.go -> ImportState]["+id+"]")
+	tflog.Debug(ctx, common.MSG_METHOD_START+"[resource_aws_key.go -> ImportState]["+id+"]")
+	defer tflog.Debug(ctx, common.MSG_METHOD_END+"[resource_aws_key.go -> ImportState]["+id+"]")
 	resource.ImportStatePassthroughID(ctx, path.Root("id"), req, resp)
 }
 
 func (r *resourceAWSKey) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
 	id := uuid.New().String()
-	tflog.Trace(ctx, common.MSG_METHOD_START+"[resource_aws_key.go -> Update]["+id+"]")
-	defer tflog.Trace(ctx, common.MSG_METHOD_END+"[resource_aws_key.go -> Update]["+id+"]")
+	tflog.Debug(ctx, common.MSG_METHOD_START+"[resource_aws_key.go -> Update]["+id+"]")
+	defer tflog.Debug(ctx, common.MSG_METHOD_END+"[resource_aws_key.go -> Update]["+id+"]")
 	var (
 		plan  AWSKeyTFSDK
 		state AWSKeyTFSDK
@@ -749,7 +749,7 @@ func (r *resourceAWSKey) Update(ctx context.Context, req resource.UpdateRequest,
 		return
 	}
 	resp.Diagnostics.Append(resp.State.Set(ctx, plan)...)
-	tflog.Trace(ctx, "[resource_aws_key.go -> Update][response:"+response)
+	tflog.Debug(ctx, "[resource_aws_key.go -> Update][response:"+response)
 }
 
 func updateAwsKeyCommon(ctx context.Context, id string, client *common.Client, plan *AWSKeyCommonTFSDK, state *AWSKeyCommonTFSDK, keyJSON string, diags *diag.Diagnostics) {
@@ -775,8 +775,8 @@ func updateAwsKeyCommon(ctx context.Context, id string, client *common.Client, p
 
 func (r *resourceAWSKey) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
 	id := uuid.New().String()
-	tflog.Trace(ctx, common.MSG_METHOD_START+"[resource_aws_key.go -> Delete]["+id+"]")
-	defer tflog.Trace(ctx, common.MSG_METHOD_END+"[resource_aws_key.go -> Delete]["+id+"]")
+	tflog.Debug(ctx, common.MSG_METHOD_START+"[resource_aws_key.go -> Delete]["+id+"]")
+	defer tflog.Debug(ctx, common.MSG_METHOD_END+"[resource_aws_key.go -> Delete]["+id+"]")
 	var state AWSKeyTFSDK
 	resp.Diagnostics.Append(req.State.Get(ctx, &state)...)
 	if resp.Diagnostics.HasError() {
@@ -826,12 +826,12 @@ func (r *resourceAWSKey) Delete(ctx context.Context, req resource.DeleteRequest,
 			resp.Diagnostics.AddError(details, "")
 		}
 	}
-	tflog.Trace(ctx, "[resource_aws_key.go -> Delete][response:"+response)
+	tflog.Debug(ctx, "[resource_aws_key.go -> Delete][response:"+response)
 }
 
 func (r *resourceAWSKey) createKey(ctx context.Context, id string, plan *AWSKeyTFSDK, diags *diag.Diagnostics) string {
-	tflog.Trace(ctx, common.MSG_METHOD_START+"[resource_aws_key.go -> createKey]["+id+"]")
-	defer tflog.Trace(ctx, common.MSG_METHOD_END+"[resource_aws_key.go -> createKey]["+id+"]")
+	tflog.Debug(ctx, common.MSG_METHOD_START+"[resource_aws_key.go -> createKey]["+id+"]")
+	defer tflog.Debug(ctx, common.MSG_METHOD_END+"[resource_aws_key.go -> createKey]["+id+"]")
 	awsParam := r.getAWSParam(ctx, plan, diags)
 	if diags.HasError() {
 		return ""
@@ -861,12 +861,12 @@ func (r *resourceAWSKey) createKey(ctx context.Context, id string, plan *AWSKeyT
 		diags.AddError(details, "")
 		return ""
 	}
-	tflog.Trace(ctx, "[resource_aws_key.go -> createKey][response:"+response)
+	tflog.Debug(ctx, "[resource_aws_key.go -> createKey][response:"+response)
 	return response
 }
 
 func (r *resourceAWSKey) setKeyState(ctx context.Context, response string, state *AWSKeyTFSDK, diags *diag.Diagnostics) {
-	tflog.Trace(ctx, "[resource_aws_key.go -> setKeyState][response:"+response)
+	tflog.Debug(ctx, "[resource_aws_key.go -> setKeyState][response:"+response)
 	setCommonKeyState(ctx, response, &state.AWSKeyCommonTFSDK, diags)
 	setCommonKeyStateEx(ctx, response, &state.AWSKeyCommonTFSDK, diags)
 	if gjson.Get(response, "aws_param.RotationPeriodInDays").Exists() {
@@ -936,8 +936,8 @@ func setCommonKeyStateEx(ctx context.Context, response string, state *AWSKeyComm
 }
 
 func (r *resourceAWSKey) enableDisableAutoRotation(ctx context.Context, id string, plan *AWSKeyTFSDK, keyJSON string, diags *diag.Diagnostics) {
-	tflog.Trace(ctx, common.MSG_METHOD_START+"[resource_aws_key.go -> enableDisableAutoRotation]["+id+"]")
-	defer tflog.Trace(ctx, common.MSG_METHOD_END+"[resource_aws_key.go -> enableDisableAutoRotation]["+id+"]")
+	tflog.Debug(ctx, common.MSG_METHOD_START+"[resource_aws_key.go -> enableDisableAutoRotation]["+id+"]")
+	defer tflog.Debug(ctx, common.MSG_METHOD_END+"[resource_aws_key.go -> enableDisableAutoRotation]["+id+"]")
 	var (
 		err      error
 		response string
@@ -1012,8 +1012,8 @@ func (r *resourceAWSKey) enableDisableAutoRotation(ctx context.Context, id strin
 }
 
 func (r *resourceAWSKey) enableAutoRotation(ctx context.Context, id string, plan *AWSKeyTFSDK, keyJSON string, diags *diag.Diagnostics) bool {
-	tflog.Trace(ctx, common.MSG_METHOD_START+"[resource_aws_key.go -> enableAutoRotation]["+id+"]")
-	defer tflog.Trace(ctx, common.MSG_METHOD_END+"[resource_aws_key.go -> enableAutoRotation]["+id+"]")
+	tflog.Debug(ctx, common.MSG_METHOD_START+"[resource_aws_key.go -> enableAutoRotation]["+id+"]")
+	defer tflog.Debug(ctx, common.MSG_METHOD_END+"[resource_aws_key.go -> enableAutoRotation]["+id+"]")
 	keyEnabled := gjson.Get(keyJSON, "aws_param.Enabled").Bool()
 	keyID := plan.KeyID.ValueString()
 	var payload EnableAutoRotationPayloadJSON
@@ -1058,13 +1058,13 @@ func (r *resourceAWSKey) enableAutoRotation(ctx context.Context, id string, plan
 		}
 	}
 
-	tflog.Trace(ctx, "[resource_aws_key.go -> enableAutoRotation][response:"+response)
+	tflog.Debug(ctx, "[resource_aws_key.go -> enableAutoRotation][response:"+response)
 	return true
 }
 
 func (r *resourceAWSKey) disableAutoRotation(ctx context.Context, id string, plan *AWSKeyTFSDK, keyJSON string, diags *diag.Diagnostics) bool {
-	tflog.Trace(ctx, common.MSG_METHOD_START+"[resource_aws_key.go -> disableAutoRotation]["+id+"]")
-	defer tflog.Trace(ctx, common.MSG_METHOD_END+"[resource_aws_key.go -> disableAutoRotation]["+id+"]")
+	tflog.Debug(ctx, common.MSG_METHOD_START+"[resource_aws_key.go -> disableAutoRotation]["+id+"]")
+	defer tflog.Debug(ctx, common.MSG_METHOD_END+"[resource_aws_key.go -> disableAutoRotation]["+id+"]")
 	keyEnabled := gjson.Get(keyJSON, "aws_param.Enabled").Bool()
 	keyID := plan.KeyID.ValueString()
 	response, err := r.client.PostNoData(ctx, id, common.URL_AWS_KEY+"/"+keyID+"/disable-auto-rotation")
@@ -1095,13 +1095,13 @@ func (r *resourceAWSKey) disableAutoRotation(ctx context.Context, id string, pla
 			return false
 		}
 	}
-	tflog.Trace(ctx, "[resource_aws_key.go -> disableAutoRotation][response:"+response)
+	tflog.Debug(ctx, "[resource_aws_key.go -> disableAutoRotation][response:"+response)
 	return true
 }
 
 func enableKeyRotationJob(ctx context.Context, id string, client *common.Client, plan *AWSKeyCommonTFSDK, diags *diag.Diagnostics) {
-	tflog.Trace(ctx, common.MSG_METHOD_START+"[resource_aws_key.go -> enableKeyRotationJob]["+id+"]")
-	defer tflog.Trace(ctx, common.MSG_METHOD_END+"[resource_aws_key.go -> enableKeyRotationJob]["+id+"]")
+	tflog.Debug(ctx, common.MSG_METHOD_START+"[resource_aws_key.go -> enableKeyRotationJob]["+id+"]")
+	defer tflog.Debug(ctx, common.MSG_METHOD_END+"[resource_aws_key.go -> enableKeyRotationJob]["+id+"]")
 	rotationParams := make([]AWSKeyEnableRotationTFSDK, 0, len(plan.EnableRotation.Elements()))
 	if !plan.EnableRotation.IsUnknown() {
 		diags.Append(plan.EnableRotation.ElementsAs(ctx, &rotationParams, false)...)
@@ -1135,13 +1135,13 @@ func enableKeyRotationJob(ctx context.Context, id string, client *common.Client,
 			diags.AddError(details, "")
 			return
 		}
-		tflog.Trace(ctx, "[resource_aws_key.go -> enableKeyRotationJob][response:"+response)
+		tflog.Debug(ctx, "[resource_aws_key.go -> enableKeyRotationJob][response:"+response)
 	}
 }
 
 func disableKeyRotationJob(ctx context.Context, id string, client *common.Client, plan *AWSKeyCommonTFSDK, diags *diag.Diagnostics) {
-	tflog.Trace(ctx, common.MSG_METHOD_START+"[resource_aws_key.go -> disableKeyRotationJob]["+id+"]")
-	defer tflog.Trace(ctx, common.MSG_METHOD_END+"[resource_aws_key.go -> disableKeyRotationJob]["+id+"]")
+	tflog.Debug(ctx, common.MSG_METHOD_START+"[resource_aws_key.go -> disableKeyRotationJob]["+id+"]")
+	defer tflog.Debug(ctx, common.MSG_METHOD_END+"[resource_aws_key.go -> disableKeyRotationJob]["+id+"]")
 	keyID := plan.KeyID.ValueString()
 	response, err := client.PostNoData(ctx, id, common.URL_AWS_KEY+"/"+keyID+"/disable-rotation-job")
 	if err != nil {
@@ -1151,12 +1151,12 @@ func disableKeyRotationJob(ctx context.Context, id string, client *common.Client
 		tflog.Error(ctx, details)
 		return
 	}
-	tflog.Trace(ctx, "[resource_aws_key.go -> disableKeyRotationJob][response:"+response)
+	tflog.Debug(ctx, "[resource_aws_key.go -> disableKeyRotationJob][response:"+response)
 }
 
 func (r *resourceAWSKey) importKeyMaterial(ctx context.Context, id string, plan *AWSKeyTFSDK, diags *diag.Diagnostics) string {
-	tflog.Trace(ctx, common.MSG_METHOD_START+"[resource_aws_key.go -> importKeyMaterial]["+id+"]")
-	defer tflog.Trace(ctx, common.MSG_METHOD_END+"[resource_aws_key.go -> importKeyMaterial]["+id+"]")
+	tflog.Debug(ctx, common.MSG_METHOD_START+"[resource_aws_key.go -> importKeyMaterial]["+id+"]")
+	defer tflog.Debug(ctx, common.MSG_METHOD_END+"[resource_aws_key.go -> importKeyMaterial]["+id+"]")
 	var importMaterialPlan AWSKeyImportKeyMaterialTFSDK
 	for _, v := range plan.ImportKeyMaterial.Elements() {
 		diags.Append(tfsdk.ValueAs(ctx, v, &importMaterialPlan)...)
@@ -1206,13 +1206,13 @@ func (r *resourceAWSKey) importKeyMaterial(ctx context.Context, id string, plan 
 		diags.AddWarning(details, "")
 		return awsKeyResponse
 	}
-	tflog.Trace(ctx, "[resource_aws_key.go -> importKeyMaterial][response:"+response)
+	tflog.Debug(ctx, "[resource_aws_key.go -> importKeyMaterial][response:"+response)
 	return response
 }
 
 func (r *resourceAWSKey) uploadKey(ctx context.Context, id string, plan *AWSKeyTFSDK, diags *diag.Diagnostics) string {
-	tflog.Trace(ctx, common.MSG_METHOD_START+"[resource_aws_key.go -> UploadKeyAWS]["+id+"]")
-	defer tflog.Trace(ctx, common.MSG_METHOD_END+"[resource_aws_key.go -> UploadKeyAWS]["+id+"]")
+	tflog.Debug(ctx, common.MSG_METHOD_START+"[resource_aws_key.go -> UploadKeyAWS]["+id+"]")
+	defer tflog.Debug(ctx, common.MSG_METHOD_END+"[resource_aws_key.go -> UploadKeyAWS]["+id+"]")
 	if plan.Origin.ValueString() == "" {
 		plan.Origin = types.StringValue("EXTERNAL")
 	}
@@ -1259,13 +1259,13 @@ func (r *resourceAWSKey) uploadKey(ctx context.Context, id string, plan *AWSKeyT
 		diags.AddError(details, "")
 		return ""
 	}
-	tflog.Trace(ctx, "[resource_aws_key.go -> uploadKey][response:"+response)
+	tflog.Debug(ctx, "[resource_aws_key.go -> uploadKey][response:"+response)
 	return response
 }
 
 func (r *resourceAWSKey) replicateKey(ctx context.Context, id string, plan *AWSKeyTFSDK, diags *diag.Diagnostics) string {
-	tflog.Trace(ctx, common.MSG_METHOD_START+"[resource_aws_key.go -> replicateKey]["+id+"]")
-	defer tflog.Trace(ctx, common.MSG_METHOD_END+"[resource_aws_key.go -> replicateKey]["+id+"]")
+	tflog.Debug(ctx, common.MSG_METHOD_START+"[resource_aws_key.go -> replicateKey]["+id+"]")
+	defer tflog.Debug(ctx, common.MSG_METHOD_END+"[resource_aws_key.go -> replicateKey]["+id+"]")
 	var replicateKeyPlan AWSReplicateKeyTFSDK
 	for _, v := range plan.ReplicateKey.Elements() {
 		diags.Append(tfsdk.ValueAs(ctx, v, &replicateKeyPlan)...)
@@ -1327,13 +1327,13 @@ func (r *resourceAWSKey) replicateKey(ctx context.Context, id string, plan *AWSK
 		diags.AddWarning(details, "")
 		return ""
 	}
-	tflog.Trace(ctx, "[resource_aws_key.go -> replicateKey][response:"+response)
+	tflog.Debug(ctx, "[resource_aws_key.go -> replicateKey][response:"+response)
 	return response
 }
 
 func (r *resourceAWSKey) replicateAwsKey(ctx context.Context, id string, plan *AWSKeyTFSDK, replicateKeyPlan *AWSReplicateKeyTFSDK, diags *diag.Diagnostics) string {
-	tflog.Trace(ctx, common.MSG_METHOD_START+"[resource_aws_key.go -> replicateAwsKey]["+id+"]")
-	defer tflog.Trace(ctx, common.MSG_METHOD_END+"[resource_aws_key.go -> replicateAwsKey]["+id+"]")
+	tflog.Debug(ctx, common.MSG_METHOD_START+"[resource_aws_key.go -> replicateAwsKey]["+id+"]")
+	defer tflog.Debug(ctx, common.MSG_METHOD_END+"[resource_aws_key.go -> replicateAwsKey]["+id+"]")
 	replicaRegion := plan.Region.ValueString()
 	awsParam := r.getAWSParam(ctx, plan, diags)
 	if diags.HasError() {
@@ -1378,13 +1378,13 @@ func (r *resourceAWSKey) replicateAwsKey(ctx context.Context, id string, plan *A
 		diags.AddError(details, "")
 		return ""
 	}
-	tflog.Trace(ctx, "[resource_aws_key.go -> replicateAwsKey][response:"+response)
+	tflog.Debug(ctx, "[resource_aws_key.go -> replicateAwsKey][response:"+response)
 	return response
 }
 
 func (r *resourceAWSKey) waitForReplication(ctx context.Context, id string, replicaKeyID string, diags *diag.Diagnostics) string {
-	tflog.Trace(ctx, common.MSG_METHOD_START+"[resource_aws_key.go -> waitForReplication]["+id+"]")
-	defer tflog.Trace(ctx, common.MSG_METHOD_END+"[resource_aws_key.go -> waitForReplication]["+id+"]")
+	tflog.Debug(ctx, common.MSG_METHOD_START+"[resource_aws_key.go -> waitForReplication]["+id+"]")
+	defer tflog.Debug(ctx, common.MSG_METHOD_END+"[resource_aws_key.go -> waitForReplication]["+id+"]")
 	var (
 		err      error
 		response string
@@ -1431,7 +1431,7 @@ func (r *resourceAWSKey) waitForReplication(ctx context.Context, id string, repl
 			return ""
 		}
 		keyState = gjson.Get(response, "aws_param.KeyState").String()
-		tflog.Trace(ctx, fmt.Sprintf("Key state: %s", keyState))
+		tflog.Debug(ctx, fmt.Sprintf("Key state: %s", keyState))
 	}
 	if keyState == "Creating" {
 		msg := fmt.Sprintf("Error replicating AWS key, key state is still '%s'.", keyState)
@@ -1440,13 +1440,13 @@ func (r *resourceAWSKey) waitForReplication(ctx context.Context, id string, repl
 		diags.AddWarning(details, "")
 	}
 
-	tflog.Trace(ctx, "[resource_aws_key.go -> waitForReplication][response:"+response)
+	tflog.Debug(ctx, "[resource_aws_key.go -> waitForReplication][response:"+response)
 	return response
 }
 
 func (r *resourceAWSKey) waitForReplicatedKeyIsEnabled(ctx context.Context, id string, replicaKeyID string, diags *diag.Diagnostics) string {
-	tflog.Trace(ctx, common.MSG_METHOD_START+"[resource_aws_key.go -> waitForKeyIsEnabled]["+id+"]")
-	defer tflog.Trace(ctx, common.MSG_METHOD_END+"[resource_aws_key.go -> waitForKeyIsEnabled]["+id+"]")
+	tflog.Debug(ctx, common.MSG_METHOD_START+"[resource_aws_key.go -> waitForKeyIsEnabled]["+id+"]")
+	defer tflog.Debug(ctx, common.MSG_METHOD_END+"[resource_aws_key.go -> waitForKeyIsEnabled]["+id+"]")
 	var (
 		err      error
 		response string
@@ -1491,7 +1491,7 @@ func (r *resourceAWSKey) waitForReplicatedKeyIsEnabled(ctx context.Context, id s
 			return ""
 		}
 		keyState = gjson.Get(response, "aws_param.KeyState").String()
-		tflog.Trace(ctx, fmt.Sprintf("Key state: %s", keyState))
+		tflog.Debug(ctx, fmt.Sprintf("Key state: %s", keyState))
 	}
 	if keyState != "Enabled" {
 		msg := fmt.Sprintf("Error replicating AWS key, keystate is '%s' instead of 'Enabled'.", keyState)
@@ -1499,13 +1499,13 @@ func (r *resourceAWSKey) waitForReplicatedKeyIsEnabled(ctx context.Context, id s
 		tflog.Warn(ctx, details)
 		diags.AddWarning(details, "")
 	}
-	tflog.Trace(ctx, "[resource_aws_key.go -> waitForReplicatedKeyIsEnabled][response:"+response)
+	tflog.Debug(ctx, "[resource_aws_key.go -> waitForReplicatedKeyIsEnabled][response:"+response)
 	return response
 }
 
 func (r *resourceAWSKey) importKeyMaterialToReplica(ctx context.Context, id string, replicateKeyPlan *AWSReplicateKeyTFSDK, replicaKeyID string, replicaRegion string, diags *diag.Diagnostics) {
-	tflog.Trace(ctx, common.MSG_METHOD_START+"[resource_aws_key.go -> importKeyMaterialToReplica]["+id+"]")
-	defer tflog.Trace(ctx, common.MSG_METHOD_END+"[resource_aws_key.go -> importKeyMaterialToReplica]["+id+"]")
+	tflog.Debug(ctx, common.MSG_METHOD_START+"[resource_aws_key.go -> importKeyMaterialToReplica]["+id+"]")
+	defer tflog.Debug(ctx, common.MSG_METHOD_END+"[resource_aws_key.go -> importKeyMaterialToReplica]["+id+"]")
 	primaryKeyID := replicateKeyPlan.KeyID.ValueString()
 	response, err := r.client.GetById(ctx, id, primaryKeyID, common.URL_AWS_KEY)
 	if err != nil {
@@ -1564,12 +1564,12 @@ func (r *resourceAWSKey) importKeyMaterialToReplica(ctx context.Context, id stri
 		diags.AddError(details, "")
 		return
 	}
-	tflog.Trace(ctx, "[resource_aws_key.go -> importKeyMaterialToReplica][response:"+response)
+	tflog.Debug(ctx, "[resource_aws_key.go -> importKeyMaterialToReplica][response:"+response)
 }
 
 func (r *resourceAWSKey) updatePrimaryRegion(ctx context.Context, id string, primaryKeyID string, newPrimaryRegion string, diags *diag.Diagnostics) {
-	tflog.Trace(ctx, common.MSG_METHOD_START+"[resource_aws_key.go -> updatePrimaryRegion]["+id+"]")
-	defer tflog.Trace(ctx, common.MSG_METHOD_END+"[resource_aws_key.go -> updatePrimaryRegion]["+id+"]")
+	tflog.Debug(ctx, common.MSG_METHOD_START+"[resource_aws_key.go -> updatePrimaryRegion]["+id+"]")
+	defer tflog.Debug(ctx, common.MSG_METHOD_END+"[resource_aws_key.go -> updatePrimaryRegion]["+id+"]")
 	response, err := r.client.GetById(ctx, id, primaryKeyID, common.URL_AWS_KEY)
 	if err != nil {
 		msg := "Error updating AWS key, failed to read key."
@@ -1621,7 +1621,7 @@ func (r *resourceAWSKey) updatePrimaryRegion(ctx context.Context, id string, pri
 			return
 		}
 		currentPrimaryRegion = gjson.Get(response, "aws_param.MultiRegionConfiguration.PrimaryKey.Region").String()
-		tflog.Trace(ctx, fmt.Sprintf("Key primary region: %s", currentPrimaryRegion))
+		tflog.Debug(ctx, fmt.Sprintf("Key primary region: %s", currentPrimaryRegion))
 	}
 	if currentPrimaryRegion != newPrimaryRegion {
 		msg := "Error updating AWS key. Failed to confirm primary region is set. Consider extending provider configuration option 'aws_operation_timeout'."
@@ -1632,12 +1632,12 @@ func (r *resourceAWSKey) updatePrimaryRegion(ctx context.Context, id string, pri
 		tflog.Warn(ctx, details)
 		diags.AddWarning(details, "")
 	}
-	tflog.Trace(ctx, "[resource_aws_key.go -> updatePrimaryRegion][response:"+response)
+	tflog.Debug(ctx, "[resource_aws_key.go -> updatePrimaryRegion][response:"+response)
 }
 
 func enableKey(ctx context.Context, id string, client *common.Client, keyID string, diags *diag.Diagnostics) {
-	tflog.Trace(ctx, common.MSG_METHOD_START+"[resource_aws_key.go -> enableKey]["+id+"]")
-	defer tflog.Trace(ctx, common.MSG_METHOD_END+"[resource_aws_key.go -> enableKey]["+id+"]")
+	tflog.Debug(ctx, common.MSG_METHOD_START+"[resource_aws_key.go -> enableKey]["+id+"]")
+	defer tflog.Debug(ctx, common.MSG_METHOD_END+"[resource_aws_key.go -> enableKey]["+id+"]")
 	response, err := client.PostNoData(ctx, id, common.URL_AWS_KEY+"/"+keyID+"/enable")
 	if err != nil {
 		msg := "Error enabling AWS key"
@@ -1646,12 +1646,12 @@ func enableKey(ctx context.Context, id string, client *common.Client, keyID stri
 		diags.AddError(details, "")
 		return
 	}
-	tflog.Trace(ctx, "[resource_aws_key.go -> enableKey][response:"+response)
+	tflog.Debug(ctx, "[resource_aws_key.go -> enableKey][response:"+response)
 }
 
 func disableKey(ctx context.Context, id string, client *common.Client, keyID string, diags *diag.Diagnostics) {
-	tflog.Trace(ctx, common.MSG_METHOD_START+"[resource_aws_key.go -> disableKey]["+id+"]")
-	defer tflog.Trace(ctx, common.MSG_METHOD_END+"[resource_aws_key.go -> disableKey]["+id+"]")
+	tflog.Debug(ctx, common.MSG_METHOD_START+"[resource_aws_key.go -> disableKey]["+id+"]")
+	defer tflog.Debug(ctx, common.MSG_METHOD_END+"[resource_aws_key.go -> disableKey]["+id+"]")
 	response, err := client.PostNoData(ctx, id, common.URL_AWS_KEY+"/"+keyID+"/disable")
 	if err != nil {
 		msg := "Error disabling AWS key"
@@ -1660,12 +1660,12 @@ func disableKey(ctx context.Context, id string, client *common.Client, keyID str
 		diags.AddError(details, "")
 		return
 	}
-	tflog.Trace(ctx, "[resource_aws_key.go -> disableKey][response:"+response)
+	tflog.Debug(ctx, "[resource_aws_key.go -> disableKey][response:"+response)
 }
 
 func addAliases(ctx context.Context, client *common.Client, id string, plan *AWSKeyCommonTFSDK, keyJSON string, diags *diag.Diagnostics) {
-	tflog.Trace(ctx, common.MSG_METHOD_START+"[resource_aws_key.go -> addAliases]["+id+"]")
-	defer tflog.Trace(ctx, common.MSG_METHOD_END+"[resource_aws_key.go -> addAliases]["+id+"]")
+	tflog.Debug(ctx, common.MSG_METHOD_START+"[resource_aws_key.go -> addAliases]["+id+"]")
+	defer tflog.Debug(ctx, common.MSG_METHOD_END+"[resource_aws_key.go -> addAliases]["+id+"]")
 	planAliases := make([]string, 0, len(plan.Alias.Elements()))
 	diags.Append(plan.Alias.ElementsAs(ctx, &planAliases, false)...)
 	if diags.HasError() {
@@ -1695,12 +1695,12 @@ func addAliases(ctx context.Context, client *common.Client, id string, plan *AWS
 			return
 		}
 	}
-	tflog.Trace(ctx, "[resource_aws_key.go -> addAliases][response:"+response)
+	tflog.Debug(ctx, "[resource_aws_key.go -> addAliases][response:"+response)
 }
 
 func updateAliases(ctx context.Context, id string, client *common.Client, plan *AWSKeyCommonTFSDK, keyJSON string, diags *diag.Diagnostics) {
-	tflog.Trace(ctx, common.MSG_METHOD_START+"[resource_aws_key.go -> updateAliases]["+id+"]")
-	defer tflog.Trace(ctx, common.MSG_METHOD_END+"[resource_aws_key.go -> updateAliases]["+id+"]")
+	tflog.Debug(ctx, common.MSG_METHOD_START+"[resource_aws_key.go -> updateAliases]["+id+"]")
+	defer tflog.Debug(ctx, common.MSG_METHOD_END+"[resource_aws_key.go -> updateAliases]["+id+"]")
 	var (
 		keyAliases []string
 		response   string
@@ -1748,7 +1748,7 @@ func updateAliases(ctx context.Context, id string, client *common.Client, plan *
 				diags.AddError(details, "")
 				return
 			}
-			tflog.Trace(ctx, "[resource_aws_key.go -> updateAliases][response:"+response)
+			tflog.Debug(ctx, "[resource_aws_key.go -> updateAliases][response:"+response)
 		}
 	}
 
@@ -1785,14 +1785,14 @@ func updateAliases(ctx context.Context, id string, client *common.Client, plan *
 				diags.AddError(details, "")
 				return
 			}
-			tflog.Trace(ctx, "[resource_aws_key.go -> updateAliases][response:"+response)
+			tflog.Debug(ctx, "[resource_aws_key.go -> updateAliases][response:"+response)
 		}
 	}
 }
 
 func updateDescription(ctx context.Context, id string, client *common.Client, plan *AWSKeyCommonTFSDK, keyJSON string, diags *diag.Diagnostics) {
-	tflog.Trace(ctx, common.MSG_METHOD_START+"[resource_aws_key.go -> updateDescription]["+id+"]")
-	defer tflog.Trace(ctx, common.MSG_METHOD_END+"[resource_aws_key.go -> updateDescription]["+id+"]")
+	tflog.Debug(ctx, common.MSG_METHOD_START+"[resource_aws_key.go -> updateDescription]["+id+"]")
+	defer tflog.Debug(ctx, common.MSG_METHOD_END+"[resource_aws_key.go -> updateDescription]["+id+"]")
 	var (
 		keyDescription  string
 		planDescription string
@@ -1826,12 +1826,12 @@ func updateDescription(ctx context.Context, id string, client *common.Client, pl
 		diags.AddError(details, "")
 		return
 	}
-	tflog.Trace(ctx, "[resource_aws_key.go -> updateDescription][response:"+response)
+	tflog.Debug(ctx, "[resource_aws_key.go -> updateDescription][response:"+response)
 }
 
 func updateTags(ctx context.Context, id string, client *common.Client, planTags map[string]string, keyJSON string, diags *diag.Diagnostics) {
-	tflog.Trace(ctx, common.MSG_METHOD_START+"[resource_aws_key.go -> updateTags]["+id+"]")
-	defer tflog.Trace(ctx, common.MSG_METHOD_END+"[resource_aws_key.go -> updateTags]["+id+"]")
+	tflog.Debug(ctx, common.MSG_METHOD_START+"[resource_aws_key.go -> updateTags]["+id+"]")
+	defer tflog.Debug(ctx, common.MSG_METHOD_END+"[resource_aws_key.go -> updateTags]["+id+"]")
 	var (
 		addTagsPayload    AddTagsJSON
 		removeTagsPayload RemoveTagsJSON
@@ -1875,7 +1875,7 @@ func updateTags(ctx context.Context, id string, client *common.Client, planTags 
 			diags.AddError(details, "")
 			return
 		}
-		tflog.Trace(ctx, "[resource_aws_key.go -> updateTags][response:"+response)
+		tflog.Debug(ctx, "[resource_aws_key.go -> updateTags][response:"+response)
 	}
 	for planKey, planValue := range planTags {
 		found := false
@@ -1910,13 +1910,13 @@ func updateTags(ctx context.Context, id string, client *common.Client, planTags 
 			diags.AddError(details, "")
 			return
 		}
-		tflog.Trace(ctx, "[resource_aws_key.go -> updateTags][response:"+response)
+		tflog.Debug(ctx, "[resource_aws_key.go -> updateTags][response:"+response)
 	}
 }
 
 func updateKeyPolicy(ctx context.Context, id string, client *common.Client, plan *AWSKeyCommonTFSDK, state *AWSKeyCommonTFSDK, diags *diag.Diagnostics) {
-	tflog.Trace(ctx, common.MSG_METHOD_START+"[resource_aws_key.go -> updateKeyPolicy]["+id+"]")
-	defer tflog.Trace(ctx, common.MSG_METHOD_END+"[resource_aws_key.go -> updateKeyPolicy]["+id+"]")
+	tflog.Debug(ctx, common.MSG_METHOD_START+"[resource_aws_key.go -> updateKeyPolicy]["+id+"]")
+	defer tflog.Debug(ctx, common.MSG_METHOD_END+"[resource_aws_key.go -> updateKeyPolicy]["+id+"]")
 	statePolicy := getKeyPolicyParams(ctx, state, diags)
 	if diags.HasError() {
 		return
@@ -1944,13 +1944,13 @@ func updateKeyPolicy(ctx context.Context, id string, client *common.Client, plan
 			return
 		}
 		plan.KeyID = types.StringValue(gjson.Get(response, "id").String())
-		tflog.Trace(ctx, "[resource_aws_key.go -> updateKeyPolicy][response:"+response)
+		tflog.Debug(ctx, "[resource_aws_key.go -> updateKeyPolicy][response:"+response)
 	}
 }
 
 func enableDisableKeyRotation(ctx context.Context, id string, client *common.Client, plan *AWSKeyCommonTFSDK, state *AWSKeyCommonTFSDK, diags *diag.Diagnostics) {
-	tflog.Trace(ctx, common.MSG_METHOD_START+"[resource_aws_key.go -> enableDisableKeyRotation]["+id+"]")
-	defer tflog.Trace(ctx, common.MSG_METHOD_END+"[resource_aws_key.go -> enableDisableKeyRotation]["+id+"]")
+	tflog.Debug(ctx, common.MSG_METHOD_START+"[resource_aws_key.go -> enableDisableKeyRotation]["+id+"]")
+	defer tflog.Debug(ctx, common.MSG_METHOD_END+"[resource_aws_key.go -> enableDisableKeyRotation]["+id+"]")
 	planParams := make([]AWSKeyEnableRotationTFSDK, 0, len(plan.EnableRotation.Elements()))
 	if !plan.EnableRotation.IsUnknown() {
 		diags.Append(plan.EnableRotation.ElementsAs(ctx, &planParams, false)...)
@@ -2262,8 +2262,8 @@ func setMultiRegionConfiguration(ctx context.Context, keyJSON string, stateMulti
 }
 
 func (r *resourceAWSKey) getPrimaryKey(ctx context.Context, id string, keyID string, diags *diag.Diagnostics) string {
-	tflog.Trace(ctx, common.MSG_METHOD_START+"[resource_aws_key.go -> getPrimaryKey]["+id+"]")
-	defer tflog.Trace(ctx, common.MSG_METHOD_END+"[resource_aws_key.go -> getPrimaryKey]["+id+"]")
+	tflog.Debug(ctx, common.MSG_METHOD_START+"[resource_aws_key.go -> getPrimaryKey]["+id+"]")
+	defer tflog.Debug(ctx, common.MSG_METHOD_END+"[resource_aws_key.go -> getPrimaryKey]["+id+"]")
 	response, err := r.client.GetById(ctx, id, keyID, common.URL_AWS_KEY)
 	if err != nil {
 		msg := "Failed get primary key ID of AWS key " + keyID + ", error reading key."
@@ -2320,13 +2320,13 @@ func (r *resourceAWSKey) getPrimaryKey(ctx context.Context, id string, keyID str
 	for _, keyResourceJSON := range resources {
 		response = keyResourceJSON.Raw
 	}
-	tflog.Trace(ctx, "[resource_aws_key.go -> getPrimaryKey][response:"+response)
+	tflog.Debug(ctx, "[resource_aws_key.go -> getPrimaryKey][response:"+response)
 	return response
 }
 
 func (r *resourceAWSKey) createKeyMaterial(ctx context.Context, id string, importMaterialPlan *AWSKeyImportKeyMaterialTFSDK, customerMasterKeySpec string, diags *diag.Diagnostics) string {
-	tflog.Trace(ctx, common.MSG_METHOD_START+"[resource_aws_key.go -> createKeyMaterial]["+id+"]")
-	defer tflog.Trace(ctx, common.MSG_METHOD_END+"[resource_aws_key.go -> createKeyMaterial]["+id+"]")
+	tflog.Debug(ctx, common.MSG_METHOD_START+"[resource_aws_key.go -> createKeyMaterial]["+id+"]")
+	defer tflog.Debug(ctx, common.MSG_METHOD_END+"[resource_aws_key.go -> createKeyMaterial]["+id+"]")
 	var response string
 	if importMaterialPlan.SourceKeyTier.ValueString() == "local" || importMaterialPlan.SourceKeyTier.ValueString() == "" {
 		payload := cm.CMKeyJSON{
@@ -2388,7 +2388,7 @@ func (r *resourceAWSKey) createKeyMaterial(ctx context.Context, id string, impor
 			diags.AddError(details, "")
 			return ""
 		}
-		tflog.Trace(ctx, "[resource_aws_key.go -> createKeyMaterial][response:"+response)
+		tflog.Debug(ctx, "[resource_aws_key.go -> createKeyMaterial][response:"+response)
 	}
 	return response
 }

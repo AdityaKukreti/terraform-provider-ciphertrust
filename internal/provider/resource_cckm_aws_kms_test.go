@@ -1,58 +1,70 @@
 package provider
 
 import (
+	"fmt"
+	"os"
 	"testing"
 
+	"github.com/google/uuid"
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
 )
 
 func TestCckmAWSKms(t *testing.T) {
-	createKmsConfig := `
+	if os.Getenv("AWS_ACCESS_KEY_ID") == "" || os.Getenv("AWS_SECRET_ACCESS_KEY") == "" {
+		t.Skip("AWS credentials not set")
+	}
+	uid := "tf-" + uuid.New().String()[:8]
+	updatedConnName := uid + "-upd"
+
+	createKmsConfig := fmt.Sprintf(`
 		resource "ciphertrust_aws_connection" "aws_connection" {
-			name = "TerraformTest"
+			name = "%s"
 		}
 		data "ciphertrust_aws_account_details" "account_details" {
 			aws_connection = ciphertrust_aws_connection.aws_connection.id
 		}
 		resource "ciphertrust_aws_kms" "kms" {
-			account_id    = data.ciphertrust_aws_account_details.account_details.account_id
+			account_id     = data.ciphertrust_aws_account_details.account_details.account_id
 			aws_connection = ciphertrust_aws_connection.aws_connection.name
-			name          = "TerraformTest"
+			name           = "%s"
 			regions = [
 				data.ciphertrust_aws_account_details.account_details.regions[0],
 				data.ciphertrust_aws_account_details.account_details.regions[1],
 				data.ciphertrust_aws_account_details.account_details.regions[2]
 			]
-		}`
-	updateKmsRegionsConfig := `
+		}`, uid, uid)
+
+	updateKmsRegionsConfig := fmt.Sprintf(`
 		resource "ciphertrust_aws_connection" "aws_connection" {
-			name = "TerraformTest"
+			name = "%s"
 		}
 		data "ciphertrust_aws_account_details" "account_details" {
 			aws_connection = ciphertrust_aws_connection.aws_connection.id
 		}
 		resource "ciphertrust_aws_kms" "kms" {
-			account_id    = data.ciphertrust_aws_account_details.account_details.account_id
+			account_id     = data.ciphertrust_aws_account_details.account_details.account_id
 			aws_connection = ciphertrust_aws_connection.aws_connection.name
-			name          = "TerraformTest"
-			regions       = [data.ciphertrust_aws_account_details.account_details.regions[0]]
-		}`
-	updateKmsConnectionConfig := `
+			name           = "%s"
+			regions        = [data.ciphertrust_aws_account_details.account_details.regions[0]]
+		}`, uid, uid)
+
+	updateKmsConnectionConfig := fmt.Sprintf(`
 		resource "ciphertrust_aws_connection" "new_aws_connection" {
-			name = "TerraformTest-UpdatedConnection"
+			name = "%s"
 		}
 		resource "ciphertrust_aws_connection" "aws_connection" {
-			name = "TerraformTest"
+			name = "%s"
 		}
 		data "ciphertrust_aws_account_details" "account_details" {
 			aws_connection = ciphertrust_aws_connection.aws_connection.id
 		}
 		resource "ciphertrust_aws_kms" "kms" {
-			account_id    = data.ciphertrust_aws_account_details.account_details.account_id
+			account_id     = data.ciphertrust_aws_account_details.account_details.account_id
 			aws_connection = ciphertrust_aws_connection.new_aws_connection.name
-			name          = "TerraformTest"
-			regions       = [data.ciphertrust_aws_account_details.account_details.regions[0]]
-		}`
+			name           = "%s"
+			regions        = [data.ciphertrust_aws_account_details.account_details.regions[0]]
+		}`, updatedConnName, uid, uid)
+
 	resourceName := "ciphertrust_aws_kms.kms"
 	resource.Test(t, resource.TestCase{
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
@@ -62,7 +74,7 @@ func TestCckmAWSKms(t *testing.T) {
 				Check: resource.ComposeTestCheckFunc(
 					resource.TestCheckResourceAttrSet(resourceName, "arn"),
 					resource.TestCheckResourceAttrSet(resourceName, "aws_connection"),
-					resource.TestCheckResourceAttr(resourceName, "name", "TerraformTest"),
+					resource.TestCheckResourceAttr(resourceName, "name", uid),
 					resource.TestCheckResourceAttrSet(resourceName, "regions.#"),
 				),
 			},
@@ -75,7 +87,7 @@ func TestCckmAWSKms(t *testing.T) {
 			{
 				Config: updateKmsConnectionConfig,
 				Check: resource.ComposeTestCheckFunc(
-					resource.TestCheckResourceAttr(resourceName, "aws_connection", "TerraformTest-UpdatedConnection"),
+					resource.TestCheckResourceAttr(resourceName, "aws_connection", updatedConnName),
 					resource.TestCheckResourceAttr(resourceName, "regions.#", "1"),
 				),
 			},
@@ -84,23 +96,29 @@ func TestCckmAWSKms(t *testing.T) {
 }
 
 func TestCckmAWSKmsImport(t *testing.T) {
-	createKmsConfig := `
+	if os.Getenv("AWS_ACCESS_KEY_ID") == "" || os.Getenv("AWS_SECRET_ACCESS_KEY") == "" {
+		t.Skip("AWS credentials not set")
+	}
+	uid := "tf-" + uuid.New().String()[:8]
+
+	createKmsConfig := fmt.Sprintf(`
 		resource "ciphertrust_aws_connection" "aws_connection" {
-			name = "TerraformTest"
+			name = "%s"
 		}
 		data "ciphertrust_aws_account_details" "account_details" {
 			aws_connection = ciphertrust_aws_connection.aws_connection.id
 		}
 		resource "ciphertrust_aws_kms" "kms" {
-			account_id    = data.ciphertrust_aws_account_details.account_details.account_id
+			account_id     = data.ciphertrust_aws_account_details.account_details.account_id
 			aws_connection = ciphertrust_aws_connection.aws_connection.name
-			name          = "TerraformTest"
+			name           = "%s"
 			regions = [
 				data.ciphertrust_aws_account_details.account_details.regions[0],
 				data.ciphertrust_aws_account_details.account_details.regions[1],
 				data.ciphertrust_aws_account_details.account_details.regions[2]
 			]
-		}`
+		}`, uid, uid)
+
 	resourceName := "ciphertrust_aws_kms.kms"
 	resource.Test(t, resource.TestCase{
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
@@ -110,7 +128,7 @@ func TestCckmAWSKmsImport(t *testing.T) {
 				Check: resource.ComposeTestCheckFunc(
 					resource.TestCheckResourceAttrSet(resourceName, "arn"),
 					resource.TestCheckResourceAttrSet(resourceName, "aws_connection"),
-					resource.TestCheckResourceAttr(resourceName, "name", "TerraformTest"),
+					resource.TestCheckResourceAttr(resourceName, "name", uid),
 					resource.TestCheckResourceAttrSet(resourceName, "regions.#"),
 				),
 			},

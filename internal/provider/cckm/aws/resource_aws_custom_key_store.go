@@ -301,8 +301,8 @@ func (r *resourceAWSCustomKeyStore) Schema(ctx context.Context, _ resource.Schem
 // Create creates the resource and sets the initial Terraform state.
 func (r *resourceAWSCustomKeyStore) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
 	id := uuid.New().String()
-	tflog.Trace(ctx, common.MSG_METHOD_START+"[resource_aws_custom_key_store.go -> Create]["+id+"]")
-	defer tflog.Trace(ctx, common.MSG_METHOD_END+"[resource_aws_custom_key_store.go -> Create]["+id+"]")
+	tflog.Debug(ctx, common.MSG_METHOD_START+"[resource_aws_custom_key_store.go -> Create]["+id+"]")
+	defer tflog.Debug(ctx, common.MSG_METHOD_END+"[resource_aws_custom_key_store.go -> Create]["+id+"]")
 	var plan AWSCustomKeyStoreTFSDK
 	var payload AWSCustomKeyStoreJSON
 	resp.Diagnostics.Append(req.Plan.Get(ctx, &plan)...)
@@ -509,7 +509,7 @@ func (r *resourceAWSCustomKeyStore) Create(ctx context.Context, req resource.Cre
 		)
 	} else {
 		response = getResponse
-		tflog.Trace(ctx, "[resource_aws_custom_key_store.go -> Create][response:"+response+"]")
+		tflog.Debug(ctx, "[resource_aws_custom_key_store.go -> Create][response:"+response+"]")
 	}
 
 	var warningDiags diag.Diagnostics
@@ -523,8 +523,8 @@ func (r *resourceAWSCustomKeyStore) Create(ctx context.Context, req resource.Cre
 // Read refreshes the Terraform state with the latest data.
 func (r *resourceAWSCustomKeyStore) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
 	id := uuid.New().String()
-	tflog.Trace(ctx, common.MSG_METHOD_START+"[resource_aws_custom_key_store.go -> Read]["+id+"]")
-	defer tflog.Trace(ctx, common.MSG_METHOD_END+"[resource_aws_custom_key_store.go -> Read]["+id+"]")
+	tflog.Debug(ctx, common.MSG_METHOD_START+"[resource_aws_custom_key_store.go -> Read]["+id+"]")
+	defer tflog.Debug(ctx, common.MSG_METHOD_END+"[resource_aws_custom_key_store.go -> Read]["+id+"]")
 
 	var state AWSCustomKeyStoreTFSDK
 	resp.Diagnostics.Append(req.State.Get(ctx, &state)...)
@@ -547,7 +547,7 @@ func (r *resourceAWSCustomKeyStore) Read(ctx context.Context, req resource.ReadR
 		)
 		return
 	}
-	tflog.Trace(ctx, "[resource_aws_custom_key_store.go -> Read][response:"+response+"]")
+	tflog.Debug(ctx, "[resource_aws_custom_key_store.go -> Read][response:"+response+"]")
 	r.setCustomKeyStoreState(ctx, response, &state, &state, &resp.Diagnostics)
 	if resp.Diagnostics.HasError() {
 		return
@@ -557,16 +557,16 @@ func (r *resourceAWSCustomKeyStore) Read(ctx context.Context, req resource.ReadR
 
 func (r *resourceAWSCustomKeyStore) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
 	id := uuid.New().String()
-	tflog.Trace(ctx, common.MSG_METHOD_START+"[resource_aws_custom_key_store.go -> ImportState]["+id+"]")
-	defer tflog.Trace(ctx, common.MSG_METHOD_END+"[resource_aws_custom_key_store.go -> ImportState]["+id+"]")
+	tflog.Debug(ctx, common.MSG_METHOD_START+"[resource_aws_custom_key_store.go -> ImportState]["+id+"]")
+	defer tflog.Debug(ctx, common.MSG_METHOD_END+"[resource_aws_custom_key_store.go -> ImportState]["+id+"]")
 	resource.ImportStatePassthroughID(ctx, path.Root("id"), req, resp)
 }
 
 // Update updates the resource and sets the updated Terraform state on success.
 func (r *resourceAWSCustomKeyStore) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
 	id := uuid.New().String()
-	tflog.Trace(ctx, common.MSG_METHOD_START+"[resource_aws_custom_key_store.go -> Update]["+id+"]")
-	defer tflog.Trace(ctx, common.MSG_METHOD_END+"[resource_aws_custom_key_store.go -> Update]["+id+"]")
+	tflog.Debug(ctx, common.MSG_METHOD_START+"[resource_aws_custom_key_store.go -> Update]["+id+"]")
+	defer tflog.Debug(ctx, common.MSG_METHOD_END+"[resource_aws_custom_key_store.go -> Update]["+id+"]")
 	var plan AWSCustomKeyStoreTFSDK
 	resp.Diagnostics.Append(req.Plan.Get(ctx, &plan)...)
 	if resp.Diagnostics.HasError() {
@@ -906,7 +906,7 @@ func (r *resourceAWSCustomKeyStore) Delete(ctx context.Context, req resource.Del
 	// Delete existing order
 	url := fmt.Sprintf("%s/%s/%s", r.client.CipherTrustURL, common.URL_AWS_XKS, state.ID.ValueString())
 	output, err := r.client.DeleteByID(ctx, "DELETE", state.ID.ValueString(), url, nil)
-	tflog.Trace(ctx, common.MSG_METHOD_END+"[resource_aws_custom_key_store.go -> Delete]["+state.ID.ValueString()+"]["+output+"]")
+	tflog.Debug(ctx, common.MSG_METHOD_END+"[resource_aws_custom_key_store.go -> Delete]["+state.ID.ValueString()+"]["+output+"]")
 	if err != nil {
 		if strings.Contains(err.Error(), "Resource not found") {
 			msg := "AWS custom key stores was not found, it will be removed from state."
@@ -1138,7 +1138,7 @@ func (r *resourceAWSCustomKeyStore) retryOperation(ctx context.Context, id strin
 		if err := json.Unmarshal([]byte(gjson.Get(response, "aws_param").String()), &awsParamJSONResponse); err != nil {
 			return "", err
 		}
-		tflog.Trace(ctx, fmt.Sprintf("ConnectionState: %s (attempt %d/%d)", awsParamJSONResponse.ConnectionState, attempt, maxRetries))
+		tflog.Debug(ctx, fmt.Sprintf("ConnectionState: %s (attempt %d/%d)", awsParamJSONResponse.ConnectionState, attempt, maxRetries))
 		if awsParamJSONResponse.ConnectionState == wantState {
 			return response, nil
 		}
@@ -1160,8 +1160,8 @@ func (r *resourceAWSCustomKeyStore) customKeyStoreById(ctx context.Context, id s
 }
 
 func (r *resourceAWSCustomKeyStore) enableDisableCredentialRotation(ctx context.Context, id string, plan *AWSCustomKeyStoreTFSDK, state *AWSCustomKeyStoreTFSDK, diags *diag.Diagnostics) bool {
-	tflog.Trace(ctx, common.MSG_METHOD_START+"[resource_aws_custom_key_store.go -> enableDisableCredentialRotation]["+id+"]")
-	defer tflog.Trace(ctx, common.MSG_METHOD_END+"[resource_aws_custom_key_store.go -> enableDisableCredentialRotation]["+id+"]")
+	tflog.Debug(ctx, common.MSG_METHOD_START+"[resource_aws_custom_key_store.go -> enableDisableCredentialRotation]["+id+"]")
+	defer tflog.Debug(ctx, common.MSG_METHOD_END+"[resource_aws_custom_key_store.go -> enableDisableCredentialRotation]["+id+"]")
 	planParams := make([]AWSEnableXksCredentialRotationJobTFSDK, 0, len(plan.EnableCredentialRotation.Elements()))
 	if !plan.EnableCredentialRotation.IsUnknown() {
 		diags.Append(plan.EnableCredentialRotation.ElementsAs(ctx, &planParams, false)...)
@@ -1220,7 +1220,7 @@ func (r *resourceAWSCustomKeyStore) enableCredentialRotation(ctx context.Context
 			diags.AddError(details, "")
 			return
 		}
-		tflog.Trace(ctx, "[resource_aws_custom_key_store.go -> enableCredentialRotation][response:"+response+"]")
+		tflog.Debug(ctx, "[resource_aws_custom_key_store.go -> enableCredentialRotation][response:"+response+"]")
 	}
 }
 
@@ -1234,7 +1234,7 @@ func (r *resourceAWSCustomKeyStore) disableCredentialRotation(ctx context.Contex
 		tflog.Error(ctx, details)
 		return
 	}
-	tflog.Trace(ctx, "[resource_aws_custom_key_store.go -> disableCredentialRotation][response:"+response+"]")
+	tflog.Debug(ctx, "[resource_aws_custom_key_store.go -> disableCredentialRotation][response:"+response+"]")
 }
 
 func setKeyStoreLabels(ctx context.Context, response string, keyStoreID string, stateLabels *types.Map, diags *diag.Diagnostics) {

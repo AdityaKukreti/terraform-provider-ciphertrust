@@ -88,8 +88,8 @@ func (d *dataSourceAWSAccountDetails) Schema(_ context.Context, _ datasource.Sch
 }
 
 func (d *dataSourceAWSAccountDetails) Read(ctx context.Context, req datasource.ReadRequest, resp *datasource.ReadResponse) {
-	tflog.Trace(ctx, common.MSG_METHOD_START+"[data_source_aws_account_details.go -> Read]")
-	defer tflog.Trace(ctx, common.MSG_METHOD_END+"[data_source_aws_account_details.go -> Read]")
+	tflog.Debug(ctx, common.MSG_METHOD_START+"[data_source_aws_account_details.go -> Read]")
+	defer tflog.Debug(ctx, common.MSG_METHOD_END+"[data_source_aws_account_details.go -> Read]")
 	var state AWSAccountDetailsDataSourceModel
 	diags := req.Config.Get(ctx, &state)
 	if diags.HasError() {

@@ -33,9 +33,9 @@ func DecodeContainerAclID(resourceID string) (containerID string, aclType string
 	return
 }
 
-func SetAclsStateFromJSON(ctx context.Context, acslJSON gjson.Result, aclSet *types.Set, diags *diag.Diagnostics) {
+func SetAclsStateFromJSON(ctx context.Context, aclsJSON gjson.Result, aclSet *types.Set, diags *diag.Diagnostics) {
 	var aclsTFSDK []AclTFSDK
-	for _, aclJSON := range acslJSON.Array() {
+	for _, aclJSON := range aclsJSON.Array() {
 		actionSet := utils.StringSliceJSONToSetValue(gjson.Get(aclJSON.String(), "actions").Array(), diags)
 		if diags.HasError() {
 			return
@@ -53,11 +53,7 @@ func SetAclsStateFromJSON(ctx context.Context, acslJSON gjson.Result, aclSet *ty
 		diags.Append(dg...)
 		return
 	}
-	*aclSet, dg = aclsSetValue.ToSetValue(ctx)
-	if dg.HasError() {
-		diags.Append(dg...)
-		return
-	}
+	*aclSet = aclsSetValue
 }
 
 func GetUnPermittedAcl(ctx context.Context, resourceID string, aclsJSON string, newActions []string, diags *diag.Diagnostics) *ContainerAclJSON {
@@ -85,7 +81,7 @@ func GetUnPermittedAcl(ctx context.Context, resourceID string, aclsJSON string, 
 	var currentActions []string
 	if len(currentAcls) != 0 {
 		for _, acl := range currentAcls {
-			if aclType == "user" && acl.UserID == userIDOrGroup || aclType == "group" && acl.Group == userIDOrGroup {
+			if (aclType == "user" && acl.UserID == userIDOrGroup) || (aclType == "group" && acl.Group == userIDOrGroup) {
 				currentActions = acl.Actions
 				break
 			}

@@ -60,7 +60,7 @@ func SlicesAreEqual(a *[]string, b *[]string) bool {
 	if a == nil && b == nil {
 		return true
 	}
-	if (a == nil && b != nil) || (a != nil && b == nil) {
+	if (a == nil && b != nil) || (a != nil && b == nil) || len(*a) != len(*b) {
 		return false
 	}
 	for _, str := range *a {
@@ -110,7 +110,7 @@ func ApiError(msg string, details map[string]interface{}) string {
 	if details != nil {
 		width := 0
 		var keys []string
-		for k, _ := range details {
+		for k := range details {
 			keys = append(keys, k)
 			if len(k) > width {
 				width = len(k)

@@ -63,7 +63,7 @@ func initCckmAwsTest(timeout ...int) (string, bool) {
 		return "", false
 	}
 	operationTimeout := defaultAwsOperationTimeout
-	if timeout != nil && len(timeout) > 1 {
+	if len(timeout) > 0 {
 		operationTimeout = timeout[0]
 	}
 	awsConfig := `
@@ -727,9 +727,6 @@ func TestCckmAWSKeyMultiRegion(t *testing.T) {
 			},
 		})
 	})
-	if true {
-		return
-	}
 	t.Run("LocalKey", func(t *testing.T) {
 		createConfig := `
 			resource "ciphertrust_cm_key" "cm_key" {
@@ -915,12 +912,10 @@ func testCheckAttributeContains(resourceName string, attributeName string, strin
 	}
 }
 
-func testVerifyResourceDeleted(resourceType string) resource.TestCheckFunc {
+func testVerifyResourceDeleted(resourceName string) resource.TestCheckFunc {
 	return func(s *terraform.State) error {
-		for _, rs := range s.RootModule().Resources {
-			if rs.Type == resourceType {
-				return fmt.Errorf("error: resource %s still exists", resourceType)
-			}
+		if _, ok := s.RootModule().Resources[resourceName]; ok {
+			return fmt.Errorf("error: resource %s still exists", resourceName)
 		}
 		return nil
 	}

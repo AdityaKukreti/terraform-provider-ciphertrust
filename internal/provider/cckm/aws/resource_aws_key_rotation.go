@@ -83,8 +83,8 @@ func (r *resourceAWSKeyRotation) Schema(_ context.Context, _ resource.SchemaRequ
 
 func (r *resourceAWSKeyRotation) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
 	id := uuid.New().String()
-	tflog.Trace(ctx, common.MSG_METHOD_START+"[resource_aws_key_rotation.go -> Create]["+id+"]")
-	defer tflog.Trace(ctx, common.MSG_METHOD_END+"[resource_aws_key_rotation.go -> Create]["+id+"]")
+	tflog.Debug(ctx, common.MSG_METHOD_START+"[resource_aws_key_rotation.go -> Create]["+id+"]")
+	defer tflog.Debug(ctx, common.MSG_METHOD_END+"[resource_aws_key_rotation.go -> Create]["+id+"]")
 	var (
 		plan     AWSKeyRotationTFSDK
 		response string
@@ -105,13 +105,13 @@ func (r *resourceAWSKeyRotation) Create(ctx context.Context, req resource.Create
 	now := time.Now().UTC().Format("2006-01-02 15:04:05 MST")
 	plan.Status = types.StringValue("A key material rotation request was sent to AWS on " + now + ".")
 	resp.Diagnostics.Append(resp.State.Set(ctx, plan)...)
-	tflog.Trace(ctx, "[resource_aws_key_rotation.go -> Create][response:"+response)
+	tflog.Debug(ctx, "[resource_aws_key_rotation.go -> Create][response:"+response)
 }
 
 func (r *resourceAWSKeyRotation) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
 	id := uuid.New().String()
-	tflog.Trace(ctx, common.MSG_METHOD_START+"[resource_aws_key_rotation.go -> Read]["+id+"]")
-	defer tflog.Trace(ctx, common.MSG_METHOD_END+"[resource_aws_key_rotation.go -> Read]["+id+"]")
+	tflog.Debug(ctx, common.MSG_METHOD_START+"[resource_aws_key_rotation.go -> Read]["+id+"]")
+	defer tflog.Debug(ctx, common.MSG_METHOD_END+"[resource_aws_key_rotation.go -> Read]["+id+"]")
 	var state AWSKeyRotationTFSDK
 	resp.Diagnostics.Append(req.State.Get(ctx, &state)...)
 	if resp.Diagnostics.HasError() {
@@ -137,7 +137,7 @@ func (r *resourceAWSKeyRotation) Read(ctx context.Context, req resource.ReadRequ
 	if resp.Diagnostics.HasError() {
 		return
 	}
-	tflog.Trace(ctx, "[resource_aws_key_rotation.go -> Read][response:"+response)
+	tflog.Debug(ctx, "[resource_aws_key_rotation.go -> Read][response:"+response)
 }
 
 func (r *resourceAWSKeyRotation) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
@@ -147,7 +147,7 @@ func (r *resourceAWSKeyRotation) Delete(ctx context.Context, req resource.Delete
 }
 
 func (r *resourceAWSKeyRotation) rotateKeyMaterial(ctx context.Context, id string, plan *AWSKeyRotationTFSDK, diags *diag.Diagnostics) string {
-	tflog.Trace(ctx, "[resource_aws_key_rotation.go -> rotateKeyMaterial]["+id+"]")
+	tflog.Debug(ctx, "[resource_aws_key_rotation.go -> rotateKeyMaterial]["+id+"]")
 	keyID := plan.KeyID.ValueString()
 	response, err := r.client.PostDataV2(ctx, id, common.URL_AWS_KEY+"/"+keyID+"/rotate-material", nil)
 	if err != nil {
@@ -157,6 +157,6 @@ func (r *resourceAWSKeyRotation) rotateKeyMaterial(ctx context.Context, id strin
 		diags.AddError(details, "")
 		return ""
 	}
-	tflog.Trace(ctx, "[resource_aws_key_rotation.go -> rotateKeyMaterial][response:"+response)
+	tflog.Debug(ctx, "[resource_aws_key_rotation.go -> rotateKeyMaterial][response:"+response)
 	return response
 }
