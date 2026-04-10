@@ -18,8 +18,8 @@ import (
 )
 
 var (
-	_ datasource.DataSource              = &dataSourceAWSKey{}
-	_ datasource.DataSourceWithConfigure = &dataSourceAWSKey{}
+	_ datasource.DataSource              = &dataSourceAWSKms{}
+	_ datasource.DataSourceWithConfigure = &dataSourceAWSKms{}
 )
 
 func NewDataSourceAWSKms() datasource.DataSource {
@@ -67,7 +67,7 @@ func (d *dataSourceAWSKms) Schema(_ context.Context, _ datasource.SchemaRequest,
 			},
 			"matched": schema.Int64Attribute{
 				Computed:    true,
-				Description: "The number of vaults which matched the filters.",
+				Description: "The number of KMS resources which matched the filters.",
 			},
 			"kms": schema.ListNestedAttribute{
 				Computed: true,
@@ -111,12 +111,12 @@ func (d *dataSourceAWSKms) Schema(_ context.Context, _ datasource.SchemaRequest,
 							Description: "Amazon Resource Name.",
 						},
 						"assume_role_arn": schema.StringAttribute{
-							Optional:    true,
+							Computed:    true,
 							Description: "Amazon Resource Name (ARN) of the role to be assumed.",
 						},
 						"assume_role_external_id": schema.StringAttribute{
-							Optional:    true,
-							Description: "External ID for the role to be assumed. This parameter can be specified only with \"assume_role_arn\".",
+							Computed:    true,
+							Description: "External ID for the role to be assumed.",
 						},
 						"auto_added": schema.BoolAttribute{
 							Computed:    true,
@@ -169,7 +169,7 @@ func (d *dataSourceAWSKms) Schema(_ context.Context, _ datasource.SchemaRequest,
 func (d *dataSourceAWSKms) Read(ctx context.Context, req datasource.ReadRequest, resp *datasource.ReadResponse) {
 	id := uuid.New().String()
 	tflog.Trace(ctx, common.MSG_METHOD_START+"[data_source_aws_kms.go -> Read]")
-	defer tflog.Trace(ctx, common.MSG_METHOD_START+"[data_source_aws_kms.go -> Read]")
+	defer tflog.Trace(ctx, common.MSG_METHOD_END+"[data_source_aws_kms.go -> Read]")
 
 	var state AWSKmsDataSourceModel
 	diags := req.Config.Get(ctx, &state)

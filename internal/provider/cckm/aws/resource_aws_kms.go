@@ -63,7 +63,10 @@ func (r *resourceCCKMAWSKMS) Schema(_ context.Context, _ resource.SchemaRequest,
 			},
 			"account_id": schema.StringAttribute{
 				Required:    true,
-				Description: "ID of the AWS account.",
+				Description: "ID of the AWS account. Changing this value forces the KMS registration to be destroyed and recreated.",
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.RequiresReplace(),
+				},
 			},
 			"acls": schema.SetNestedAttribute{
 				Computed:    true,
@@ -127,7 +130,10 @@ func (r *resourceCCKMAWSKMS) Schema(_ context.Context, _ resource.SchemaRequest,
 			},
 			"name": schema.StringAttribute{
 				Required:    true,
-				Description: "Unique name for the KMS.",
+				Description: "Unique name for the KMS. Changing this value forces the KMS registration to be destroyed and recreated.",
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.RequiresReplace(),
+				},
 			},
 			"regions": schema.ListAttribute{
 				Required:    true,
@@ -309,7 +315,7 @@ func (r *resourceCCKMAWSKMS) Delete(ctx context.Context, req resource.DeleteRequ
 		return
 	}
 	kmsID := state.ID.ValueString()
-	_, err := r.client.DeleteByURL(ctx, kmsID, common.URL_AWS_KMS+"/"+kmsID)
+	_, err := r.client.DeleteByURL(ctx, id, common.URL_AWS_KMS+"/"+kmsID)
 	if err != nil {
 		msg := "Error deleting AWS KMS."
 		details := utils.ApiError(msg, map[string]interface{}{"error": err.Error(), "kms_id": kmsID})

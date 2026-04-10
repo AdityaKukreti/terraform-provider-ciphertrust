@@ -107,22 +107,24 @@ func BytesAreEqual(a *json.RawMessage, b *json.RawMessage) bool {
 
 func ApiError(msg string, details map[string]interface{}) string {
 	str := msg + "\n"
-	width := 0
-	var keys []string
-	for k, _ := range details {
-		keys = append(keys, k)
-		if len(k) > width {
-			width = len(k)
+	if details != nil {
+		width := 0
+		var keys []string
+		for k, _ := range details {
+			keys = append(keys, k)
+			if len(k) > width {
+				width = len(k)
+			}
 		}
-	}
-	width++
-	sort.Strings(keys)
-	for _, k := range keys {
-		str = str + fmt.Sprintf("%*s: %s\n", width, k, strings.TrimSpace(fmt.Sprintf("%v", details[k])))
-	}
-	_, file, line, ok := runtime.Caller(1)
-	if ok {
-		str = str + fmt.Sprintf("%*s: %s:%d", width, "file", filepath.Base(file), line)
+		width++
+		sort.Strings(keys)
+		for _, k := range keys {
+			str = str + fmt.Sprintf("%*s: %s\n", width, k, strings.TrimSpace(fmt.Sprintf("%v", details[k])))
+		}
+		_, file, line, ok := runtime.Caller(1)
+		if ok {
+			str = str + fmt.Sprintf("%*s: %s:%d", width, "file", filepath.Base(file), line)
+		}
 	}
 	return strings.TrimSpace(str)
 }

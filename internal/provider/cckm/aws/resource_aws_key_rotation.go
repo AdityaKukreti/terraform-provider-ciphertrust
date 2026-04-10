@@ -3,6 +3,7 @@ package cckm
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/ThalesGroup/terraform-provider-ciphertrust/internal/provider/cckm/utils"
@@ -67,7 +68,10 @@ func (r *resourceAWSKeyRotation) Schema(_ context.Context, _ resource.SchemaRequ
 			},
 			"key_id": schema.StringAttribute{
 				Required:    true,
-				Description: "A CipherTrust Manager AWS key resource ID.",
+				Description: "A CipherTrust Manager AWS key resource ID. Changing this value forces a new rotation on the new key (this resource will be destroyed and recreated).",
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.RequiresReplace(),
+				},
 			},
 			"status": schema.StringAttribute{
 				Computed:    true,
@@ -90,8 +94,7 @@ func (r *resourceAWSKeyRotation) Create(ctx context.Context, req resource.Create
 		return
 	}
 
-	keyID := plan.KeyID.ValueString()
-	response = r.rotateKeyMaterial(ctx, keyID, &plan, &resp.Diagnostics)
+	response = r.rotateKeyMaterial(ctx, id, &plan, &resp.Diagnostics)
 	if resp.Diagnostics.HasError() {
 		return
 	}
@@ -117,6 +120,13 @@ func (r *resourceAWSKeyRotation) Read(ctx context.Context, req resource.ReadRequ
 	keyID := state.KeyID.ValueString()
 	response, err := r.client.GetById(ctx, id, keyID, common.URL_AWS_KEY)
 	if err != nil {
+		if strings.Contains(err.Error(), "status: 404") {
+			msg := "AWS key no longer exists, removing rotation resource from state."
+			details := utils.ApiError(msg, map[string]interface{}{"key_id": keyID})
+			tflog.Warn(ctx, details)
+			resp.State.RemoveResource(ctx)
+			return
+		}
 		msg := "Error reading AWS key."
 		details := utils.ApiError(msg, map[string]interface{}{"error": err.Error(), "key_id": keyID})
 		tflog.Error(ctx, details)

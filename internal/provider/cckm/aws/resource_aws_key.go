@@ -132,17 +132,18 @@ func (r *resourceAWSKey) Schema(_ context.Context, _ resource.SchemaRequest, res
 			"auto_rotation_period_in_days": schema.Int64Attribute{
 				Computed:    true,
 				Optional:    true,
-				Description: "Rotation period in days. Optional parameter for auto_rotate. Must be at least 90 days.",
+				Description: "(Updatable) Rotation period in days. Optional when auto_rotate is true. If not set, AWS uses its default rotation period.",
 			},
 			"bypass_policy_lockout_safety_check": schema.BoolAttribute{
 				Optional:    true,
 				Description: "Whether to bypass the key policy lockout safety check.",
 			},
 			"customer_master_key_spec": schema.StringAttribute{
-				Optional:    true,
-				Computed:    true,
-				Description: "Whether the KMS key contains a symmetric key or an asymmetric key pair. Valid values: " + strings.Join(awsKeySpecs, ", ") + ". Default is SYMMETRIC_DEFAULT.",
-				Validators:  []validator.String{stringvalidator.OneOf(awsKeySpecs...)},
+				Optional: true,
+				Computed: true,
+				Description: "Whether the KMS key contains a symmetric key or an asymmetric key pair. Valid values: " + strings.Join(awsKeySpecs, ", ") + ". Default is SYMMETRIC_DEFAULT." +
+					" When using 'import_key_material', ECC_NIST_P256 and HMAC_224 are not supported as CipherTrust Manager cannot create those key types locally.",
+				Validators: []validator.String{stringvalidator.OneOf(awsKeySpecs...)},
 			},
 			"description": schema.StringAttribute{
 				Optional:    true,
@@ -510,8 +511,8 @@ func (r *resourceAWSKey) Schema(_ context.Context, _ resource.SchemaRequest, res
 						},
 						"key_source": schema.StringAttribute{
 							Required:    true,
-							Description: "Key source from where the key will be uploaded. Currently, the only option is 'ciphertrust'.",
-							Validators:  []validator.String{stringvalidator.OneOf([]string{"ciphertrust"}...)},
+							Description: "Key source from where the key will be uploaded. Options are 'ciphertrust' and 'local' which both rotate using CipherTrust Managers keys.",
+							Validators:  []validator.String{stringvalidator.OneOf([]string{"ciphertrust", "local"}...)},
 						},
 						"disable_encrypt": schema.BoolAttribute{
 							Optional:    true,
@@ -866,13 +867,12 @@ func (r *resourceAWSKey) createKey(ctx context.Context, id string, plan *AWSKeyT
 
 func (r *resourceAWSKey) setKeyState(ctx context.Context, response string, state *AWSKeyTFSDK, diags *diag.Diagnostics) {
 	tflog.Trace(ctx, "[resource_aws_key.go -> setKeyState][response:"+response)
-	tflog.Info(ctx, fmt.Sprintf("SARAH setKeyState: response: %s", response))
 	setCommonKeyState(ctx, response, &state.AWSKeyCommonTFSDK, diags)
 	setCommonKeyStateEx(ctx, response, &state.AWSKeyCommonTFSDK, diags)
-	//state.AutoRotate = types.BoolValue(gjson.Get(response, "aws_param.KeyRotationEnabled").Bool())
-	tflog.Info(ctx, fmt.Sprintf("SARAH setKeyState: state.AutoRotate: %v", state.AutoRotate.ValueBool()))
-	if state.AutoRotationPeriodInDays.IsUnknown() {
-		state.AutoRotationPeriodInDays = types.Int64Value(0)
+	if gjson.Get(response, "aws_param.RotationPeriodInDays").Exists() {
+		state.AutoRotationPeriodInDays = types.Int64Value(gjson.Get(response, "aws_param.RotationPeriodInDays").Int())
+	} else {
+		state.AutoRotationPeriodInDays = types.Int64Null()
 	}
 	state.MultiRegion = types.BoolValue(gjson.Get(response, "aws_param.MultiRegion").Bool())
 	state.MultiRegionKeyType = types.StringValue(gjson.Get(response, "aws_param.MultiRegionConfiguration.MultiRegionKeyType").String())
@@ -889,9 +889,6 @@ func setCommonKeyState(ctx context.Context, response string, state *AWSKeyCommon
 	state.CloudName = types.StringValue(gjson.Get(response, "cloud_name").String())
 	state.CreatedAt = types.StringValue(gjson.Get(response, "createdAt").String())
 	state.CustomerMasterKeySpec = types.StringValue(gjson.Get(response, "aws_param.CustomerMasterKeySpec").String())
-	if state.CustomerMasterKeySpec.ValueString() == "" {
-		state.CustomerMasterKeySpec = types.StringValue(gjson.Get(response, "aws_param.MasterKeySpec").String())
-	}
 	state.DeletionDate = types.StringValue(gjson.Get(response, "deletion_date").String())
 	state.EncryptionAlgorithms = utils.StringSliceJSONToListValue(gjson.Get(response, "aws_param.EncryptionAlgorithms").Array(), diags)
 	state.ExpirationModel = types.StringValue(gjson.Get(response, "aws_param.ExpirationModel").String())
@@ -917,7 +914,7 @@ func setCommonKeyState(ctx context.Context, response string, state *AWSKeyCommon
 	state.Origin = types.StringValue(gjson.Get(response, "aws_param.Origin").String())
 	state.Region = types.StringValue(gjson.Get(response, "region").String())
 	state.RotatedAt = types.StringValue(gjson.Get(response, "rotated_at").String())
-	state.RotatedFrom = types.StringValue(gjson.Get(response, "rotated_to").String())
+	state.RotatedFrom = types.StringValue(gjson.Get(response, "rotated_from").String())
 	state.RotationStatus = types.StringValue(gjson.Get(response, "rotation_status").String())
 	state.RotatedTo = types.StringValue(gjson.Get(response, "rotated_to").String())
 	state.SyncedAt = types.StringValue(gjson.Get(response, "synced_at").String())
@@ -946,13 +943,15 @@ func (r *resourceAWSKey) enableDisableAutoRotation(ctx context.Context, id strin
 		response string
 	)
 	planAutoRotateEnabled := plan.AutoRotate.ValueBool()
+	planPeriodIsSet := !plan.AutoRotationPeriodInDays.IsNull() && !plan.AutoRotationPeriodInDays.IsUnknown()
 	planDays := plan.AutoRotationPeriodInDays.ValueInt64()
 	keyAutoRotateEnabled := gjson.Get(keyJSON, "aws_param.KeyRotationEnabled").Bool()
 	keyDays := gjson.Get(keyJSON, "aws_param.RotationPeriodInDays").Int()
 	keyID := plan.KeyID.ValueString()
+	daysMatch := !planPeriodIsSet || keyDays == planDays
 	updated := false
 	if planAutoRotateEnabled {
-		if planDays != 0 && (keyAutoRotateEnabled != planAutoRotateEnabled || planDays != keyDays) {
+		if keyAutoRotateEnabled != planAutoRotateEnabled || !daysMatch {
 			updated = r.enableAutoRotation(ctx, id, plan, keyJSON, diags)
 			if diags.HasError() {
 				return
@@ -965,12 +964,21 @@ func (r *resourceAWSKey) enableDisableAutoRotation(ctx context.Context, id strin
 		}
 	}
 	if updated {
+		response, err = r.client.GetById(ctx, id, keyID, common.URL_AWS_KEY)
+		if err != nil {
+			msg := "Error reading AWS key after auto-rotation change."
+			details := utils.ApiError(msg, map[string]interface{}{"error": err.Error(), "key_id": keyID})
+			tflog.Error(ctx, details)
+			diags.AddError(details, "")
+			return
+		}
 		keyAutoRotateEnabled = gjson.Get(response, "aws_param.KeyRotationEnabled").Bool()
 		keyDays = gjson.Get(response, "aws_param.RotationPeriodInDays").Int()
-		if keyAutoRotateEnabled != planAutoRotateEnabled && keyDays != planDays {
+		daysMatch = !planPeriodIsSet || keyDays == planDays
+		if keyAutoRotateEnabled != planAutoRotateEnabled || !daysMatch {
 			numRetries := autoRotationWaitSeconds / shortAwsKeyOpSleep
 			tStart := time.Now()
-			for retry := 0; retry < numRetries && (keyAutoRotateEnabled != planAutoRotateEnabled && keyDays != planDays); retry++ {
+			for retry := 0; retry < numRetries && (keyAutoRotateEnabled != planAutoRotateEnabled || !daysMatch); retry++ {
 				time.Sleep(time.Duration(shortAwsKeyOpSleep) * time.Second)
 				if time.Since(tStart).Seconds() > refreshTokenSeconds {
 					if err = r.client.RefreshToken(ctx, id); err != nil {
@@ -991,10 +999,11 @@ func (r *resourceAWSKey) enableDisableAutoRotation(ctx context.Context, id strin
 				}
 				keyAutoRotateEnabled = gjson.Get(response, "aws_param.KeyRotationEnabled").Bool()
 				keyDays = gjson.Get(response, "aws_param.RotationPeriodInDays").Int()
+				daysMatch = !planPeriodIsSet || keyDays == planDays
 			}
 		}
 	}
-	if keyAutoRotateEnabled != planAutoRotateEnabled || keyDays != planDays {
+	if keyAutoRotateEnabled != planAutoRotateEnabled || !daysMatch {
 		msg := "Failed to confirm auto-rotation is configured."
 		details := utils.ApiError(msg, map[string]interface{}{"key_id": keyID})
 		tflog.Warn(ctx, details)
@@ -1005,11 +1014,12 @@ func (r *resourceAWSKey) enableDisableAutoRotation(ctx context.Context, id strin
 func (r *resourceAWSKey) enableAutoRotation(ctx context.Context, id string, plan *AWSKeyTFSDK, keyJSON string, diags *diag.Diagnostics) bool {
 	tflog.Trace(ctx, common.MSG_METHOD_START+"[resource_aws_key.go -> enableAutoRotation]["+id+"]")
 	defer tflog.Trace(ctx, common.MSG_METHOD_END+"[resource_aws_key.go -> enableAutoRotation]["+id+"]")
-	planDays := plan.AutoRotationPeriodInDays.ValueInt64()
 	keyEnabled := gjson.Get(keyJSON, "aws_param.Enabled").Bool()
 	keyID := plan.KeyID.ValueString()
-	payload := EnableAutoRotationPayloadJSON{
-		RotationPeriodInDays: &planDays,
+	var payload EnableAutoRotationPayloadJSON
+	if !plan.AutoRotationPeriodInDays.IsNull() && !plan.AutoRotationPeriodInDays.IsUnknown() {
+		planDays := plan.AutoRotationPeriodInDays.ValueInt64()
+		payload.RotationPeriodInDays = &planDays
 	}
 	payloadJSON, err := json.Marshal(payload)
 	if err != nil {
@@ -1566,6 +1576,7 @@ func (r *resourceAWSKey) updatePrimaryRegion(ctx context.Context, id string, pri
 		details := utils.ApiError(msg, map[string]interface{}{"error": err.Error(), "key_id": primaryKeyID})
 		tflog.Error(ctx, details)
 		diags.AddError(details, "")
+		return
 	}
 	currentPrimaryRegion := gjson.Get(response, "aws_param.MultiRegionConfiguration.PrimaryKey.Region").String()
 	payload := UpdatePrimaryRegionPayloadJSON{
@@ -1993,7 +2004,6 @@ func (r *resourceAWSKey) getCommonAWSParams(ctx context.Context, plan *AWSKeyTFS
 	}
 	if plan.CustomerMasterKeySpec.ValueString() != "" && plan.CustomerMasterKeySpec.ValueString() != types.StringNull().ValueString() {
 		awsParams.CustomerMasterKeySpec = plan.CustomerMasterKeySpec.ValueString()
-		awsParams.MasterKeySpec = plan.CustomerMasterKeySpec.ValueString()
 	}
 	if plan.Description.ValueString() != "" && plan.Description.ValueString() != types.StringNull().ValueString() {
 		awsParams.Description = plan.Description.ValueString()
@@ -2324,8 +2334,7 @@ func (r *resourceAWSKey) createKeyMaterial(ctx context.Context, id string, impor
 			AssignSelfAsOwner: true,
 		}
 		switch customerMasterKeySpec {
-		case "SYMMETRIC_DEFAULT":
-		case "":
+		case "SYMMETRIC_DEFAULT", "":
 			payload.Algorithm = "aes"
 			payload.Size = 256
 		case "RSA_2048":
@@ -2434,7 +2443,7 @@ func (r *resourceAWSKey) getKeyByTerraformID(ctx context.Context, id string, ter
 	resources := gjson.Get(response, "resources").Array()
 	var keyJSON string
 	for _, keyResourceJSON := range resources {
-		keyJSON = keyResourceJSON.String()
+		keyJSON = keyResourceJSON.Raw
 	}
 	return keyJSON
 }

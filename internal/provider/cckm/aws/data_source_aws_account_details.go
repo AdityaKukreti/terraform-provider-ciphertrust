@@ -73,7 +73,7 @@ func (d *dataSourceAWSAccountDetails) Schema(_ context.Context, _ datasource.Sch
 			},
 			"validate": schema.BoolAttribute{
 				Optional:    true,
-				Description: "Validate that the AWS account is already managed by a connection.",
+				Description: "Accepted for compatibility but not currently forwarded to the API. Validate that the AWS account is already managed by a connection.",
 			},
 			"assume_role_arn": schema.StringAttribute{
 				Optional:    true,
@@ -89,7 +89,7 @@ func (d *dataSourceAWSAccountDetails) Schema(_ context.Context, _ datasource.Sch
 
 func (d *dataSourceAWSAccountDetails) Read(ctx context.Context, req datasource.ReadRequest, resp *datasource.ReadResponse) {
 	tflog.Trace(ctx, common.MSG_METHOD_START+"[data_source_aws_account_details.go -> Read]")
-	defer tflog.Trace(ctx, common.MSG_METHOD_START+"[data_source_aws_account_details.go -> Read]")
+	defer tflog.Trace(ctx, common.MSG_METHOD_END+"[data_source_aws_account_details.go -> Read]")
 	var state AWSAccountDetailsDataSourceModel
 	diags := req.Config.Get(ctx, &state)
 	if diags.HasError() {
@@ -99,11 +99,11 @@ func (d *dataSourceAWSAccountDetails) Read(ctx context.Context, req datasource.R
 	id := state.Connection.ValueString()
 	var payload AccountDetailsInputModelJSON
 	payload.AWSConnection = state.Connection.ValueString()
-	if !state.AssumeRoleExternalID.IsNull() {
+	if !state.AssumeRoleArn.IsNull() {
 		payload.AssumeRoleArn = state.AssumeRoleArn.ValueString()
 	}
-	if !state.AssumeRoleArn.IsNull() {
-		payload.AssumeRoleExternalID = state.AssumeRoleArn.ValueString()
+	if !state.AssumeRoleExternalID.IsNull() {
+		payload.AssumeRoleExternalID = state.AssumeRoleExternalID.ValueString()
 	}
 	payloadJSON, err := json.Marshal(payload)
 	if err != nil {

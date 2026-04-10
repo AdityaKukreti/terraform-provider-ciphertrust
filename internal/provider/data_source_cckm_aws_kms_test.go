@@ -39,20 +39,20 @@ func TestCckmAWSDataSourceKms(t *testing.T) {
 			actions = ["keycreate"]
 		}
 		resource "ciphertrust_aws_acl" "group1_acl" {
-		kms_id  = ciphertrust_aws_kms.kms.id
-		group   = ciphertrust_groups.group.id
-		actions = ["keyupdate", "keydelete"]
+			kms_id  = ciphertrust_aws_kms.kms.id
+			group   = ciphertrust_groups.group.id
+			actions = ["keyupdate", "keydelete"]
 		}
 		resource "ciphertrust_aws_acl" "user2_acl" {
-		kms_id  = ciphertrust_aws_kms.kms_two.id
-		user_id = ciphertrust_user.user.id
-		actions = ["keycreate"]
+			kms_id  = ciphertrust_aws_kms.kms_two.id
+			user_id = ciphertrust_user.user.id
+			actions = ["keycreate"]
 		}
 		resource "ciphertrust_aws_acl" "group2_acl" {
-		kms_id  = ciphertrust_aws_kms.kms_two.id
-		group   = ciphertrust_groups.group.id
-		actions = ["keyupdate", "keydelete"]
-	}`
+			kms_id  = ciphertrust_aws_kms.kms_two.id
+			group   = ciphertrust_groups.group.id
+			actions = ["keyupdate", "keydelete"]
+		}`
 	aclsConfigStr := fmt.Sprintf(acls, "tf-"+uuid.New().String()[:8], "tf-"+uuid.New().String()[:8])
 
 	noFilters := `
@@ -97,6 +97,8 @@ func TestCckmAWSDataSourceKms(t *testing.T) {
 				Config: awsConnectionResource + kmsTwoConfigStr + byName,
 				Check: resource.ComposeTestCheckFunc(
 					resource.TestCheckResourceAttr(dsByName, "kms.#", "1"),
+					resource.TestCheckResourceAttr(dsByName, "matched", "1"),
+					resource.TestCheckResourceAttrPair(dsByName, "kms.0.name", kmsTwoResourceName, "name"),
 					resource.TestCheckResourceAttrPair(dsByName, "kms.0.regions.#", kmsTwoResourceName, "regions.#"),
 					resource.TestCheckResourceAttrPair(kmsTwoResourceName, "id", dsByName, "kms.0.id"),
 				),
@@ -105,6 +107,7 @@ func TestCckmAWSDataSourceKms(t *testing.T) {
 				Config: awsConnectionResource + kmsTwoConfigStr + byID,
 				Check: resource.ComposeTestCheckFunc(
 					resource.TestCheckResourceAttr(dsByID, "kms.#", "1"),
+					resource.TestCheckResourceAttr(dsByID, "matched", "1"),
 					resource.TestCheckResourceAttrPair(dsByID, "kms.0.regions.#", kmsOneResourceName, "regions.#"),
 					resource.TestCheckResourceAttrPair(kmsOneResourceName, "id", dsByID, "kms.0.id"),
 				),

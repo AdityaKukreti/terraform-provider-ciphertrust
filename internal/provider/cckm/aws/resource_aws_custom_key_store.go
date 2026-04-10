@@ -122,6 +122,7 @@ func (r *resourceAWSCustomKeyStore) Schema(ctx context.Context, _ resource.Schem
 				Description: "(Updatable) Indicates whether the custom key store is linked with AWS. " +
 					"Applicable to a custom key store of type EXTERNAL_KEY_STORE. Default value is false. " +
 					"When false, creating a custom key store in the CCKM does not trigger the AWS KMS to create a new key store. " +
+					"Once linked, it's not possible to unlink a key store. " +
 					"Also, the new custom key store will not synchronize with any key stores within the AWS KMS until the new key store is linked.",
 			},
 			"connect_disconnect_keystore": schema.StringAttribute{
@@ -508,7 +509,7 @@ func (r *resourceAWSCustomKeyStore) Create(ctx context.Context, req resource.Cre
 		)
 	} else {
 		response = getResponse
-		tflog.Trace(ctx, "[resource_aws_custom_key_store.go -> Create][response:"+response)
+		tflog.Trace(ctx, "[resource_aws_custom_key_store.go -> Create][response:"+response+"]")
 	}
 
 	var warningDiags diag.Diagnostics
@@ -532,6 +533,13 @@ func (r *resourceAWSCustomKeyStore) Read(ctx context.Context, req resource.ReadR
 	}
 	response, err := r.client.GetById(ctx, id, state.ID.ValueString(), common.URL_AWS_XKS)
 	if err != nil {
+		if strings.Contains(err.Error(), "Resource not found") {
+			msg := "AWS custom key store was not found, it will be removed from state."
+			details := utils.ApiError(msg, map[string]interface{}{"id": state.ID.ValueString()})
+			tflog.Warn(ctx, details)
+			resp.State.RemoveResource(ctx)
+			return
+		}
 		tflog.Debug(ctx, common.ERR_METHOD_END+err.Error()+" [resource_aws_custom_key_store.go -> Read]["+state.ID.ValueString()+"]")
 		resp.Diagnostics.AddError(
 			"Error reading AWS Custom Key Store on CipherTrust Manager: ",
@@ -539,7 +547,7 @@ func (r *resourceAWSCustomKeyStore) Read(ctx context.Context, req resource.ReadR
 		)
 		return
 	}
-	tflog.Trace(ctx, "[resource_aws_custom_key_store.go -> Read][response:"+response)
+	tflog.Trace(ctx, "[resource_aws_custom_key_store.go -> Read][response:"+response+"]")
 	r.setCustomKeyStoreState(ctx, response, &state, &state, &resp.Diagnostics)
 	if resp.Diagnostics.HasError() {
 		return
@@ -549,16 +557,16 @@ func (r *resourceAWSCustomKeyStore) Read(ctx context.Context, req resource.ReadR
 
 func (r *resourceAWSCustomKeyStore) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
 	id := uuid.New().String()
-	tflog.Trace(ctx, common.MSG_METHOD_START+"[resource_aws_custom_key_store.go.go -> ImportState]["+id+"]")
-	defer tflog.Trace(ctx, common.MSG_METHOD_END+"[resource_aws_custom_key_store.go.go -> ImportState]["+id+"]")
+	tflog.Trace(ctx, common.MSG_METHOD_START+"[resource_aws_custom_key_store.go -> ImportState]["+id+"]")
+	defer tflog.Trace(ctx, common.MSG_METHOD_END+"[resource_aws_custom_key_store.go -> ImportState]["+id+"]")
 	resource.ImportStatePassthroughID(ctx, path.Root("id"), req, resp)
 }
 
 // Update updates the resource and sets the updated Terraform state on success.
 func (r *resourceAWSCustomKeyStore) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
 	id := uuid.New().String()
-	tflog.Trace(ctx, common.MSG_METHOD_START+"[resource_aws_custom_key_store.go.go -> Update]["+id+"]")
-	defer tflog.Trace(ctx, common.MSG_METHOD_END+"[resource_aws_custom_key_store.go.go -> Update]["+id+"]")
+	tflog.Trace(ctx, common.MSG_METHOD_START+"[resource_aws_custom_key_store.go -> Update]["+id+"]")
+	defer tflog.Trace(ctx, common.MSG_METHOD_END+"[resource_aws_custom_key_store.go -> Update]["+id+"]")
 	var plan AWSCustomKeyStoreTFSDK
 	resp.Diagnostics.Append(req.Plan.Get(ctx, &plan)...)
 	if resp.Diagnostics.HasError() {
@@ -804,8 +812,7 @@ func (r *resourceAWSCustomKeyStore) Update(ctx context.Context, req resource.Upd
 				return
 			}
 			r.setCustomKeyStoreState(ctx, response, &plan, &state, &resp.Diagnostics)
-		}
-		if plan.ConnectDisconnectKeystore.ValueString() == StateDisconnectKeystore {
+		} else if plan.ConnectDisconnectKeystore.ValueString() == StateDisconnectKeystore {
 			toBeUpdatedOps = true
 			var payload []byte
 			if planAWSParamTFSDK.CustomKeystoreType.ValueString() == CustomKeystoreTypeAWSCloudHSM {
@@ -888,7 +895,7 @@ func (r *resourceAWSCustomKeyStore) Delete(ctx context.Context, req resource.Del
 		return
 	}
 
-	timeouts, diags := state.Timeouts.Update(ctx, 30*time.Minute)
+	timeouts, diags := state.Timeouts.Delete(ctx, 30*time.Minute)
 	resp.Diagnostics.Append(diags...)
 	if resp.Diagnostics.HasError() {
 		return
@@ -1136,11 +1143,11 @@ func (r *resourceAWSCustomKeyStore) retryOperation(ctx context.Context, id strin
 			return response, nil
 		}
 		if awsParamJSONResponse.ConnectionState == StateFailed {
-			break
+			return "", fmt.Errorf("operation reached %s state on attempt %d", StateFailed, attempt)
 		}
 	}
 
-	return "", fmt.Errorf("operation failed after %d retries: %v", maxRetries, err)
+	return "", fmt.Errorf("timed out waiting for state %s after %d attempts", wantState, maxRetries)
 }
 
 func (r *resourceAWSCustomKeyStore) customKeyStoreById(ctx context.Context, id string, state *AWSCustomKeyStoreTFSDK) (string, error) {
@@ -1174,8 +1181,7 @@ func (r *resourceAWSCustomKeyStore) enableDisableCredentialRotation(ctx context.
 			return false
 		}
 		updated = true
-	}
-	if !reflect.DeepEqual(planParams, stateParams) {
+	} else if !reflect.DeepEqual(planParams, stateParams) {
 		r.enableCredentialRotation(ctx, id, plan, diags)
 		if diags.HasError() {
 			return false
@@ -1214,7 +1220,7 @@ func (r *resourceAWSCustomKeyStore) enableCredentialRotation(ctx context.Context
 			diags.AddError(details, "")
 			return
 		}
-		tflog.Trace(ctx, "[resource_aws_custom_key_store.go -> enableCredentialRotation][response:"+response)
+		tflog.Trace(ctx, "[resource_aws_custom_key_store.go -> enableCredentialRotation][response:"+response+"]")
 	}
 }
 
@@ -1228,7 +1234,7 @@ func (r *resourceAWSCustomKeyStore) disableCredentialRotation(ctx context.Contex
 		tflog.Error(ctx, details)
 		return
 	}
-	tflog.Trace(ctx, "[resource_aws_custom_key_store -> disableCredentialRotation][response:"+response)
+	tflog.Trace(ctx, "[resource_aws_custom_key_store.go -> disableCredentialRotation][response:"+response+"]")
 }
 
 func setKeyStoreLabels(ctx context.Context, response string, keyStoreID string, stateLabels *types.Map, diags *diag.Diagnostics) {

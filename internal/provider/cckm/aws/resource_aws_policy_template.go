@@ -114,7 +114,10 @@ func (r *resourceAWSPolicyTemplate) Schema(_ context.Context, _ resource.SchemaR
 			},
 			"name": schema.StringAttribute{
 				Required:    true,
-				Description: "A name for the template.",
+				Description: "A name for the template. Changing this value requires the resource to be replaced.",
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.RequiresReplace(),
+				},
 			},
 			"policy": schema.StringAttribute{
 				Computed: true,
@@ -150,20 +153,6 @@ func (r *resourceAWSPolicyTemplate) Create(ctx context.Context, req resource.Cre
 	if resp.Diagnostics.HasError() {
 		return
 	}
-	if !plan.Policy.IsUnknown() && len(plan.Policy.String()) != 0 {
-		if keyPolicyParams == nil {
-			keyPolicyParams = new(KeyPolicyParamsJSON)
-		}
-		policy := plan.Policy.ValueString()
-		policyBytes := json.RawMessage(policy)
-		keyPolicyParams.Policy = &policyBytes
-	}
-	if keyPolicyParams == nil {
-		msg := "Error creating AWS key policy template, invalid data input."
-		tflog.Error(ctx, msg)
-		resp.Diagnostics.AddError(msg, "")
-		return
-	}
 	payload := PolicyTemplatePayloadJSON{
 		AccountID:           plan.AccountID.ValueString(),
 		Kms:                 plan.Kms.ValueString(),
@@ -188,7 +177,6 @@ func (r *resourceAWSPolicyTemplate) Create(ctx context.Context, req resource.Cre
 	}
 	plan.ID = types.StringValue(gjson.Get(response, "id").String())
 
-	tflog.Trace(ctx, common.MSG_METHOD_START+"[resource_aws_policy_template.go -> Create]["+id+"]")
 	var diags diag.Diagnostics
 	r.setPolicyTemplateState(ctx, response, &plan, &diags)
 	for _, d := range diags {
@@ -209,6 +197,11 @@ func (r *resourceAWSPolicyTemplate) Read(ctx context.Context, req resource.ReadR
 	templateID := state.ID.ValueString()
 	response, err := r.client.GetById(ctx, id, templateID, common.URL_AWS_POLICY_TEMPLATES)
 	if err != nil {
+		if strings.Contains(err.Error(), "404") {
+			tflog.Warn(ctx, "[resource_aws_policy_template.go -> Read][template not found, removing from state][template id: "+templateID+"]")
+			resp.State.RemoveResource(ctx)
+			return
+		}
 		msg := "Error reading AWS key policy template."
 		details := utils.ApiError(msg, map[string]interface{}{"error": err.Error(), "template id": templateID})
 		tflog.Error(ctx, details)
@@ -313,6 +306,9 @@ func (r *resourceAWSPolicyTemplate) Delete(ctx context.Context, req resource.Del
 	var state AWSKeyPolicyTemplateTFSDK
 	diags := req.State.Get(ctx, &state)
 	resp.Diagnostics.Append(diags...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
 	templateID := state.ID.ValueString()
 	_, err := r.client.DeleteByURL(ctx, templateID, common.URL_AWS_POLICY_TEMPLATES+"/"+templateID)
 	if err != nil {
@@ -448,23 +444,33 @@ func (r *resourceAWSPolicyTemplate) setPolicyTemplateState(ctx context.Context, 
 	externalAccounts := gjson.Get(response, "external_accounts").Array()
 	if len(externalAccounts) != 0 {
 		state.ExternalAccounts = utils.StringSliceJSONToSetValue(externalAccounts, diags)
+	} else {
+		state.ExternalAccounts = types.SetNull(types.StringType)
 	}
 	state.IsVerified = types.BoolValue(gjson.Get(response, "is_verified").Bool())
 	keyAdmins := gjson.Get(response, "key_admins").Array()
 	if len(keyAdmins) != 0 {
 		state.KeyAdmins = utils.StringSliceJSONToSetValue(keyAdmins, diags)
+	} else {
+		state.KeyAdmins = types.SetNull(types.StringType)
 	}
 	keyAdminsRoles := gjson.Get(response, "key_admins_roles").Array()
 	if len(keyAdminsRoles) != 0 {
 		state.KeyAdminsRoles = utils.StringSliceJSONToSetValue(keyAdminsRoles, diags)
+	} else {
+		state.KeyAdminsRoles = types.SetNull(types.StringType)
 	}
 	keyUsers := gjson.Get(response, "key_users").Array()
 	if len(keyUsers) != 0 {
 		state.KeyUsers = utils.StringSliceJSONToSetValue(keyUsers, diags)
+	} else {
+		state.KeyUsers = types.SetNull(types.StringType)
 	}
 	keyUsersRoles := gjson.Get(response, "key_users_roles").Array()
 	if len(keyUsersRoles) != 0 {
 		state.KeyUsersRoles = utils.StringSliceJSONToSetValue(keyUsersRoles, diags)
+	} else {
+		state.KeyUsersRoles = types.SetNull(types.StringType)
 	}
 	equivalent := getPoliciesAreEqual(ctx, gjson.Get(response, "policy").String(), state.Policy.ValueString(), diags)
 	if !equivalent {

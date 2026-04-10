@@ -488,7 +488,7 @@ func (r *resourceAWSCloudHSMKey) Create(ctx context.Context, req resource.Create
 		resp.Diagnostics.AddWarning(details, "")
 	} else {
 		response = getResponse
-		tflog.Trace(ctx, "[resource_aws_cloudhsm_key.go -> Create][response:"+response)
+		tflog.Trace(ctx, "[resource_aws_cloudhsm_key.go -> Create][response:"+response+"]")
 	}
 
 	var diags diag.Diagnostics
@@ -501,7 +501,6 @@ func (r *resourceAWSCloudHSMKey) Create(ctx context.Context, req resource.Create
 		resp.Diagnostics.AddWarning(d.Summary(), d.Detail())
 	}
 	resp.Diagnostics.Append(resp.State.Set(ctx, plan)...)
-	tflog.Trace(ctx, "[resource_aws_cloudhsm_key.go -> Create][response:"+response)
 }
 
 func (r *resourceAWSCloudHSMKey) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
@@ -516,13 +515,20 @@ func (r *resourceAWSCloudHSMKey) Read(ctx context.Context, req resource.ReadRequ
 	keyID := state.ID.ValueString()
 	response, err := r.client.GetById(ctx, id, keyID, common.URL_AWS_KEY)
 	if err != nil {
+		if strings.Contains(err.Error(), "Resource not found") {
+			msg := "AWS CloudHSM key was not found, it will be removed from state."
+			details := utils.ApiError(msg, map[string]interface{}{"key_id": keyID})
+			tflog.Warn(ctx, details)
+			resp.State.RemoveResource(ctx)
+			return
+		}
 		msg := "Error reading AWS CloudHSM key."
 		details := utils.ApiError(msg, map[string]interface{}{"error": err.Error(), "key_id": keyID})
 		tflog.Error(ctx, details)
 		resp.Diagnostics.AddError(details, "")
 		return
 	}
-	tflog.Trace(ctx, "[resource_aws_cloudhsm_key.go -> Read][response:"+response)
+	tflog.Trace(ctx, "[resource_aws_cloudhsm_key.go -> Read][response:"+response+"]")
 	description := state.Description
 	setCommonKeyStoreKeyState(ctx, response, &state.AWSKeyStoreKeyCommonTFSDK, &resp.Diagnostics)
 	if resp.Diagnostics.HasError() {
@@ -575,7 +581,7 @@ func (r *resourceAWSCloudHSMKey) Update(ctx context.Context, req resource.Update
 		return
 	}
 	if gjson.Get(response, "linked_state").Bool() {
-		keyEnabled := gjson.Get(response, "aws_param.Enabled").Bool()
+		var keyEnabled bool
 		planEnableKey := false
 		if !plan.EnableKey.IsUnknown() {
 			keyEnabled = gjson.Get(response, "aws_param.Enabled").Bool()
@@ -648,7 +654,7 @@ func (r *resourceAWSCloudHSMKey) Update(ctx context.Context, req resource.Update
 	if resp.Diagnostics.HasError() {
 		return
 	}
-	tflog.Trace(ctx, "[resource_aws_cloudhsm_key.go -> Update][response:"+response)
+	tflog.Trace(ctx, "[resource_aws_cloudhsm_key.go -> Update][response:"+response+"]")
 }
 
 func (r *resourceAWSCloudHSMKey) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
@@ -663,10 +669,18 @@ func (r *resourceAWSCloudHSMKey) Delete(ctx context.Context, req resource.Delete
 	keyID := state.KeyID.ValueString()
 	response, err := r.client.GetById(ctx, id, keyID, common.URL_AWS_KEY)
 	if err != nil {
+		if strings.Contains(err.Error(), "Resource not found") {
+			msg := "AWS CloudHSM key was not found, it will be removed from state."
+			details := utils.ApiError(msg, map[string]interface{}{"key_id": keyID})
+			tflog.Warn(ctx, details)
+			resp.Diagnostics.AddWarning(details, "")
+			return
+		}
 		msg := "Error reading AWS key."
 		details := utils.ApiError(msg, map[string]interface{}{"error": err.Error(), "key_id": keyID})
-		tflog.Warn(ctx, details)
-		resp.Diagnostics.AddWarning(details, "")
+		tflog.Error(ctx, details)
+		resp.Diagnostics.AddError(details, "")
+		return
 	}
 	if gjson.Get(response, "linked_state").Bool() {
 		keyState := gjson.Get(response, "aws_param.KeyState").String()
@@ -691,20 +705,34 @@ func (r *resourceAWSCloudHSMKey) Delete(ctx context.Context, req resource.Delete
 		}
 		_, err = r.client.PostDataV2(ctx, id, common.URL_AWS_KEY+"/"+keyID+"/schedule-deletion", payloadJSON)
 		if err != nil {
-			msg := "Error deleting AWS CloudHSM key."
-			details := utils.ApiError(msg, map[string]interface{}{"error": err.Error(), "key_id": keyID})
-			tflog.Error(ctx, details)
-			resp.Diagnostics.AddError(details, "")
+			if strings.Contains(err.Error(), "Resource not found") {
+				msg := "AWS CloudHSM key was not found, it will be removed from state."
+				details := utils.ApiError(msg, map[string]interface{}{"id": state.ID.ValueString()})
+				tflog.Warn(ctx, details)
+				resp.Diagnostics.AddWarning(details, "")
+			} else {
+				msg := "Error deleting AWS CloudHSM key."
+				details := utils.ApiError(msg, map[string]interface{}{"error": err.Error(), "key_id": keyID})
+				tflog.Error(ctx, details)
+				resp.Diagnostics.AddError(details, "")
+			}
 		}
 	} else {
 		_, err := r.client.DeleteByURL(ctx, keyID, common.URL_AWS_KEY+"/"+keyID)
 		if err != nil {
-			msg := "Error deleting AWS CloudHSM Key."
-			details := utils.ApiError(msg, map[string]interface{}{"error": err.Error(), "key_id": keyID})
-			tflog.Error(ctx, details)
-			resp.Diagnostics.AddError(details, "")
-			return
+			if strings.Contains(err.Error(), "Resource not found") {
+				msg := "AWS CloudHSM key was not found, it will be removed from state."
+				details := utils.ApiError(msg, map[string]interface{}{"id": state.ID.ValueString()})
+				tflog.Warn(ctx, details)
+				resp.Diagnostics.AddWarning(details, "")
+			} else {
+				msg := "Error deleting AWS CloudHSM Key."
+				details := utils.ApiError(msg, map[string]interface{}{"error": err.Error(), "key_id": keyID})
+				tflog.Error(ctx, details)
+				resp.Diagnostics.AddError(details, "")
+				return
+			}
 		}
 	}
-	tflog.Trace(ctx, "[resource_aws_cloudhsm_key.go -> Delete][response:"+response)
+	tflog.Trace(ctx, "[resource_aws_cloudhsm_key.go -> Delete][response:"+response+"]")
 }

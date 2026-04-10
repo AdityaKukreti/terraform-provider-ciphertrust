@@ -381,8 +381,8 @@ func (r *resourceAWSXKSKey) Schema(_ context.Context, _ resource.SchemaRequest, 
 						},
 						"key_source": schema.StringAttribute{
 							Required:    true,
-							Description: "Key source from where the key will be uploaded. Currently, the only option is 'local'.",
-							Validators:  []validator.String{stringvalidator.OneOf([]string{"local"}...)},
+							Description: "Key source from where the key will be uploaded. Options are 'ciphertrust' and 'local' which both rotate using CipherTrust Managers keys.",
+							Validators:  []validator.String{stringvalidator.OneOf([]string{"ciphertrust", "local"}...)},
 						},
 						"disable_encrypt": schema.BoolAttribute{
 							Optional:    true,
@@ -491,7 +491,7 @@ func (r *resourceAWSXKSKey) Create(ctx context.Context, req resource.CreateReque
 		resp.Diagnostics.AddError(details, "")
 		return
 	}
-	tflog.Trace(ctx, "[resource_aws_xks.go -> Create][response:"+response)
+	tflog.Trace(ctx, "[resource_aws_xks_key.go -> Create][response:"+response+"]")
 	plan.ID = types.StringValue(gjson.Get(response, "id").String())
 	plan.KeyID = plan.ID
 
@@ -551,13 +551,20 @@ func (r *resourceAWSXKSKey) Read(ctx context.Context, req resource.ReadRequest, 
 	keyID := state.ID.ValueString()
 	response, err := r.client.GetById(ctx, id, keyID, common.URL_AWS_KEY)
 	if err != nil {
+		if strings.Contains(err.Error(), "Resource not found") {
+			msg := "AWS XKS key was not found, it will be removed from state."
+			details := utils.ApiError(msg, map[string]interface{}{"key_id": keyID})
+			tflog.Warn(ctx, details)
+			resp.State.RemoveResource(ctx)
+			return
+		}
 		msg := "Error reading AWS XKS key."
 		details := utils.ApiError(msg, map[string]interface{}{"error": err.Error(), "key_id": keyID})
 		tflog.Error(ctx, details)
 		resp.Diagnostics.AddError(details, "")
 		return
 	}
-	tflog.Trace(ctx, "[resource_aws_xks_key.go -> Read][response:"+response)
+	tflog.Trace(ctx, "[resource_aws_xks_key.go -> Read][response:"+response+"]")
 	description := state.Description
 	r.setXKSKeyState(ctx, response, &state, &resp.Diagnostics)
 	if resp.Diagnostics.HasError() {
@@ -668,6 +675,13 @@ func (r *resourceAWSXKSKey) Update(ctx context.Context, req resource.UpdateReque
 				return
 			}
 		}
+	} else if !plan.EnableRotation.IsUnknown() {
+		// For unlinked XKS keys, handle enable_rotation changes.
+		// This is a CM-side operation that does not require AWS linked state.
+		enableDisableKeyRotation(ctx, id, r.client, &plan.AWSKeyCommonTFSDK, &state.AWSKeyCommonTFSDK, &resp.Diagnostics)
+		if resp.Diagnostics.HasError() {
+			return
+		}
 	}
 	response, err = r.client.GetById(ctx, id, keyID, common.URL_AWS_KEY)
 	if err != nil {
@@ -697,7 +711,7 @@ func (r *resourceAWSXKSKey) Update(ctx context.Context, req resource.UpdateReque
 	if resp.Diagnostics.HasError() {
 		return
 	}
-	tflog.Trace(ctx, "[resource_aws_xks_key.go -> Update][response:"+response)
+	tflog.Trace(ctx, "[resource_aws_xks_key.go -> Update][response:"+response+"]")
 }
 
 func (r *resourceAWSXKSKey) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
@@ -712,10 +726,18 @@ func (r *resourceAWSXKSKey) Delete(ctx context.Context, req resource.DeleteReque
 	keyID := state.KeyID.ValueString()
 	response, err := r.client.GetById(ctx, id, keyID, common.URL_AWS_KEY)
 	if err != nil {
+		if strings.Contains(err.Error(), "Resource not found") {
+			msg := "AWS XKS key was not found, it will be removed from state."
+			details := utils.ApiError(msg, map[string]interface{}{"key_id": keyID})
+			tflog.Warn(ctx, details)
+			resp.Diagnostics.AddWarning(details, "")
+			return
+		}
 		msg := "Error reading AWS key."
 		details := utils.ApiError(msg, map[string]interface{}{"error": err.Error(), "key_id": keyID})
-		tflog.Warn(ctx, details)
-		resp.Diagnostics.AddWarning(details, "")
+		tflog.Error(ctx, details)
+		resp.Diagnostics.AddError(details, "")
+		return
 	}
 	if gjson.Get(response, "linked_state").Bool() {
 		keyState := gjson.Get(response, "aws_param.KeyState").String()
@@ -769,7 +791,7 @@ func (r *resourceAWSXKSKey) Delete(ctx context.Context, req resource.DeleteReque
 			}
 		}
 	}
-	tflog.Trace(ctx, "[resource_aws_xks_key.go -> Delete][response:"+response)
+	tflog.Trace(ctx, "[resource_aws_xks_key.go -> Delete][response:"+response+"]")
 }
 
 func (r *resourceAWSXKSKey) setXKSKeyState(ctx context.Context, response string, state *AWSXKSKeyTFSDK, diags *diag.Diagnostics) {
@@ -780,7 +802,7 @@ func (r *resourceAWSXKSKey) setXKSKeyState(ctx context.Context, response string,
 func setCommonKeyStoreKeyState(ctx context.Context, response string, state *AWSKeyStoreKeyCommonTFSDK, diags *diag.Diagnostics) {
 	setCommonKeyState(ctx, response, &state.AWSKeyCommonTFSDK, diags)
 	state.Blocked = types.BoolValue(gjson.Get(response, "blocked").Bool())
-	state.AWSCustomKeyStoreID = types.StringValue(gjson.Get(response, "aws_params.CustomKeyStoreId").String())
+	state.AWSCustomKeyStoreID = types.StringValue(gjson.Get(response, "aws_param.CustomKeyStoreId").String())
 	state.CustomKeyStoreID = types.StringValue(gjson.Get(response, "custom_key_store_id").String())
 	state.KeySourceContainerID = types.StringValue(gjson.Get(response, "key_source_container_id").String())
 	state.KeySourceContainerName = types.StringValue(gjson.Get(response, "key_source_container_name").String())

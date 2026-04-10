@@ -14,6 +14,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
+	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
@@ -23,8 +24,9 @@ import (
 )
 
 var (
-	_ resource.Resource              = &resourceCCKMAWSAcl{}
-	_ resource.ResourceWithConfigure = &resourceCCKMAWSAcl{}
+	_ resource.Resource                = &resourceCCKMAWSAcl{}
+	_ resource.ResourceWithConfigure   = &resourceCCKMAWSAcl{}
+	_ resource.ResourceWithImportState = &resourceCCKMAWSAcl{}
 )
 
 func NewResourceCCKMAWSAcl() resource.Resource {
@@ -202,16 +204,24 @@ func (r *resourceCCKMAWSAcl) Read(ctx context.Context, req resource.ReadRequest,
 		return
 	}
 	resourceID := state.ID.ValueString()
-	kmsID := state.KmsID.ValueString()
+	kmsID, _, _, err := acls.DecodeContainerAclID(resourceID)
+	if err != nil {
+		msg := "Error reading ACL, invalid resource ID."
+		details := utils.ApiError(msg, map[string]interface{}{"error": err.Error(), "id": resourceID})
+		tflog.Error(ctx, details)
+		resp.Diagnostics.AddError(details, "")
+		return
+	}
+	state.KmsID = types.StringValue(kmsID)
 
 	response, err := r.client.GetById(ctx, id, kmsID, common.URL_AWS+"/kms")
 	if err != nil {
 		msg := "Error reading AWS KMS."
-		details := utils.ApiError(msg, map[string]interface{}{"error": err.Error(), "vault_id": kmsID})
+		details := utils.ApiError(msg, map[string]interface{}{"error": err.Error(), "kms_id": kmsID})
 		tflog.Warn(ctx, details)
 		resp.Diagnostics.AddWarning(details, "")
 	}
-	tflog.Trace(ctx, "[resource_aws_acls.go -> Read][response:"+response)
+	tflog.Trace(ctx, "[resource_aws_acls.go -> Read][response:"+response+"]")
 	r.setAWSAclState(ctx, resourceID, response, &state, &resp.Diagnostics)
 	resp.Diagnostics.Append(resp.State.Set(ctx, state)...)
 }
@@ -360,8 +370,18 @@ func (r *resourceCCKMAWSAcl) applyAcls(ctx context.Context, id string, kmsID str
 	return response
 }
 
+func (r *resourceCCKMAWSAcl) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
+	id := uuid.New().String()
+	tflog.Trace(ctx, common.MSG_METHOD_START+"[resource_aws_acls.go -> ImportState]["+id+"]")
+	defer tflog.Trace(ctx, common.MSG_METHOD_END+"[resource_aws_acls.go -> ImportState]["+id+"]")
+	resource.ImportStatePassthroughID(ctx, path.Root("id"), req, resp)
+}
+
 func (r *resourceCCKMAWSAcl) setAWSAclState(ctx context.Context, resourceID string, responseJSON string, state *KMSAclTFSDK, diags *diag.Diagnostics) {
 	inputActions := state.Actions
+	// Reset Actions before calling SetAclCommonState so that kms_actions correctly
+	// reflects only what the API returned, not stale user input when the ACL is not found.
+	state.AclTFSDK.Actions, _ = types.SetValue(types.StringType, []attr.Value{})
 	acls.SetAclCommonState(ctx, resourceID, responseJSON, &state.AclTFSDK, diags)
 	if len(state.Actions.Elements()) != 0 {
 		state.KmsActions = state.Actions

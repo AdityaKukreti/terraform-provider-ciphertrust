@@ -444,7 +444,7 @@ func (r *resourceAWSKeyImportMaterial) importKeyMaterial(ctx context.Context, id
 	payload := AWSKeyImportMaterialJSON{}
 
 	if !importMaterialPlan.ImportType.IsUnknown() && !importMaterialPlan.ImportType.IsNull() {
-		payload.ImportType = importMaterialPlan.ImportType.ValueString()
+		payload.ImportType = importMaterialPlan.ImportType.ValueStringPointer()
 	}
 	if !importMaterialPlan.KeyMaterialDescription.IsUnknown() && !importMaterialPlan.KeyMaterialDescription.IsNull() {
 		payload.KeyMaterialDescription = importMaterialPlan.KeyMaterialDescription.ValueStringPointer()
@@ -464,23 +464,22 @@ func (r *resourceAWSKeyImportMaterial) importKeyMaterial(ctx context.Context, id
 	if !importMaterialPlan.ValidTo.IsUnknown() && !importMaterialPlan.ValidTo.IsNull() {
 		payload.ValidTo = importMaterialPlan.ValidTo.ValueString()
 	}
-	jb, _ := json.Marshal(payload)
-	tflog.Info(ctx, string(jb))
 	keyID := plan.KeyID.ValueString()
 	payloadJSON, err := json.Marshal(payload)
 	if err != nil {
 		msg := "Error creating AWS key. Failed to import key material, invalid data input."
 		details := utils.ApiError(msg, map[string]interface{}{"error": err.Error(), "key_id": keyID})
 		tflog.Error(ctx, details)
-		diags.AddWarning(details, "")
+		diags.AddError(details, "")
 		return ""
 	}
+	tflog.Info(ctx, string(payloadJSON))
 	response, err := r.client.PostDataV2(ctx, id, common.URL_AWS_KEY+"/"+keyID+"/import-material", payloadJSON)
 	if err != nil {
 		msg := "Error creating AWS key, failed to import key material."
 		details := utils.ApiError(msg, map[string]interface{}{"error": err.Error(), "key_id": keyID})
 		tflog.Error(ctx, details)
-		diags.AddWarning(details, "")
+		diags.AddError(details, "")
 		return ""
 	}
 	tflog.Trace(ctx, "[resource_aws_key_import_material.go -> importKeyMaterial][response:"+response)
@@ -495,9 +494,6 @@ func setCommonKeyStateImportMaterial(ctx context.Context, response string, state
 	state.CloudName = types.StringValue(gjson.Get(response, "cloud_name").String())
 	state.CreatedAt = types.StringValue(gjson.Get(response, "createdAt").String())
 	state.CustomerMasterKeySpec = types.StringValue(gjson.Get(response, "aws_param.CustomerMasterKeySpec").String())
-	if state.CustomerMasterKeySpec.ValueString() == "" {
-		state.CustomerMasterKeySpec = types.StringValue(gjson.Get(response, "aws_param.MasterKeySpec").String())
-	}
 	state.DeletionDate = types.StringValue(gjson.Get(response, "deletion_date").String())
 	state.EncryptionAlgorithms = utils.StringSliceJSONToListValue(gjson.Get(response, "aws_param.EncryptionAlgorithms").Array(), diags)
 	state.ExpirationModel = types.StringValue(gjson.Get(response, "aws_param.ExpirationModel").String())
@@ -523,7 +519,7 @@ func setCommonKeyStateImportMaterial(ctx context.Context, response string, state
 	state.Origin = types.StringValue(gjson.Get(response, "aws_param.Origin").String())
 	state.Region = types.StringValue(gjson.Get(response, "region").String())
 	state.RotatedAt = types.StringValue(gjson.Get(response, "rotated_at").String())
-	state.RotatedFrom = types.StringValue(gjson.Get(response, "rotated_to").String())
+	state.RotatedFrom = types.StringValue(gjson.Get(response, "rotated_from").String())
 	state.RotationStatus = types.StringValue(gjson.Get(response, "rotation_status").String())
 	state.RotatedTo = types.StringValue(gjson.Get(response, "rotated_to").String())
 	state.SyncedAt = types.StringValue(gjson.Get(response, "synced_at").String())
