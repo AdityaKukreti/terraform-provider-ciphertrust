@@ -293,6 +293,7 @@ func (d *dataSourceAWSKey) Schema(_ context.Context, _ datasource.SchemaRequest,
 	}
 }
 
+// Read looks up an AWS key by filter criteria (ID, alias, ARN, or AWS key ID) and populates Terraform state.
 func (d *dataSourceAWSKey) Read(ctx context.Context, req datasource.ReadRequest, resp *datasource.ReadResponse) {
 	id := uuid.New().String()
 	tflog.Debug(ctx, common.MSG_METHOD_START+"[data_source_aws_key.go -> Read]["+id+"]")
@@ -369,6 +370,7 @@ func (d *dataSourceAWSKey) Read(ctx context.Context, req datasource.ReadRequest,
 	resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
 }
 
+// listAwsKeys lists AWS keys matching the given filters and returns the single matching key JSON, or an error if not exactly one is found.
 func listAwsKeys(ctx context.Context, id string, client *common.Client, filters url.Values, diags *diag.Diagnostics) string {
 	response, err := client.ListWithFilters(ctx, id, common.URL_AWS_KEY, filters)
 	if err != nil {
@@ -397,6 +399,7 @@ func listAwsKeys(ctx context.Context, id string, client *common.Client, filters 
 	return keyJSON
 }
 
+// setKeyDataSourceState populates the full Terraform data source state for an AWS key from an API response JSON string.
 func (d *dataSourceAWSKey) setKeyDataSourceState(ctx context.Context, response string, state *AWSKeyDataSourceTFSDK, diags *diag.Diagnostics) {
 	setCommonKeyDataSourceState(ctx, response, &state.AWSKeyDataSourceCommonTFSDK, diags)
 	setAliases(response, &state.Alias, diags)
@@ -415,6 +418,7 @@ func (d *dataSourceAWSKey) setKeyDataSourceState(ctx context.Context, response s
 	state.ReplicaPolicy = types.StringValue(gjson.Get(response, "replica_policy").String())
 }
 
+// setCommonKeyDataSourceState populates the common key fields shared across AWS key data sources from an API response JSON string.
 func setCommonKeyDataSourceState(ctx context.Context, response string, state *AWSKeyDataSourceCommonTFSDK, diags *diag.Diagnostics) {
 	state.KeyID = types.StringValue(gjson.Get(response, "id").String())
 	state.ARN = types.StringValue(gjson.Get(response, "aws_param.Arn").String())

@@ -274,6 +274,7 @@ func (d *dataSourceAWSCloudHSMKey) Schema(_ context.Context, _ datasource.Schema
 	}
 }
 
+// Read looks up an AWS CloudHSM key by filter criteria and populates Terraform state.
 func (d *dataSourceAWSCloudHSMKey) Read(ctx context.Context, req datasource.ReadRequest, resp *datasource.ReadResponse) {
 	id := uuid.New().String()
 	tflog.Debug(ctx, common.MSG_METHOD_START+"[data_source_aws_cloudhsm_key.go -> Read]["+id+"]")
@@ -337,6 +338,7 @@ func (d *dataSourceAWSCloudHSMKey) Read(ctx context.Context, req datasource.Read
 	resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
 }
 
+// setCloudHSMKeyState populates the Terraform data source state for an AWS CloudHSM key from an API response JSON string.
 func (d *dataSourceAWSCloudHSMKey) setCloudHSMKeyState(ctx context.Context, response string, plan *AWSCloudHSMKeyDataSourceTFSDK, diags *diag.Diagnostics) {
 	setCustomKeyStoreKeyCommonState(ctx, response, &plan.AWSKeyStoreKeyDataSourceCommonTFSDK, diags)
 }

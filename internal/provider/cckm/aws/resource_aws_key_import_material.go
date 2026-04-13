@@ -313,6 +313,7 @@ func (r *resourceAWSKeyImportMaterial) Schema(_ context.Context, _ resource.Sche
 	}
 }
 
+// Create imports key material into an existing EXTERNAL AWS key and sets Terraform state.
 func (r *resourceAWSKeyImportMaterial) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
 	id := uuid.New().String()
 	tflog.Debug(ctx, common.MSG_METHOD_START+"[resource_aws_key_import_material.go -> Create]["+id+"]")
@@ -351,6 +352,7 @@ func (r *resourceAWSKeyImportMaterial) Create(ctx context.Context, req resource.
 	tflog.Debug(ctx, "[resource_aws_key_import_material.go -> Create][response:"+response)
 }
 
+// Read refreshes Terraform state for an import-material resource by reading the current AWS key from CipherTrust Manager.
 func (r *resourceAWSKeyImportMaterial) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
 	id := uuid.New().String()
 	tflog.Debug(ctx, common.MSG_METHOD_START+"[resource_aws_key_import_material.go -> Read]["+id+"]")
@@ -384,6 +386,7 @@ func (r *resourceAWSKeyImportMaterial) Read(ctx context.Context, req resource.Re
 	tflog.Debug(ctx, "[resource_aws_key_import_material.go -> Read][response:"+response)
 }
 
+// Update re-imports key material into the EXTERNAL AWS key when the plan changes.
 func (r *resourceAWSKeyImportMaterial) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
 	id := uuid.New().String()
 	tflog.Debug(ctx, common.MSG_METHOD_START+"[resource_aws_key_import_material.go -> Update]["+id+"]")
@@ -419,9 +422,11 @@ func (r *resourceAWSKeyImportMaterial) Update(ctx context.Context, req resource.
 	tflog.Debug(ctx, "[resource_aws_key_import_material.go -> Update][response:"+response)
 }
 
+// Delete is a no-op; the import material resource does not delete the underlying AWS key on destroy.
 func (r *resourceAWSKeyImportMaterial) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
 }
 
+// setKeyState populates the full Terraform state for an import-material resource from an API response JSON string.
 func (r *resourceAWSKeyImportMaterial) setKeyState(ctx context.Context, response string, state *AWSKeyForImportMaterialTFSDK, diags *diag.Diagnostics) {
 	tflog.Debug(ctx, "[resource_aws_key_import_material.go -> setKeyState][response:"+response)
 	setCommonKeyStateImportMaterial(ctx, response, &state.AWSKeyCommonImportMaterialTFSDK, diags)
@@ -431,6 +436,7 @@ func (r *resourceAWSKeyImportMaterial) setKeyState(ctx context.Context, response
 	state.NextRotationDate = types.StringValue(gjson.Get(response, "aws_param.NextRotationDate").String())
 }
 
+// importKeyMaterial sends the import-material request to CipherTrust Manager for an EXTERNAL AWS key.
 func (r *resourceAWSKeyImportMaterial) importKeyMaterial(ctx context.Context, id string, plan *AWSKeyForImportMaterialTFSDK, diags *diag.Diagnostics) string {
 	tflog.Debug(ctx, common.MSG_METHOD_START+"[resource_aws_key_import_material.go -> importKeyMaterial]["+id+"]")
 	defer tflog.Debug(ctx, common.MSG_METHOD_END+"[resource_aws_key_import_material.go -> importKeyMaterial]["+id+"]")
@@ -486,6 +492,7 @@ func (r *resourceAWSKeyImportMaterial) importKeyMaterial(ctx context.Context, id
 	return response
 }
 
+// setCommonKeyStateImportMaterial populates the common read-only key fields for the import-material resource from an API response.
 func setCommonKeyStateImportMaterial(ctx context.Context, response string, state *AWSKeyCommonImportMaterialTFSDK, diags *diag.Diagnostics) {
 	state.KeyID = types.StringValue(gjson.Get(response, "id").String())
 	state.ARN = types.StringValue(gjson.Get(response, "aws_param.Arn").String())

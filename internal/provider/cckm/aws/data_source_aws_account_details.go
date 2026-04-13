@@ -87,6 +87,7 @@ func (d *dataSourceAWSAccountDetails) Schema(_ context.Context, _ datasource.Sch
 	}
 }
 
+// Read fetches the AWS account ID and available regions for a given AWS connection and populates Terraform state.
 func (d *dataSourceAWSAccountDetails) Read(ctx context.Context, req datasource.ReadRequest, resp *datasource.ReadResponse) {
 	tflog.Debug(ctx, common.MSG_METHOD_START+"[data_source_aws_account_details.go -> Read]")
 	defer tflog.Debug(ctx, common.MSG_METHOD_END+"[data_source_aws_account_details.go -> Read]")

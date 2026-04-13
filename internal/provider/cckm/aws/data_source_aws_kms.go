@@ -166,6 +166,7 @@ func (d *dataSourceAWSKms) Schema(_ context.Context, _ datasource.SchemaRequest,
 	}
 }
 
+// Read lists AWS KMS resources matching the given filters and populates Terraform state.
 func (d *dataSourceAWSKms) Read(ctx context.Context, req datasource.ReadRequest, resp *datasource.ReadResponse) {
 	id := uuid.New().String()
 	tflog.Debug(ctx, common.MSG_METHOD_START+"[data_source_aws_kms.go -> Read]["+id+"]")

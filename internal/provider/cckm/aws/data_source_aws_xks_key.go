@@ -283,6 +283,7 @@ func (d *dataSourceAWSXKSKey) Schema(_ context.Context, _ datasource.SchemaReque
 	}
 }
 
+// Read looks up an AWS XKS key by filter criteria and populates Terraform state.
 func (d *dataSourceAWSXKSKey) Read(ctx context.Context, req datasource.ReadRequest, resp *datasource.ReadResponse) {
 	id := uuid.New().String()
 	tflog.Debug(ctx, common.MSG_METHOD_START+"[data_source_aws_xks_key.go -> Read]["+id+"]")
@@ -346,12 +347,14 @@ func (d *dataSourceAWSXKSKey) Read(ctx context.Context, req datasource.ReadReque
 	resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
 }
 
+// setXKSKeyState populates the Terraform data source state for an AWS XKS key from an API response JSON string.
 func (d *dataSourceAWSXKSKey) setXKSKeyState(ctx context.Context, response string, plan *AWSXKSKeyDataSourceTFSDK, diags *diag.Diagnostics) {
 	setCustomKeyStoreKeyCommonState(ctx, response, &plan.AWSKeyStoreKeyDataSourceCommonTFSDK, diags)
 	plan.AWSXKSKeyID = types.StringValue(gjson.Get(response, "aws_param.XksKeyConfiguration.Id").String())
 	plan.SourceKeyTier = types.StringValue(gjson.Get(response, "key_source").String())
 }
 
+// setCustomKeyStoreKeyCommonState populates the common key store key fields shared by the XKS and CloudHSM key data sources.
 func setCustomKeyStoreKeyCommonState(ctx context.Context, response string, plan *AWSKeyStoreKeyDataSourceCommonTFSDK, diags *diag.Diagnostics) {
 	setCommonKeyDataSourceState(ctx, response, &plan.AWSKeyDataSourceCommonTFSDK, diags)
 	plan.Blocked = types.BoolValue(gjson.Get(response, "blocked").Bool())

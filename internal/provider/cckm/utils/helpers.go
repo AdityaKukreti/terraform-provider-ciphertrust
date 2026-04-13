@@ -15,6 +15,7 @@ import (
 	"github.com/tidwall/gjson"
 )
 
+// StringSliceToListValue converts a Go string slice into a Terraform ListValue of string elements.
 func StringSliceToListValue(inputStrings []string, diags *diag.Diagnostics) basetypes.ListValue {
 	var values []attr.Value
 	for _, item := range inputStrings {
@@ -27,6 +28,7 @@ func StringSliceToListValue(inputStrings []string, diags *diag.Diagnostics) base
 	return stringList
 }
 
+// StringSliceJSONToListValue converts a slice of gjson.Result values into a Terraform ListValue of string elements.
 func StringSliceJSONToListValue(jsonString []gjson.Result, diags *diag.Diagnostics) basetypes.ListValue {
 	var values []attr.Value
 	for _, item := range jsonString {
@@ -39,6 +41,7 @@ func StringSliceJSONToListValue(jsonString []gjson.Result, diags *diag.Diagnosti
 	return stringList
 }
 
+// StringSliceJSONToSetValue converts a slice of gjson.Result values into a Terraform SetValue, deduplicating entries.
 func StringSliceJSONToSetValue(jsonString []gjson.Result, diags *diag.Diagnostics) basetypes.SetValue {
 	var values []attr.Value
 	valueMap := make(map[string]bool)
@@ -56,6 +59,7 @@ func StringSliceJSONToSetValue(jsonString []gjson.Result, diags *diag.Diagnostic
 	return stringSet
 }
 
+// SlicesAreEqual reports whether two string slice pointers contain the same elements regardless of order.
 func SlicesAreEqual(a *[]string, b *[]string) bool {
 	if a == nil && b == nil {
 		return true
@@ -76,6 +80,7 @@ func SlicesAreEqual(a *[]string, b *[]string) bool {
 	return true
 }
 
+// StringInSlice reports whether string a is present in slist.
 func StringInSlice(a string, slist []string) bool {
 	for _, b := range slist {
 		if b == a {
@@ -85,6 +90,7 @@ func StringInSlice(a string, slist []string) bool {
 	return false
 }
 
+// StringsEqual reports whether two string pointers point to equal strings, treating nil as an empty string.
 func StringsEqual(a *string, b *string) bool {
 	if a == nil && b == nil {
 		return true
@@ -95,6 +101,7 @@ func StringsEqual(a *string, b *string) bool {
 	return true
 }
 
+// BytesAreEqual reports whether two json.RawMessage pointers contain identical byte content.
 func BytesAreEqual(a *json.RawMessage, b *json.RawMessage) bool {
 	if a == nil && b == nil {
 		return true
@@ -105,6 +112,7 @@ func BytesAreEqual(a *json.RawMessage, b *json.RawMessage) bool {
 	return true
 }
 
+// ApiError formats a structured error message combining msg with sorted key-value details and the caller's file/line location.
 func ApiError(msg string, details map[string]interface{}) string {
 	str := msg + "\n"
 	if details != nil {

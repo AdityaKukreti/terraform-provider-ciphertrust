@@ -174,6 +174,7 @@ func (d *dataSourceAWSKeyRotationList) Schema(_ context.Context, _ datasource.Sc
 	}
 }
 
+// Read lists the rotation history for a given AWS key and populates Terraform state.
 func (d *dataSourceAWSKeyRotationList) Read(ctx context.Context, req datasource.ReadRequest, resp *datasource.ReadResponse) {
 	id := uuid.New().String()
 	tflog.Debug(ctx, common.MSG_METHOD_START+"[data_source_aws_key_rotation_list.go -> Read]["+id+"]")

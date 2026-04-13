@@ -218,6 +218,7 @@ func (d *datasourceAWSCustomKeyStoreDataSource) Schema(ctx context.Context, _ da
 	}
 }
 
+// Read retrieves an AWS custom key store by its ID and populates Terraform state.
 func (d *datasourceAWSCustomKeyStoreDataSource) Read(ctx context.Context, req datasource.ReadRequest, resp *datasource.ReadResponse) {
 	id := uuid.New().String()
 	tflog.Debug(ctx, common.MSG_METHOD_START+"[data_source_aws_custom_key_store.go -> Read]["+id+"]")
@@ -252,6 +253,7 @@ func (d *datasourceAWSCustomKeyStoreDataSource) Read(ctx context.Context, req da
 	}
 }
 
+// setCustomKeyStoreState populates the Terraform data source state for an AWS custom key store from an API response JSON string.
 func (d *datasourceAWSCustomKeyStoreDataSource) setCustomKeyStoreState(ctx context.Context, response string, plan *AWSCustomKeyStoreCommonTFSDK, diags *diag.Diagnostics) {
 	plan.CloudName = types.StringValue(gjson.Get(response, "cloud_name").String())
 	plan.CredentialVersion = types.StringValue(gjson.Get(response, "credential_version").String())

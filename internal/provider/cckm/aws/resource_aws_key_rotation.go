@@ -81,6 +81,7 @@ func (r *resourceAWSKeyRotation) Schema(_ context.Context, _ resource.SchemaRequ
 	}
 }
 
+// Create sends a key material rotation request to AWS and records the operation in Terraform state.
 func (r *resourceAWSKeyRotation) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
 	id := uuid.New().String()
 	tflog.Debug(ctx, common.MSG_METHOD_START+"[resource_aws_key_rotation.go -> Create]["+id+"]")
@@ -108,6 +109,9 @@ func (r *resourceAWSKeyRotation) Create(ctx context.Context, req resource.Create
 	tflog.Debug(ctx, "[resource_aws_key_rotation.go -> Create][response:"+response)
 }
 
+// Read verifies the referenced AWS key still exists in CipherTrust Manager. If the underlying AWS key is
+// no longer found (HTTP 404 / "status: 404"), the rotation resource is silently removed from Terraform state
+// rather than returning an error, allowing Terraform to plan its recreation.
 func (r *resourceAWSKeyRotation) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
 	id := uuid.New().String()
 	tflog.Debug(ctx, common.MSG_METHOD_START+"[resource_aws_key_rotation.go -> Read]["+id+"]")
@@ -140,12 +144,15 @@ func (r *resourceAWSKeyRotation) Read(ctx context.Context, req resource.ReadRequ
 	tflog.Debug(ctx, "[resource_aws_key_rotation.go -> Read][response:"+response)
 }
 
+// Update is a no-op; rotations are immutable once submitted and require replace.
 func (r *resourceAWSKeyRotation) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
 }
 
+// Delete is a no-op; rotation records are removed from state only and do not affect the AWS key.
 func (r *resourceAWSKeyRotation) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
 }
 
+// rotateKeyMaterial calls the CipherTrust Manager rotate-material API for the specified AWS key.
 func (r *resourceAWSKeyRotation) rotateKeyMaterial(ctx context.Context, id string, plan *AWSKeyRotationTFSDK, diags *diag.Diagnostics) string {
 	tflog.Debug(ctx, "[resource_aws_key_rotation.go -> rotateKeyMaterial]["+id+"]")
 	keyID := plan.KeyID.ValueString()
