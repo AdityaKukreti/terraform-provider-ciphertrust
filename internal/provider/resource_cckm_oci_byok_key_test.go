@@ -2,52 +2,12 @@ package provider
 
 import (
 	"fmt"
-	"os"
 	"testing"
 
 	"github.com/google/uuid"
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
 	"github.com/hashicorp/terraform-plugin-testing/terraform"
 )
-
-func initCckmOCITest(t *testing.T) string {
-
-	keyFile := os.Getenv("CCKM_OCI_KEY_FILE")
-	pubKeyFP := os.Getenv("CCKM_OCI_FINGERPRINT")
-	region := os.Getenv("CCKM_OCI_REGION")
-	tenancyOCID := os.Getenv("CCKM_OCI_CONN_TENANCY")
-	userOCID := os.Getenv("CCKM_OCI_USER")
-	vaultOCID := os.Getenv("CCKM_OCI_VAULT")
-
-	ok := keyFile != "" && pubKeyFP != "" && region != "" && tenancyOCID != "" && userOCID != "" /*&& compartmentOCID != "" */ && vaultOCID != ""
-	if !ok {
-		t.Skip("Failed to get OCI connection environment variables")
-	}
-	name := "tf-" + uuid.New().String()[:8]
-	config := `
-		locals {
-			vault_ocid          = "%s"
-			region              = "%s"
-		}
-		resource "ciphertrust_oci_connection" "oci_connection" {
-			key_file = <<-EOT
-			%s
-			EOT
-			name                = "%s"
-			pub_key_fingerprint = "%s"
-			region              = "%s"
-			tenancy_ocid        = "%s"
-			user_ocid           = "%s"
-		}
-		resource "ciphertrust_oci_vault" "vault" {
-			connection_id = ciphertrust_oci_connection.oci_connection.id
-			vault_id      = local.vault_ocid
-			region        = local.region
-		}`
-	resourceStr := fmt.Sprintf(config,
-		vaultOCID, region, keyFile, name, pubKeyFP, region, tenancyOCID, userOCID)
-	return resourceStr
-}
 
 func TestCckmOCIKeysAndVersionsBYOK(t *testing.T) {
 
@@ -321,6 +281,7 @@ func TestCckmOCIKeysAndVersionsBYOK(t *testing.T) {
 	minResourceStr := fmt.Sprintf(minConfig, localsResource, connectionResource)
 
 	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { cleanupCckmOCIVaults() },
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
 		Steps: []resource.TestStep{
 			{
@@ -332,15 +293,15 @@ func TestCckmOCIKeysAndVersionsBYOK(t *testing.T) {
 					resource.TestCheckResourceAttr(keyResource, "source_key_tier", "local"),
 					resource.TestCheckResourceAttr(keyResource, "oci_key_params.protection_mode", "SOFTWARE"),
 					resource.TestCheckResourceAttrPair(keyResource, "vault", "ciphertrust_oci_vault.vault", "id"),
-					resource.TestCheckResourceAttrSet(keyResource, "oci_key_params.key_id"), // was oci_key_id — bug fix
+					resource.TestCheckResourceAttrSet(keyResource, "oci_key_params.key_id"),
 					resource.TestCheckResourceAttrSet(keyResource, "vault_id"),
 					resource.TestCheckResourceAttr(keyResource, "labels.%", "2"),
-				// version_summary reflects versions present at key-read time (not later-added versions in same apply)
-				resource.TestCheckResourceAttrSet(keyResource, "version_summary.0.version_id"),
-				// Version resource (byok_v1)
+					// version_summary reflects versions present at key-read time (not later-added versions in same apply)
+					resource.TestCheckResourceAttrSet(keyResource, "version_summary.0.version_id"),
+					// Version resource (byok_v1)
 					resource.TestCheckResourceAttrSet(versionResource, "id"),
 					resource.TestCheckResourceAttrPair(versionResource, "cckm_key_id", keyResource, "id"),
-					resource.TestCheckResourceAttrSet(versionResource, "oci_key_version_params.vault_id"), // validates KV-2 fix
+					resource.TestCheckResourceAttrSet(versionResource, "oci_key_version_params.vault_id"),
 					resource.TestCheckResourceAttrSet(versionResource, "oci_key_version_params.key_id"),
 					resource.TestCheckResourceAttrSet(versionResource, "oci_key_version_params.version_id"),
 					// Key list data source

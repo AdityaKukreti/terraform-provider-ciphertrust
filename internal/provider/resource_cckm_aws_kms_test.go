@@ -1,13 +1,63 @@
 package provider
 
 import (
+	"context"
 	"fmt"
+	"github.com/ThalesGroup/terraform-provider-ciphertrust/internal/provider/common"
+	"github.com/tidwall/gjson"
+	"net/url"
 	"os"
 	"testing"
 
 	"github.com/google/uuid"
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
 )
+
+// cleanupCckmAwsKMS lists all CCKM AWS KMS registrations in CipherTrust Manager and deletes each one.
+// This is called via PreCheck on every CCKM AWS test to remove any KMS resources left behind by a
+// previous failed test run. Only runs when TF_CCKM_CLEANUP=true is set, so that contributors do not
+// accidentally wipe their own CM resources. All errors are logged as warnings - the cleanup is
+// best-effort and never fails the test.
+func cleanupCckmAwsKMS() {
+	if os.Getenv("TF_CCKM_CLEANUP") != "true" {
+		return
+	}
+	address := os.Getenv("CIPHERTRUST_ADDRESS")
+	username := os.Getenv("CIPHERTRUST_USERNAME")
+	password := os.Getenv("CIPHERTRUST_PASSWORD")
+	domain := "root"
+	if address == "" || username == "" || password == "" {
+		fmt.Println("cleanupCckmAwsKMS: CIPHERTRUST_ADDRESS, CIPHERTRUST_USERNAME and CIPHERTRUST_PASSWORD must be set, skipping cleanup")
+		return
+	}
+	ctx := context.Background()
+	client, err := common.NewClient(ctx, uuid.NewString(), &address, &domain, &domain, &username, &password, true, 180)
+	if err != nil {
+		fmt.Printf("** cleanupCckmAwsKMS: failed to create client: %s\n", err.Error())
+		return
+	}
+	filters := url.Values{}
+	filters.Add("limit", "1000")
+	response, err := client.ListWithFilters(ctx, uuid.NewString(), common.URL_AWS_KMS, filters)
+	if err != nil {
+		fmt.Printf("** cleanupCckmAwsKMS: failed to list KMS: %s\n", err.Error())
+		return
+	}
+	resources := gjson.Get(response, "resources").Array()
+	if len(resources) == 0 {
+		return
+	}
+	for _, r := range resources {
+		kmsID := gjson.Get(r.Raw, "id").String()
+		kmsName := gjson.Get(r.Raw, "name").String()
+		_, err := client.DeleteByURL(ctx, uuid.NewString(), common.URL_AWS_KMS+"/"+kmsID)
+		if err != nil {
+			fmt.Printf("** cleanupCckmAwsKMS: failed to delete KMS '%s' (%s): %s\n", kmsName, kmsID, err.Error())
+		} else {
+			fmt.Printf("cleanupCckmAwsKMS: deleted KMS '%s'\n", kmsName)
+		}
+	}
+}
 
 func TestCckmAWSKms(t *testing.T) {
 	if os.Getenv("AWS_ACCESS_KEY_ID") == "" || os.Getenv("AWS_SECRET_ACCESS_KEY") == "" {
@@ -67,6 +117,7 @@ func TestCckmAWSKms(t *testing.T) {
 
 	resourceName := "ciphertrust_aws_kms.kms"
 	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { cleanupCckmAwsKMS() },
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
 		Steps: []resource.TestStep{
 			{
@@ -121,6 +172,7 @@ func TestCckmAWSKmsImport(t *testing.T) {
 
 	resourceName := "ciphertrust_aws_kms.kms"
 	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { cleanupCckmAwsKMS() },
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
 		Steps: []resource.TestStep{
 			{

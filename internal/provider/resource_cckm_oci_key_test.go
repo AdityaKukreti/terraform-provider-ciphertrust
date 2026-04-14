@@ -2,11 +2,55 @@ package provider
 
 import (
 	"fmt"
+	"os"
 	"testing"
 
 	"github.com/google/uuid"
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
 )
+
+// initCckmOCITest builds the Terraform resource configuration used as a shared setup by most CCKM OCI
+// tests. It creates an OCI connection and registers an OCI vault, exposing them as Terraform resources
+// that each test can embed in its own config. Skips the test if the required OCI environment variables
+// are not set.
+func initCckmOCITest(t *testing.T) string {
+
+	keyFile := os.Getenv("CCKM_OCI_KEY_FILE")
+	pubKeyFP := os.Getenv("CCKM_OCI_FINGERPRINT")
+	region := os.Getenv("CCKM_OCI_REGION")
+	tenancyOCID := os.Getenv("CCKM_OCI_CONN_TENANCY")
+	userOCID := os.Getenv("CCKM_OCI_USER")
+	vaultOCID := os.Getenv("CCKM_OCI_VAULT")
+
+	ok := keyFile != "" && pubKeyFP != "" && region != "" && tenancyOCID != "" && userOCID != "" /*&& compartmentOCID != "" */ && vaultOCID != ""
+	if !ok {
+		t.Skip("Failed to get OCI connection environment variables")
+	}
+	name := "tf-" + uuid.New().String()[:8]
+	config := `
+		locals {
+			vault_ocid          = "%s"
+			region              = "%s"
+		}
+		resource "ciphertrust_oci_connection" "oci_connection" {
+			key_file = <<-EOT
+			%s
+			EOT
+			name                = "%s"
+			pub_key_fingerprint = "%s"
+			region              = "%s"
+			tenancy_ocid        = "%s"
+			user_ocid           = "%s"
+		}
+		resource "ciphertrust_oci_vault" "vault" {
+			connection_id = ciphertrust_oci_connection.oci_connection.id
+			vault_id      = local.vault_ocid
+			region        = local.region
+		}`
+	resourceStr := fmt.Sprintf(config,
+		vaultOCID, region, keyFile, name, pubKeyFP, region, tenancyOCID, userOCID)
+	return resourceStr
+}
 
 func TestCckmOCIKeysAndVersionsNative(t *testing.T) {
 
@@ -94,6 +138,7 @@ func TestCckmOCIKeysAndVersionsNative(t *testing.T) {
 	updateResourceStr := fmt.Sprintf(updateConfig, localsResource, connectionResource)
 
 	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { cleanupCckmOCIVaults() },
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
 		Steps: []resource.TestStep{
 			{
@@ -111,7 +156,7 @@ func TestCckmOCIKeysAndVersionsNative(t *testing.T) {
 					// Version resource
 					resource.TestCheckResourceAttrSet(versionResource, "id"),
 					resource.TestCheckResourceAttrPair(versionResource, "cckm_key_id", keyResource, "id"),
-					resource.TestCheckResourceAttrSet(versionResource, "oci_key_version_params.vault_id"), // validates KV-2 fix
+					resource.TestCheckResourceAttrSet(versionResource, "oci_key_version_params.vault_id"),
 					resource.TestCheckResourceAttrSet(versionResource, "oci_key_version_params.key_id"),
 					resource.TestCheckResourceAttrSet(versionResource, "oci_key_version_params.version_id"),
 					// Key list data source

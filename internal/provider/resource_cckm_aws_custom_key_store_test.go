@@ -112,6 +112,7 @@ func TestCckmAWSCustomKeyStoreUnlinked(t *testing.T) {
 
 	keyStoreResourceName := "ciphertrust_aws_custom_keystore.unlinked_xks_custom_keystore"
 	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { cleanupCckmAwsKMS() },
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
 		Steps: []resource.TestStep{
 			{

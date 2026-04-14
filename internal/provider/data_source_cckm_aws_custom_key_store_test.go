@@ -58,6 +58,7 @@ func TestCckmAWSDataSourceCustomKeyStore(t *testing.T) {
 	dataSourceResourceName := "data.ciphertrust_aws_custom_keystore.by_id"
 
 	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { cleanupCckmAwsKMS() },
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
 		Steps: []resource.TestStep{
 			{

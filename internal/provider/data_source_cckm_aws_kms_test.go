@@ -85,6 +85,7 @@ func TestCckmAWSDataSourceKms(t *testing.T) {
 	kmsTwoResourceName := "ciphertrust_aws_kms.kms_two"
 
 	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { cleanupCckmAwsKMS() },
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
 		Steps: []resource.TestStep{
 			{

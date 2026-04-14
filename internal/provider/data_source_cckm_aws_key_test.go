@@ -66,6 +66,7 @@ func TestCckmAWSDataSourceKey(t *testing.T) {
 	dataSourceBySecondAlias := "data.ciphertrust_aws_key.by_alias_ex2"
 
 	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { cleanupCckmAwsKMS() },
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
 		Steps: []resource.TestStep{
 			{

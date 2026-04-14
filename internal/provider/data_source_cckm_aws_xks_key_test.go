@@ -93,6 +93,7 @@ func TestCckmAWSDataSourceXksKey(t *testing.T) {
 
 	keyResource := "ciphertrust_aws_xks_key.xks_key"
 	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { cleanupCckmAwsKMS() },
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
 		Steps: []resource.TestStep{
 			{

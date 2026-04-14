@@ -49,6 +49,7 @@ func TestCckmOCIConnection(t *testing.T) {
 		`description = "Updated by Terraform test"`)
 
 	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { cleanupCckmOCIVaults() },
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
 		Steps: []resource.TestStep{
 			// Step 1: Create and verify core attributes

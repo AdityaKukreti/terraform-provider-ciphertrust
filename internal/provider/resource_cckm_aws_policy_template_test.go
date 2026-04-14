@@ -141,6 +141,7 @@ func TestCckmAWSPolicyTemplate(t *testing.T) {
 	updateConfigStrEx4 := fmt.Sprintf(updateConfigEx4, templateNameEx4)
 
 	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { cleanupCckmAwsKMS() },
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
 		Steps: []resource.TestStep{
 			{

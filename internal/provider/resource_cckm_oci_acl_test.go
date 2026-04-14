@@ -140,6 +140,7 @@ func TestCckmOCIAcl(t *testing.T) {
 	vaultDatasourceName := "data.ciphertrust_oci_vault_list.vault_ds"
 
 	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { cleanupCckmOCIVaults() },
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
 		Steps: []resource.TestStep{
 			{

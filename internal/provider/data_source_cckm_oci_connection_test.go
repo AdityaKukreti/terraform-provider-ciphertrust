@@ -66,6 +66,7 @@ func TestCckmOCIDataSourceConnection(t *testing.T) {
 	vaultsWithLimit := "data.ciphertrust_get_oci_vaults.vaults_with_limit"
 
 	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { cleanupCckmOCIVaults() },
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
 		Steps: []resource.TestStep{
 			{

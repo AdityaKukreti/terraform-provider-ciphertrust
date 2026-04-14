@@ -23,6 +23,7 @@ func TestCckmAWSDataSourceAccountDetails(t *testing.T) {
 	datasourceName := "data.ciphertrust_aws_account_details.account_details"
 
 	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { cleanupCckmAwsKMS() },
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
 		Steps: []resource.TestStep{
 			{

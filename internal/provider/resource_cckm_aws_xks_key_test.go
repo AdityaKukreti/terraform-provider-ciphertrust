@@ -165,6 +165,7 @@ func TestCckmAWSXKSUnlinkedKey(t *testing.T) {
 	keyResourceMinParams := "ciphertrust_aws_xks_key.unlinked_cm_source_min_params"
 
 	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { cleanupCckmAwsKMS() },
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
 		Steps: []resource.TestStep{
 			{

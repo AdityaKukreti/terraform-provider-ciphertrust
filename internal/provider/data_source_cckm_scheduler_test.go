@@ -43,6 +43,7 @@ func TestCckmSchedulersRotationDataSource(t *testing.T) {
 			createConfig = strings.ReplaceAll(createConfig, "rotate_material = true", "")
 		}
 		resource.Test(t, resource.TestCase{
+			PreCheck:                 func() { cleanupCckmAwsKMS() },
 			ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
 			Steps: []resource.TestStep{
 				{
@@ -91,6 +92,7 @@ func TestCckmSchedulersRotationDataSource(t *testing.T) {
 		resourceName := "ciphertrust_scheduler.xks_credential_rotation"
 		datasourceName := "data.ciphertrust_scheduler_list.xks_credential_rotation"
 		resource.Test(t, resource.TestCase{
+			PreCheck:                 func() { cleanupCckmAwsKMS() },
 			ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
 			Steps: []resource.TestStep{
 				{
@@ -132,6 +134,7 @@ func TestCckmSchedulersRotationDataSource(t *testing.T) {
 		datasourceName := "data.ciphertrust_scheduler_list.oci_rotation_scheduler"
 		createConfigStr := fmt.Sprintf(createConfig, expiration, expireIn, name)
 		resource.Test(t, resource.TestCase{
+			PreCheck:                 func() { cleanupCckmOCIVaults() },
 			ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
 			Steps: []resource.TestStep{
 				{
@@ -179,6 +182,7 @@ func TestCckmSchedulersSyncDataSource(t *testing.T) {
 		syncJobName := "tf" + uuid.New().String()[:8]
 		createConfig := connectionResource + fmt.Sprintf(createParams, syncJobName)
 		resource.Test(t, resource.TestCase{
+			PreCheck:                 func() { cleanupCckmAwsKMS() },
 			ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
 			Steps: []resource.TestStep{
 				{
@@ -222,6 +226,7 @@ func TestCckmSchedulersSyncDataSource(t *testing.T) {
 		syncJobName := "tf" + uuid.New().String()[:8]
 		createConfigStr := connectionResource + fmt.Sprintf(createConfig, syncJobName)
 		resource.Test(t, resource.TestCase{
+			PreCheck:                 func() { cleanupCckmOCIVaults() },
 			ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
 			Steps: []resource.TestStep{
 				{

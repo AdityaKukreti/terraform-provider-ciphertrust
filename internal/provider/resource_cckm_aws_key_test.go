@@ -56,6 +56,11 @@ var importStateVerifyIgnoreAwsKey = []string{
 	"upload_key",
 }
 
+// initCckmAwsTest builds the Terraform provider and resource configuration used as a shared setup
+// by most CCKM AWS tests. It creates an AWS connection, looks up account details, registers a KMS
+// with three regions, and exposes alias and cmKeyName locals for use in each test's own config.
+// Returns the config string and true when the required AWS environment variables are set,
+// or an empty string and false when they are not (the caller should t.Skip() in that case).
 func initCckmAwsTest(timeout ...int) (string, bool) {
 	awsAccessKeyID := os.Getenv("AWS_ACCESS_KEY_ID")
 	awsSecretAccessKey := os.Getenv("AWS_SECRET_ACCESS_KEY")
@@ -271,6 +276,7 @@ func TestCckmAWSKeyNative(t *testing.T) {
 	updateKeyConfigStr2 := fmt.Sprintf(updateKeyConfig2, policyTemplateName)
 
 	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { cleanupCckmAwsKMS() },
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
 		Steps: []resource.TestStep{
 			{
@@ -440,6 +446,7 @@ func TestCckmAWSKeyImportKeyMaterial(t *testing.T) {
 		validTo := time.Now().UTC().AddDate(0, 0, 1).Format(time.RFC3339)
 
 		resource.Test(t, resource.TestCase{
+			PreCheck:                 func() { cleanupCckmAwsKMS() },
 			ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
 			Steps: []resource.TestStep{
 				{
@@ -535,6 +542,7 @@ func TestCckmAWSKeyUpload(t *testing.T) {
 
 	uploadConfig := awsConnectionResource + fmt.Sprintf(uploadKeys, validTo, awsKeyPolicy)
 	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { cleanupCckmAwsKMS() },
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
 		Steps: []resource.TestStep{
 			{
@@ -657,6 +665,7 @@ func TestCckmAWSKeyMultiRegion(t *testing.T) {
 		updateResources := awsConnectionResource + fmt.Sprintf(updateConfig, aliasA, aliasB,
 			replicaAlias, awsKeyUsers[0], awsKeyUsers[1], awsKeyRoles[0], awsKeyRoles[1])
 		resource.Test(t, resource.TestCase{
+			PreCheck:                 func() { cleanupCckmAwsKMS() },
 			ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
 			Steps: []resource.TestStep{
 				{
@@ -779,6 +788,7 @@ func TestCckmAWSKeyMultiRegion(t *testing.T) {
 		validTo := time.Now().UTC().AddDate(0, 0, 1).Format(time.RFC3339)
 		replicateConfigStr := awsConnectionResource + fmt.Sprintf(replicateConfig, validTo)
 		resource.Test(t, resource.TestCase{
+			PreCheck:                 func() { cleanupCckmAwsKMS() },
 			ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
 			Steps: []resource.TestStep{
 				{
@@ -957,6 +967,7 @@ func TestCckmAWSKeyRotation(t *testing.T) {
 		aesCmKeyRotationName := "tf-aes-key-rotation" + uuid.NewString()[:]
 
 		resource.Test(t, resource.TestCase{
+			PreCheck:                 func() { cleanupCckmAwsKMS() },
 			ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
 			Steps: []resource.TestStep{
 				{
@@ -1035,6 +1046,7 @@ func TestCckmAWSKeyNativeImport(t *testing.T) {
 	createKeyConfigStr := fmt.Sprintf(createKeyConfig, schedulerOneName, aliasList[0], aliasList[1], awsKeyUsers[0], awsKeyUsers[1], awsKeyRoles[0], awsKeyRoles[1])
 
 	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { cleanupCckmAwsKMS() },
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
 		Steps: []resource.TestStep{
 			{
@@ -1106,6 +1118,7 @@ func TestCckmAWSKeyImportMaterialResource(t *testing.T) {
 		cmKeyName := "tf-aes-" + uuid.NewString()
 
 		resource.Test(t, resource.TestCase{
+			PreCheck:                 func() { cleanupCckmAwsKMS() },
 			ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
 			Steps: []resource.TestStep{
 				{
@@ -1164,6 +1177,7 @@ func TestCckmAWSKeyImportMaterialResourceExpiry(t *testing.T) {
 		validTo := time.Now().UTC().AddDate(0, 0, 1).Format(time.RFC3339)
 
 		resource.Test(t, resource.TestCase{
+			PreCheck:                 func() { cleanupCckmAwsKMS() },
 			ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
 			Steps: []resource.TestStep{
 				{

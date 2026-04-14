@@ -67,6 +67,7 @@ func TestCckmOCIDatasourceVault(t *testing.T) {
 	compartmentsDataSource := "data.ciphertrust_get_oci_compartments.compartments"
 
 	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { cleanupCckmOCIVaults() },
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
 		Steps: []resource.TestStep{
 			{
