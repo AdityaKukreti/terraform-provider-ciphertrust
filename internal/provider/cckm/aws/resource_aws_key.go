@@ -972,7 +972,7 @@ func setCommonKeyStateEx(ctx context.Context, response string, state *AWSKeyComm
 	state.EnableKey = types.BoolValue(gjson.Get(response, "aws_param.Enabled").Bool())
 	state.Enabled = types.BoolValue(gjson.Get(response, "aws_param.Enabled").Bool())
 	policy := gjson.Get(response, "aws_param.Policy").String()
-	if !getPoliciesAreEqual(ctx, policy, state.Policy.ValueString(), diags) {
+	if state.Policy.IsUnknown() || !getPoliciesAreEqual(ctx, policy, state.Policy.ValueString(), diags) {
 		state.Policy = types.StringValue(policy)
 	}
 	setPolicyTemplateTag(ctx, response, &state.PolicyTemplateTag, diags)
