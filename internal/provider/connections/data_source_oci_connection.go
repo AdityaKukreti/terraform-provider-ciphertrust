@@ -61,8 +61,8 @@ func (d *dataSourceOCIConnection) Schema(_ context.Context, _ datasource.SchemaR
 							Description: "Date and time the connection was created.",
 						},
 						"description": schema.StringAttribute{
-							Optional:    true,
-							Description: "Description about the connection",
+							Computed:    true,
+							Description: "Description about the connection.",
 						},
 						"id": schema.StringAttribute{
 							Computed:    true,
@@ -70,7 +70,7 @@ func (d *dataSourceOCIConnection) Schema(_ context.Context, _ datasource.SchemaR
 						},
 						"meta": schema.MapAttribute{
 							ElementType: types.StringType,
-							Optional:    true,
+							Computed:    true,
 							Description: "Optional end-user or service data stored with the connection.",
 						},
 						"name": schema.StringAttribute{
@@ -102,7 +102,7 @@ func (d *dataSourceOCIConnection) Schema(_ context.Context, _ datasource.SchemaR
 							Computed:    true,
 							Description: "Date and time of last update.",
 						},
-						//common response parameters (optional)
+						// Common response parameters.
 						"uri":                   schema.StringAttribute{Computed: true},
 						"account":               schema.StringAttribute{Computed: true},
 						"service":               schema.StringAttribute{Computed: true},
@@ -110,7 +110,8 @@ func (d *dataSourceOCIConnection) Schema(_ context.Context, _ datasource.SchemaR
 						"resource_url":          schema.StringAttribute{Computed: true},
 						"last_connection_ok":    schema.BoolAttribute{Computed: true},
 						"last_connection_error": schema.StringAttribute{Computed: true},
-						"last_connection_at":    schema.StringAttribute{Computed: true}},
+						"last_connection_at":    schema.StringAttribute{Computed: true},
+					},
 				},
 			},
 		},
@@ -184,16 +185,11 @@ func (d *dataSourceOCIConnection) Read(ctx context.Context, req datasource.ReadR
 			// Create the map to store attr.Value for Meta
 			metaMap := make(map[string]attr.Value)
 			for key, value := range oci.Meta.(map[string]interface{}) {
-				// Convert each value in meta to the corresponding attr.Value
+				// The meta schema is map(string), so all values must be stored as strings.
 				switch v := value.(type) {
 				case string:
 					metaMap[key] = types.StringValue(v)
-				case int64:
-					metaMap[key] = types.Int64Value(v)
-				case bool:
-					metaMap[key] = types.BoolValue(v)
 				default:
-					// For unknown types, convert them to a string representation
 					metaMap[key] = types.StringValue(fmt.Sprintf("%v", v))
 				}
 			}

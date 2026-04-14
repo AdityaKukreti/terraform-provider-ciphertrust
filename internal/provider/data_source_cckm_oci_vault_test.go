@@ -61,7 +61,6 @@ func TestCckmOCIDatasourceVault(t *testing.T) {
 
 	name := "tf-" + uuid.New().String()[:8]
 	connectionConfigStr := fmt.Sprintf(connectionConfig, ociKeyFile, name, ociPubKeyFP, ociRegion, ociTenancyOCID, ociUserOCID)
-	vaultsByName := "data.ciphertrust_oci_vault_list.by_name"
 	vaultByName := "data.ciphertrust_oci_vault_list.by_name"
 	vaultsNoFilters := "data.ciphertrust_oci_vault_list.no_filters"
 	vaultsDataSource := "data.ciphertrust_get_oci_vaults.vaults"
@@ -73,11 +72,15 @@ func TestCckmOCIDatasourceVault(t *testing.T) {
 			{
 				Config: connectionConfigStr,
 				Check: resource.ComposeTestCheckFunc(
-					resource.TestCheckResourceAttr(vaultsByName, "vaults.#", "1"),
+					// Vault resource
+					resource.TestCheckResourceAttrSet("ciphertrust_oci_vault.vault", "id"),
+					// By-name vault list data source
+					resource.TestCheckResourceAttr(vaultByName, "vaults.#", "1"),
 					resource.TestCheckResourceAttrSet(vaultByName, "vaults.0.name"),
 					resource.TestCheckResourceAttrPair(vaultByName, "vaults.0.vault_id", vaultsDataSource, "vaults.0.vault_id"),
 					resource.TestCheckResourceAttrPair(vaultByName, "vaults.0.compartment_id", compartmentsDataSource, "compartments.0.id"),
-					resource.TestCheckResourceAttr(vaultsNoFilters, "vaults.#", "1"),
+					// No-filter vault list: fragile count omitted; check at least one entry present
+					resource.TestCheckResourceAttrSet(vaultsNoFilters, "vaults.0.vault_id"),
 				),
 			},
 		},

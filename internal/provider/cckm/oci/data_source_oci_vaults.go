@@ -57,7 +57,7 @@ func (d *dataSourceOCIVault) Configure(_ context.Context, req datasource.Configu
 
 func (d *dataSourceOCIVault) Schema(_ context.Context, _ datasource.SchemaRequest, resp *datasource.SchemaResponse) {
 	resp.Schema = schema.Schema{
-		Description: "Use this data source to retrieve a list of CipherTrust Manager vaults.\n\n" +
+		Description: "Use this data source to retrieve a list of OCI vaults managed by CipherTrust Manager.\n\n" +
 			"Give a filter of 'limit=-1' to list more than 10 matches.",
 		Attributes: map[string]schema.Attribute{
 			"filters": schema.MapAttribute{
@@ -124,7 +124,7 @@ func (d *dataSourceOCIVault) Schema(_ context.Context, _ datasource.SchemaReques
 						},
 						"created_at": schema.StringAttribute{
 							Computed:    true,
-							Description: "Date/time the application was created",
+							Description: "Date/time the vault was created in CipherTrust Manager.",
 						},
 						"defined_tags": schema.SetNestedAttribute{
 							Computed:    true,
@@ -170,7 +170,7 @@ func (d *dataSourceOCIVault) Schema(_ context.Context, _ datasource.SchemaReques
 						},
 						"refreshed_at": schema.StringAttribute{
 							Computed:    true,
-							Description: "Date/time the application was refreshed.",
+							Description: "Date/time the vault was last refreshed.",
 						},
 						"region": schema.StringAttribute{
 							Computed:    true,
@@ -202,7 +202,7 @@ func (d *dataSourceOCIVault) Schema(_ context.Context, _ datasource.SchemaReques
 						},
 						"updated_at": schema.StringAttribute{
 							Computed:    true,
-							Description: "Date/time the application was updated.",
+							Description: "Date/time the vault was last updated.",
 						},
 						"uri": schema.StringAttribute{
 							Computed:    true,
@@ -219,9 +219,12 @@ func (d *dataSourceOCIVault) Schema(_ context.Context, _ datasource.SchemaReques
 	}
 }
 
+// Read lists OCI vaults from CipherTrust Manager, optionally filtered by the
+// key:value pairs in the filters attribute, and saves the results to state.
 func (d *dataSourceOCIVault) Read(ctx context.Context, req datasource.ReadRequest, resp *datasource.ReadResponse) {
 	id := uuid.New().String()
-	tflog.Trace(ctx, common.MSG_METHOD_START+"[data_source_oci_vaults.go -> Read]["+id+"]")
+	tflog.Debug(ctx, common.MSG_METHOD_START+"[data_source_oci_vaults.go -> Read]["+id+"]")
+	defer tflog.Debug(ctx, common.MSG_METHOD_END+"[data_source_oci_vaults.go -> Read]["+id+"]")
 	var state OCIVaultDataSourceModel
 	resp.Diagnostics.Append(req.Config.Get(ctx, &state)...)
 	if resp.Diagnostics.HasError() {
@@ -239,7 +242,7 @@ func (d *dataSourceOCIVault) Read(ctx context.Context, req datasource.ReadReques
 	if err != nil {
 		tflog.Debug(ctx, common.ERR_METHOD_END+err.Error()+" [data_source_oci_vaults.go -> Read]["+id+"]")
 		resp.Diagnostics.AddError(
-			"Unable to read OCI vault from CipherTrust Manager",
+			"Unable to read OCI vaults from CipherTrust Manager",
 			err.Error(),
 		)
 		return
@@ -250,7 +253,7 @@ func (d *dataSourceOCIVault) Read(ctx context.Context, req datasource.ReadReques
 	if err != nil {
 		tflog.Debug(ctx, common.ERR_METHOD_END+err.Error()+" [data_source_oci_vaults.go -> Read]["+id+"]")
 		resp.Diagnostics.AddError(
-			"Unable to read OCI vault from CipherTrust Manager",
+			"Unable to read OCI vaults from CipherTrust Manager",
 			err.Error(),
 		)
 		return
@@ -313,5 +316,4 @@ func (d *dataSourceOCIVault) Read(ctx context.Context, req datasource.ReadReques
 	state.Matched = types.Int64Value(gjson.Get(jsonStr, "total").Int())
 
 	resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
-	tflog.Trace(ctx, common.MSG_METHOD_END+"[data_source_oci_vaults.go -> Read]["+id+"]")
 }

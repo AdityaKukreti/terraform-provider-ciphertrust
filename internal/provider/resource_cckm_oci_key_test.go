@@ -13,8 +13,8 @@ func TestCckmOCIKeysAndVersionsNative(t *testing.T) {
 	connectionResource := initCckmOCITest(t)
 
 	localsConfig := `locals {
-		connection_name     = "tf-%s"
 		oci_key_name        = "tf-%s"
+		oci_key_name_update = "tf-%s"
 	}`
 
 	localsResource := fmt.Sprintf(localsConfig, uuid.New().String()[:8], uuid.New().String()[:8])
@@ -54,12 +54,44 @@ func TestCckmOCIKeysAndVersionsNative(t *testing.T) {
 			depends_on = [ciphertrust_oci_key_version.version]
 		}`
 
+	updateConfig := `
+		%s
+		%s
+
+		resource "ciphertrust_oci_key" "rsa" {
+			oci_key_params = {
+				algorithm       = "RSA"
+				compartment_id  = ciphertrust_oci_vault.vault.compartment_id
+				length          = 256
+				protection_mode = "SOFTWARE"
+			}
+			name            = local.oci_key_name_update
+			vault           = ciphertrust_oci_vault.vault.id
+		}
+
+		resource "ciphertrust_oci_key_version" "version" {
+			cckm_key_id = ciphertrust_oci_key.rsa.id
+		}
+
+		data "ciphertrust_oci_key_list" "keys" {
+			depends_on = [ciphertrust_oci_key_version.version]
+			filters = {
+				key_name = ciphertrust_oci_key.rsa.name
+			}
+		}
+
+		data "ciphertrust_oci_key_version_list" "versions" {
+			key_id = ciphertrust_oci_key.rsa.id
+			depends_on = [ciphertrust_oci_key_version.version]
+		}`
+
 	keyResource := "ciphertrust_oci_key.rsa"
 	versionResource := "ciphertrust_oci_key_version.version"
 	keysDataSource := "data.ciphertrust_oci_key_list.keys"
 	versionDataSource := "data.ciphertrust_oci_key_version_list.versions"
 
 	createResourceStr := fmt.Sprintf(createConfig, localsResource, connectionResource)
+	updateResourceStr := fmt.Sprintf(updateConfig, localsResource, connectionResource)
 
 	resource.Test(t, resource.TestCase{
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
@@ -67,8 +99,32 @@ func TestCckmOCIKeysAndVersionsNative(t *testing.T) {
 			{
 				Config: createResourceStr,
 				Check: resource.ComposeTestCheckFunc(
+					// Key resource
+					resource.TestCheckResourceAttrSet(keyResource, "id"),
+					resource.TestCheckResourceAttr(keyResource, "oci_key_params.algorithm", "RSA"),
+					resource.TestCheckResourceAttr(keyResource, "oci_key_params.length", "256"),
+					resource.TestCheckResourceAttr(keyResource, "oci_key_params.protection_mode", "SOFTWARE"),
+					resource.TestCheckResourceAttr(keyResource, "enable_key", "true"),
+					resource.TestCheckResourceAttr(keyResource, "labels.%", "0"),
+					resource.TestCheckResourceAttrSet(keyResource, "oci_key_params.key_id"),
+					resource.TestCheckResourceAttrSet(keyResource, "vault_id"),
+					// Version resource
+					resource.TestCheckResourceAttrSet(versionResource, "id"),
+					resource.TestCheckResourceAttrPair(versionResource, "cckm_key_id", keyResource, "id"),
+					resource.TestCheckResourceAttrSet(versionResource, "oci_key_version_params.vault_id"), // validates KV-2 fix
+					resource.TestCheckResourceAttrSet(versionResource, "oci_key_version_params.key_id"),
+					resource.TestCheckResourceAttrSet(versionResource, "oci_key_version_params.version_id"),
+					// Key list data source
 					resource.TestCheckResourceAttr(keysDataSource, "keys.#", "1"),
+					resource.TestCheckResourceAttr(keysDataSource, "matched", "1"),
+					resource.TestCheckResourceAttrPair(keysDataSource, "keys.0.id", keyResource, "id"),
+					resource.TestCheckResourceAttr(keysDataSource, "keys.0.oci_key_params.algorithm", "RSA"),
+					resource.TestCheckResourceAttr(keysDataSource, "keys.0.oci_key_params.protection_mode", "SOFTWARE"),
+					resource.TestCheckResourceAttr(keysDataSource, "keys.0.oci_key_params.length", "256"),
+					// Key version list data source
 					resource.TestCheckResourceAttr(versionDataSource, "versions.#", "2"),
+					resource.TestCheckResourceAttr(versionDataSource, "matched", "2"),
+					resource.TestCheckResourceAttrSet(versionDataSource, "versions.0.id"),
 				),
 			},
 			{
@@ -88,12 +144,41 @@ func TestCckmOCIKeysAndVersionsNative(t *testing.T) {
 				ResourceName:      versionResource,
 				ImportState:       true,
 				ImportStateVerify: true,
+				ImportStateVerifyIgnore: []string{
+					"schedule_for_deletion_days",
+				},
 				ImportStateIdFunc: getOCIKeyVersionID(keyResource, versionResource),
+			},
+			{
+				Config: updateResourceStr,
+				Check: resource.ComposeTestCheckFunc(
+					// Key resource
+					resource.TestCheckResourceAttrSet(keyResource, "id"),
+					resource.TestCheckResourceAttr(keyResource, "oci_key_params.algorithm", "RSA"),
+					// Version resource
+					resource.TestCheckResourceAttrSet(versionResource, "id"),
+					// Key list data source
+					resource.TestCheckResourceAttrPair(keyResource, "id", keysDataSource, "keys.0.id"),
+					resource.TestCheckResourceAttr(keysDataSource, "matched", "1"),
+					// Key version list data source
+					resource.TestCheckResourceAttr(versionDataSource, "versions.#", "2"),
+				),
 			},
 			{
 				Config: createResourceStr,
 				Check: resource.ComposeTestCheckFunc(
+					// Key resource
 					resource.TestCheckResourceAttr(keyResource, "version_summary.#", "2"),
+					resource.TestCheckResourceAttr(keyResource, "oci_key_params.algorithm", "RSA"),
+					// Version resource
+					resource.TestCheckResourceAttrSet(versionResource, "id"),
+					// Key list data source
+					resource.TestCheckResourceAttr(keysDataSource, "keys.#", "1"),
+					resource.TestCheckResourceAttr(keysDataSource, "matched", "1"),
+					// Key version list data source
+					resource.TestCheckResourceAttr(versionDataSource, "versions.#", "2"),
+					resource.TestCheckResourceAttr(versionDataSource, "matched", "2"),
+					resource.TestCheckResourceAttrSet(versionDataSource, "versions.0.id"),
 				),
 			},
 		},

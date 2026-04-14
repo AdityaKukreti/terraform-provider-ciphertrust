@@ -17,6 +17,12 @@ import (
 	"github.com/tidwall/gjson"
 )
 
+// deleteKeyVersion schedules an OCI key version for deletion.
+// Used by resourceCCKMOCIByokVersion and resourceCCKMOCIKeyVersion.
+// Returns a warning (not error) if:
+//   - the version is not found (404)  -  allows Terraform to remove from state
+//   - the version is the current key version  -  cannot be independently deleted in OCI;
+//     a warning is emitted and the resource is removed from state
 func deleteKeyVersion(ctx context.Context, id string, client *common.Client, keyID string, versionID string, days int64, diags *diag.Diagnostics) {
 	payload := models.ScheduleForDeletionJSON{
 		Days: days,
@@ -32,9 +38,10 @@ func deleteKeyVersion(ctx context.Context, id string, client *common.Client, key
 	response, err := client.PostDataV2(ctx, id, common.URL_OCI+"/keys/"+keyID+"/versions/"+versionID+"/schedule-deletion", payloadJSON)
 	if err != nil {
 		if strings.Contains(err.Error(), currentVersionError) {
-			//msg := "The current version of the can only deleted when the key is deleted."
-			//details := utils.ApiError(msg, map[string]interface{}{"key_id": keyID, "version_id": versionID})
-			//diags.AddWarning(details, "")
+			msg := "OCI BYOK key version is the current key version and cannot be deleted independently. It will be removed from state but remains active in OCI until the parent key is deleted."
+			details := utils.ApiError(msg, map[string]interface{}{"key_id": keyID, "version_id": versionID})
+			tflog.Warn(ctx, details)
+			diags.AddWarning(details, "")
 			return
 		}
 		msg := "Error scheduling OCI key version for deletion."
@@ -48,9 +55,11 @@ func deleteKeyVersion(ctx context.Context, id string, client *common.Client, key
 		}
 		return
 	}
-	tflog.Trace(ctx, "[oci_key_version_common.go -> Delete][response:"+response)
+	tflog.Debug(ctx, "[oci_key_version_common.go -> deleteKeyVersion][response:"+response+"]")
 }
 
+// setCommonKeyVersionState populates shared TFSDK state fields from a raw CM API response string.
+// Used by resourceCCKMOCIKeyVersion and resourceCCKMOCIByokVersion.
 func setCommonKeyVersionState(ctx context.Context, response string, state *models.KeyVersionTFSDK, diags *diag.Diagnostics) {
 	state.Account = types.StringValue(gjson.Get(response, "account").String())
 	state.CloudName = types.StringValue(gjson.Get(response, "cloud_name").String())
@@ -72,7 +81,7 @@ func setCommonKeyVersionState(ctx context.Context, response string, state *model
 		TimeCreated:              types.StringValue(gjson.Get(response, "oci_key_version_params.time_created").String()),
 		TimeOfDeletion:           types.StringValue(gjson.Get(response, "oci_key_version_params.time_of_deletion").String()),
 		VersionID:                types.StringValue(gjson.Get(response, "oci_key_version_params.version_id").String()),
-		VaultID:                  types.StringValue(gjson.Get(response, "vault_id").String()),
+		VaultID:                  types.StringValue(gjson.Get(response, "oci_key_version_params.vault_id").String()),
 	}
 	setOciKeyVersionParamsState(ctx, &keyVersionParams, &state.KeyVersionParams, diags)
 	if diags.HasError() {
@@ -95,24 +104,27 @@ func setOciKeyVersionParamsState(ctx context.Context, keyVersionParams *models.K
 	}
 }
 
-func setHYOKKeyVersionParams(ctx context.Context, hyokKeyVersionParams *models.DataSourceHYOKKeyVersionParamsTFSDK, state *types.Object, diags *diag.Diagnostics) {
+func setBYOKKeyVersionParams(ctx context.Context, byokKeyVersionParams *models.DataSourceBYOKKeyVersionParamsTFSDK, state *types.Object, diags *diag.Diagnostics) {
 	var dg diag.Diagnostics
-	var hyokVersionParamsObjectValue basetypes.ObjectValue
-	hyokVersionParamsObjectValue, dg = types.ObjectValueFrom(ctx, models.HYOKKeyVersionParamsTFSDKAttribs, hyokKeyVersionParams)
+	var byokVersionParamsObjectValue basetypes.ObjectValue
+	byokVersionParamsObjectValue, dg = types.ObjectValueFrom(ctx, models.BYOKKeyVersionParamsTFSDKAttribs, byokKeyVersionParams)
 	if dg.HasError() {
 		diags.Append(dg...)
 		return
 	}
-	*state, dg = hyokVersionParamsObjectValue.ToObjectValue(ctx)
+	*state, dg = byokVersionParamsObjectValue.ToObjectValue(ctx)
 	if dg.HasError() {
 		diags.Append(dg...)
 		return
 	}
 }
 
+// waitForKeyVersionState polls until the OCI key version reaches expectedState.
+// Used by resourceCCKMOCIByokVersion and resourceCCKMOCIKeyVersion.
+// Returns an error if the version does not reach expectedState within oci_operation_timeout.
 func waitForKeyVersionState(ctx context.Context, id string, client *common.Client, keyID string, versionID string, expectedState string, diags *diag.Diagnostics) {
-	tflog.Trace(ctx, common.MSG_METHOD_START+"[oci_key_version_common.go -> waitForKeyVersionState]["+id+"]")
-	defer tflog.Trace(ctx, common.MSG_METHOD_END+"[oci_key_version_common.go -> waitForKeyVersionState]["+id+"]")
+	tflog.Debug(ctx, common.MSG_METHOD_START+"[oci_key_version_common.go -> waitForKeyVersionState]["+id+"]")
+	defer tflog.Debug(ctx, common.MSG_METHOD_END+"[oci_key_version_common.go -> waitForKeyVersionState]["+id+"]")
 	response, err := client.GetById(ctx, id, versionID, common.URL_OCI+"/keys/"+keyID+"/versions")
 	if err != nil {
 		msg := "Error reading OCI key version."
@@ -155,5 +167,5 @@ func waitForKeyVersionState(ctx context.Context, id string, client *common.Clien
 		tflog.Error(ctx, details)
 		diags.AddError(details, "")
 	}
-	tflog.Trace(ctx, "[oci_key_version_common.go -> waitForKeyVersionState][response:"+response)
+	tflog.Debug(ctx, "[oci_key_version_common.go -> waitForKeyVersionState][response:"+response+"]")
 }

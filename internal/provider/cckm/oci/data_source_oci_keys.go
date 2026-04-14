@@ -95,7 +95,7 @@ func (d *dataSourceOCIKeys) Schema(_ context.Context, _ datasource.SchemaRequest
 						},
 						"created_at": schema.StringAttribute{
 							Computed:    true,
-							Description: "Date/time the application was created",
+							Description: "Date/time the key was created in CipherTrust Manager.",
 						},
 						"id": schema.StringAttribute{
 							Computed:    true,
@@ -212,7 +212,7 @@ func (d *dataSourceOCIKeys) Schema(_ context.Context, _ datasource.SchemaRequest
 						},
 						"updated_at": schema.StringAttribute{
 							Computed:    true,
-							Description: "Date/time the application was updated.",
+							Description: "Date/time the key was last updated.",
 						},
 						"uri": schema.StringAttribute{
 							Computed:    true,
@@ -224,7 +224,7 @@ func (d *dataSourceOCIKeys) Schema(_ context.Context, _ datasource.SchemaRequest
 						},
 						"external_key_params": schema.SingleNestedAttribute{
 							Computed:    true,
-							Description: "The attributes are related to external (hyok) keys.",
+							Description: "The attributes are related to BYOK keys.",
 							Attributes: map[string]schema.Attribute{
 								"blocked": schema.BoolAttribute{
 									Computed:    true,
@@ -287,9 +287,13 @@ func (d *dataSourceOCIKeys) Schema(_ context.Context, _ datasource.SchemaRequest
 	}
 }
 
+// Read lists OCI keys from CipherTrust Manager, optionally filtered by the
+// key:value pairs in the filters attribute, and saves the results to state.
+// Makes one additional API call per key to populate version_summary.
 func (d *dataSourceOCIKeys) Read(ctx context.Context, req datasource.ReadRequest, resp *datasource.ReadResponse) {
 	id := uuid.New().String()
-	tflog.Trace(ctx, common.MSG_METHOD_START+"[data_source_oci_keys.go -> Read]["+id+"]")
+	tflog.Debug(ctx, common.MSG_METHOD_START+"[data_source_oci_keys.go -> Read]["+id+"]")
+	defer tflog.Debug(ctx, common.MSG_METHOD_END+"[data_source_oci_keys.go -> Read]["+id+"]")
 	var state KeysDataSourceModel
 	resp.Diagnostics.Append(req.Config.Get(ctx, &state)...)
 	if resp.Diagnostics.HasError() {
@@ -356,10 +360,10 @@ func (d *dataSourceOCIKeys) Read(ctx context.Context, req datasource.ReadRequest
 				TimeOfDeletion:    types.StringValue(key.TimeOfDeletion),
 				VaultName:         types.StringValue(key.VaultName),
 			},
-			HYOKKeyParams: models.DataSourceHYOKKeyParamsTFSDK{
+			BYOKKeyParams: models.DataSourceBYOKKeyParamsTFSDK{
 				Blocked:     types.BoolValue(key.Blocked),
 				LinkedState: types.BoolValue(key.LinkedState),
-				Name:        types.StringValue(key.DisplayName),
+				Name:        types.StringValue(key.Name),
 				Policy:      types.StringValue(key.Policy),
 				State:       types.StringValue(key.State),
 			},
@@ -388,5 +392,4 @@ func (d *dataSourceOCIKeys) Read(ctx context.Context, req datasource.ReadRequest
 	state.Matched = types.Int64Value(gjson.Get(jsonStr, "total").Int())
 
 	resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
-	tflog.Trace(ctx, common.MSG_METHOD_END+"[data_source_oci_keys.go -> Read]["+id+"]")
 }

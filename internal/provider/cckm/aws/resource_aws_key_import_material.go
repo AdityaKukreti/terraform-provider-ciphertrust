@@ -429,7 +429,7 @@ func (r *resourceAWSKeyImportMaterial) Delete(ctx context.Context, req resource.
 // setKeyState populates the full Terraform state for an import-material resource from an API response JSON string.
 func (r *resourceAWSKeyImportMaterial) setKeyState(ctx context.Context, response string, state *AWSKeyForImportMaterialTFSDK, diags *diag.Diagnostics) {
 	tflog.Debug(ctx, "[resource_aws_key_import_material.go -> setKeyState][response:"+response)
-	setCommonKeyStateImportMaterial(ctx, response, &state.AWSKeyCommonImportMaterialTFSDK, diags)
+	r.setImportMaterialState(ctx, response, &state.AWSKeyCommonImportMaterialTFSDK, diags)
 	state.MultiRegion = types.BoolValue(gjson.Get(response, "aws_param.MultiRegion").Bool())
 	state.MultiRegionKeyType = types.StringValue(gjson.Get(response, "aws_param.MultiRegionConfiguration.MultiRegionKeyType").String())
 	setMultiRegionConfiguration(ctx, response, &state.MultiRegionPrimaryKey, &state.MultiRegionReplicaKeys, diags)
@@ -493,7 +493,7 @@ func (r *resourceAWSKeyImportMaterial) importKeyMaterial(ctx context.Context, id
 }
 
 // setCommonKeyStateImportMaterial populates the common read-only key fields for the import-material resource from an API response.
-func setCommonKeyStateImportMaterial(ctx context.Context, response string, state *AWSKeyCommonImportMaterialTFSDK, diags *diag.Diagnostics) {
+func (r *resourceAWSKeyImportMaterial) setImportMaterialState(ctx context.Context, response string, state *AWSKeyCommonImportMaterialTFSDK, diags *diag.Diagnostics) {
 	state.KeyID = types.StringValue(gjson.Get(response, "id").String())
 	state.ARN = types.StringValue(gjson.Get(response, "aws_param.Arn").String())
 	state.AWSAccountID = types.StringValue(gjson.Get(response, "aws_param.AWSAccountId").String())

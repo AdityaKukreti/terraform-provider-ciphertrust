@@ -25,12 +25,19 @@ testacc:
 	rm -rf /work/terraform-provider-ciphertrust-v1/*.log
 	rm -rf /work/terraform-provider-ciphertrust-v1-101/*.log
 #TF_ACC=1 go test -v -timeout 120m ./...
-#TF_ACC=1 go test -v -timeout 120m ./internal/provider/ -run TestCckmOCI
+#	TF_ACC=1 go test -v -timeout 120m ./internal/provider/ -run TestCckmOCIConnection
+#	TF_ACC=1 go test -v -timeout 120m ./internal/provider/ -run TestCckmOCIKeysAndVersionsNative
+#	TF_ACC=1 go test -v -timeout 120m ./internal/provider/ -run TestCckmOCIKeysAndVersionsBYOK
+#	TF_ACC=1 go test -v -timeout 120m ./internal/provider/ -run TestCckmOCIAcl
+#	TF_ACC=1 go test -v -timeout 120m ./internal/provider/ -run TestCckmOCIVault
+	TF_ACC=1 go test -v -timeout 120m ./internal/provider/ -run TestCckmOCIDatasourceVault
+#	TF_ACC=1 go test -v -timeout 120m ./internal/provider/ -run TestCckmOCIDataSourceConnection
+#	TF_ACC=1 go test -v -timeout 120m ./internal/provider/ -run TestCckmOCI
 #	TF_ACC=1 go test -v -timeout 120m ./internal/provider/ -run TestOciConnection
 #	TF_ACC=1 go test -v -timeout 120m ./internal/provider/ -run TestResourceGCPConnection
-	TF_ACC=1 go test -v -timeout 120m ./internal/provider/ -run TestCckmSchedulersRotationDataSource
-	TF_ACC=1 go test -v -timeout 120m ./internal/provider/ -run TestCckmSchedulersRotationResource
-	TF_ACC=1 go test -v -timeout 120m ./internal/provider/ -run TestCckmAWS
+#	TF_ACC=1 go test -v -timeout 120m ./internal/provider/ -run TestCckmSchedulersRotationDataSource
+#	TF_ACC=1 go test -v -timeout 120m ./internal/provider/ -run TestCckmSchedulersRotationResource
+#	TF_ACC=1 go test -v -timeout 120m ./internal/provider/ -run TestCckmAWS
 #	TF_ACC=1 go test -v -timeout 120m ./internal/provider/ -run TestCckmAWSKey
 #	TF_ACC=1 go test -v -timeout 120m ./internal/provider/ -run TestCckmAWSKeyNative
 #	TF_ACC=1 go test -v -timeout 120m ./internal/provider/ -run TestCckmAWSKeyNativeImport

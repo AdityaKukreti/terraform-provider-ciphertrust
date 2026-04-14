@@ -96,6 +96,7 @@ func TestCckmOCIVault(t *testing.T) {
 	connectionConfigStr := fmt.Sprintf(connectionConfig, ociKeyFile, name, ociPubKeyFP, ociRegion, ociTenancyOCID, ociUserOCID)
 	updateConfigStr := fmt.Sprintf(updateConfig, ociKeyFile, name, ociPubKeyFP, ociRegion, ociTenancyOCID, ociUserOCID,
 		ociKeyFile, nameTwo, ociPubKeyFP, ociRegion, ociTenancyOCID, ociUserOCID)
+	connectionResource := "ciphertrust_oci_connection.connection"
 	connectionTwoResource := "ciphertrust_oci_connection.connection_two"
 	vaultResource := "ciphertrust_oci_vault.vault"
 	vaultsDataSource := "data.ciphertrust_get_oci_vaults.vaults"
@@ -108,6 +109,16 @@ func TestCckmOCIVault(t *testing.T) {
 			{
 				Config: connectionConfigStr,
 				Check: resource.ComposeTestCheckFunc(
+					// Regions data source
+					resource.TestCheckResourceAttrSet(regionsDataSource, "oci_regions.0"),
+					// Compartments data source
+					resource.TestCheckResourceAttrSet(compartmentsDataSource, "compartments.0.id"),
+					// Vaults data source
+					resource.TestCheckResourceAttrSet(vaultsDataSource, "vaults.0.vault_id"),
+					resource.TestCheckResourceAttrSet(vaultsDataSource, "vaults.0.lifecycle_state"),
+					// Vault resource
+					resource.TestCheckResourceAttrSet(vaultResource, "id"),
+					resource.TestCheckResourceAttrPair(vaultResource, "connection_id", connectionResource, "name"),
 					resource.TestCheckResourceAttrPair(vaultResource, "vault_id", vaultsDataSource, "vaults.0.vault_id"),
 					resource.TestCheckResourceAttrPair(vaultResource, "compartment_id", compartmentsDataSource, "compartments.0.id"),
 					resource.TestCheckResourceAttrPair(vaultResource, "region", regionsDataSource, "oci_regions.0"),
@@ -124,6 +135,15 @@ func TestCckmOCIVault(t *testing.T) {
 			{
 				Config: updateConfigStr,
 				Check: resource.ComposeTestCheckFunc(
+					// Regions data source
+					resource.TestCheckResourceAttrSet(regionsDataSource, "oci_regions.0"),
+					// Compartments data source
+					resource.TestCheckResourceAttrSet(compartmentsDataSource, "compartments.0.id"),
+					// Vaults data source
+					resource.TestCheckResourceAttrSet(vaultsDataSource, "vaults.0.vault_id"),
+					resource.TestCheckResourceAttrSet(vaultsDataSource, "vaults.0.lifecycle_state"),
+					// Vault resource
+					resource.TestCheckResourceAttrSet(vaultResource, "id"),
 					resource.TestCheckResourceAttrPair(vaultResource, "connection_id", connectionTwoResource, "name"),
 					resource.TestCheckResourceAttrPair(vaultResource, "vault_id", vaultsDataSource, "vaults.0.vault_id"),
 					resource.TestCheckResourceAttrPair(vaultResource, "compartment_id", compartmentsDataSource, "compartments.0.id"),

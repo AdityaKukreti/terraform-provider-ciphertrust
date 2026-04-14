@@ -172,7 +172,7 @@ func TestCckmAWSXKSUnlinkedKey(t *testing.T) {
 				Check: resource.ComposeTestCheckFunc(
 					resource.TestCheckResourceAttr(keyResourceMaxParams, "alias.#", "3"),
 					// blocked, enable_key, key_state: for unlinked keys these are stored from plan but not
-					// applied to AWS — block/enable ops are gated on linked_state == true.
+					// applied to AWS - block/enable ops are gated on linked_state == true.
 					resource.TestCheckResourceAttr(keyResourceMaxParams, "blocked", "true"),
 					resource.TestCheckResourceAttr(keyResourceMaxParams, "enable_key", "false"),
 					resource.TestCheckResourceAttr(keyResourceMaxParams, "labels.%", "4"),
@@ -312,7 +312,7 @@ func TestCckmAWSXKSUnlinkedKey(t *testing.T) {
 				Check: resource.ComposeTestCheckFunc(
 					resource.TestCheckResourceAttr(keyResourceMaxParams, "alias.#", "3"),
 					// blocked, enable_key, key_state: for unlinked keys these are stored from plan but not
-					// applied to AWS — block/enable ops are gated on linked_state == true.
+					// applied to AWS - block/enable ops are gated on linked_state == true.
 					resource.TestCheckResourceAttr(keyResourceMaxParams, "blocked", "true"),
 					resource.TestCheckResourceAttr(keyResourceMaxParams, "enable_key", "false"),
 					resource.TestCheckResourceAttr(keyResourceMaxParams, "labels.%", "4"),

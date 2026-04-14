@@ -245,7 +245,7 @@ func (r *resourceAWSCustomKeyStore) Schema(ctx context.Context, _ resource.Schem
 							Computed: true,
 							Optional: true,
 							Default:  booldefault.StaticBool(false),
-							Description: "(Updatable) Set it to true to enable tls client-side certificate verification — where CipherTrust manager authenticates the AWS KMS client. +" +
+							Description: "(Updatable) Set it to true to enable tls client-side certificate verification  -  where CipherTrust manager authenticates the AWS KMS client. +" +
 								"Default value is false.",
 						},
 						"partition_id": schema.StringAttribute{
@@ -933,7 +933,7 @@ func (r *resourceAWSCustomKeyStore) Delete(ctx context.Context, req resource.Del
 	tflog.Debug(ctx, common.MSG_METHOD_END+"[resource_aws_custom_key_store.go -> Delete]["+state.ID.ValueString()+"]["+output+"]")
 	if err != nil {
 		if strings.Contains(err.Error(), "Resource not found") {
-			msg := "AWS custom key stores was not found, it will be removed from state."
+			msg := "AWS custom key store was not found, it will be removed from state."
 			details := utils.ApiError(msg, map[string]interface{}{"id": state.ID.ValueString()})
 			tflog.Warn(ctx, details)
 			resp.Diagnostics.AddWarning(details, "")
@@ -1187,9 +1187,8 @@ func (r *resourceAWSCustomKeyStore) customKeyStoreById(ctx context.Context, id s
 }
 
 // enableDisableCredentialRotation enables or disables the CipherTrust Manager credential rotation job
-// for the custom key store based on the difference between plan and state.
-// Called exclusively from resourceAWSCustomKeyStore.Update, and only when the key store's
-// local_hosted_params.linked_state is true (silently skipped for unlinked key stores).
+// for the custom key store based on the difference between plan and state. Used by resourceAWSCustomKeyStore (Update).
+// Only applied when local_hosted_params.linked_state is true (silently skipped for unlinked key stores).
 // Returns true if a credential rotation change was made, false otherwise.
 func (r *resourceAWSCustomKeyStore) enableDisableCredentialRotation(ctx context.Context, id string, plan *AWSCustomKeyStoreTFSDK, state *AWSCustomKeyStoreTFSDK, diags *diag.Diagnostics) bool {
 	tflog.Debug(ctx, common.MSG_METHOD_START+"[resource_aws_custom_key_store.go -> enableDisableCredentialRotation]["+id+"]")

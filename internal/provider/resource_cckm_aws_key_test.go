@@ -1074,7 +1074,7 @@ func getAwsKeyKeyID(resourceName string) resource.ImportStateIdFunc {
 // TestCckmAWSKeyImportMaterialResource tests the ciphertrust_aws_key_import_material resource
 // by re-importing key material to an EXTERNAL AES-256 key created via ciphertrust_aws_key.
 // Note: TestCckmAWSKeyImportKeyMaterial (above) tests the import_key_material block inside
-// ciphertrust_aws_key — a different code path.
+// ciphertrust_aws_key - a different code path.
 func TestCckmAWSKeyImportMaterialResource(t *testing.T) {
 	awsConnectionResource, ok := initCckmAwsTest()
 	if !ok {

@@ -47,8 +47,8 @@ Read-Only:
 - `cckm_vault_id` (String) CipherTrust Manager vault ID.
 - `cloud_name` (String) CipherTrust Manager cloud name.
 - `compartment_name` (String) The compartment's name.
-- `created_at` (String) Date/time the application was created
-- `external_key_params` (Attributes) The attributes are related to external (hyok) keys. (see [below for nested schema](#nestedatt--keys--external_key_params))
+- `created_at` (String) Date/time the key was created in CipherTrust Manager.
+- `external_key_params` (Attributes) The attributes are related to BYOK keys. (see [below for nested schema](#nestedatt--keys--external_key_params))
 - `id` (String) The key's CipherTrust Manager resource ID.
 - `key_material_origin` (String) CipherTrust Manager origin of the key's material.
 - `labels` (Map of String) A list of key:value pairs associated with the key.
@@ -56,7 +56,7 @@ Read-Only:
 - `refreshed_at` (String) Date/time the key was refreshed.
 - `region` (String) The key's region.
 - `tenancy` (String) The key's tenancy.
-- `updated_at` (String) Date/time the application was updated.
+- `updated_at` (String) Date/time the key was last updated.
 - `uri` (String) CipherTrust Manager's unique identifier for the resource.
 - `vault_id` (String) The vault's OCID.
 - `version_summary` (Attributes List) Key version summary. (see [below for nested schema](#nestedatt--keys--version_summary))

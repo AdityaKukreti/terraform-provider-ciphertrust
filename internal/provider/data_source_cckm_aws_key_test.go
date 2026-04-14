@@ -88,7 +88,7 @@ func TestCckmAWSDataSourceKey(t *testing.T) {
 					resource.TestCheckResourceAttrPair(keyResource, "key_id", dataSourceByFirstAlias, "key_id"),
 					resource.TestCheckResourceAttrPair(keyResource, "key_id", dataSourceBySecondAlias, "key_id"),
 
-					// by_aws_key_id: globally unique filter — full attribute verification
+					// by_aws_key_id: globally unique filter - full attribute verification
 					resource.TestCheckResourceAttrPair(keyResource, "key_id", dataSourceByAwsKeyID, "key_id"),
 					resource.TestCheckResourceAttr(dataSourceByAwsKeyID, "customer_master_key_spec", "SYMMETRIC_DEFAULT"),
 					resource.TestCheckResourceAttr(dataSourceByAwsKeyID, "description", "Updated"),
@@ -102,23 +102,23 @@ func TestCckmAWSDataSourceKey(t *testing.T) {
 					resource.TestCheckResourceAttrSet(dataSourceByAwsKeyID, "arn"),
 					resource.TestCheckResourceAttrPair(dataSourceByAwsKeyID, "region", keyResource, "region"),
 
-					// by_id: composite region\kid filter — unique, verify core attributes
+					// by_id: composite region\kid filter - unique, verify core attributes
 					resource.TestCheckResourceAttrPair(keyResource, "key_id", dataSouceByResourceID, "key_id"),
 					resource.TestCheckResourceAttr(dataSouceByResourceID, "customer_master_key_spec", "SYMMETRIC_DEFAULT"),
 					resource.TestCheckResourceAttr(dataSouceByResourceID, "description", "Updated"),
 					resource.TestCheckResourceAttr(dataSouceByResourceID, "key_state", "Enabled"),
 
-					// by_ciphertrust_key_id: CM UUID filter — unique, verify description and kms_id
+					// by_ciphertrust_key_id: CM UUID filter - unique, verify description and kms_id
 					resource.TestCheckResourceAttrPair(keyResource, "key_id", dataSourceByCCKMKeyID, "key_id"),
 					resource.TestCheckResourceAttr(dataSourceByCCKMKeyID, "description", "Updated"),
 					resource.TestCheckResourceAttrPair(dataSourceByCCKMKeyID, "kms_id", "ciphertrust_aws_kms.kms", "id"),
 
-					// by_key_id_and_region: aws_key_id+region filter — unique, verify core attributes
+					// by_key_id_and_region: aws_key_id+region filter - unique, verify core attributes
 					resource.TestCheckResourceAttrPair(keyResource, "key_id", dataSourceByKeyIDAndRegion, "key_id"),
 					resource.TestCheckResourceAttr(dataSourceByKeyIDAndRegion, "customer_master_key_spec", "SYMMETRIC_DEFAULT"),
 					resource.TestCheckResourceAttr(dataSourceByKeyIDAndRegion, "key_state", "Enabled"),
 
-					// by_key_id_region_and_alias: aws_key_id+alias+region filter — unique, verify core attributes
+					// by_key_id_region_and_alias: aws_key_id+alias+region filter - unique, verify core attributes
 					resource.TestCheckResourceAttrPair(keyResource, "key_id", datSourceByKeyIDAndAlias, "key_id"),
 					resource.TestCheckResourceAttr(datSourceByKeyIDAndAlias, "customer_master_key_spec", "SYMMETRIC_DEFAULT"),
 					resource.TestCheckResourceAttr(datSourceByKeyIDAndAlias, "key_state", "Enabled"),

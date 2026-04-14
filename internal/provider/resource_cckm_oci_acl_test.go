@@ -119,10 +119,10 @@ func TestCckmOCIAcl(t *testing.T) {
 
 	dataSourceConfig := `
 		data "ciphertrust_oci_vault_list" "vault_ds" {
-		filters = {
-			name = ciphertrust_oci_vault.vault.name
-		}
-	}`
+			filters = {
+				name = ciphertrust_oci_vault.vault.name
+			}
+		}`
 
 	connectionName := "tf-" + uuid.New().String()[:8]
 	createVaultConfigStr := fmt.Sprintf(createVaultConfig, ociKeyFile, connectionName,
@@ -145,7 +145,13 @@ func TestCckmOCIAcl(t *testing.T) {
 			{
 				Config: createAclsActionsConfigStr,
 				Check: resource.ComposeTestCheckFunc(
+					resource.TestCheckResourceAttrSet(userACLResourceName, "id"),
+					resource.TestCheckResourceAttrPair(userACLResourceName, "vault_id", vaultResourceName, "id"),
+					resource.TestCheckResourceAttrPair(userACLResourceName, "user_id", "ciphertrust_user.user", "id"),
 					resource.TestCheckResourceAttr(userACLResourceName, "actions.#", "2"),
+					resource.TestCheckResourceAttrSet(groupACLResourceName, "id"),
+					resource.TestCheckResourceAttrPair(groupACLResourceName, "vault_id", vaultResourceName, "id"),
+					resource.TestCheckResourceAttrPair(groupACLResourceName, "group", "ciphertrust_groups.group", "id"),
 					resource.TestCheckResourceAttr(groupACLResourceName, "actions.#", "3"),
 					resource.TestCheckResourceAttr(vaultDatasourceName, "vaults.#", "1"),
 					resource.TestCheckResourceAttr(vaultDatasourceName, "vaults.0.acls.#", "2"),

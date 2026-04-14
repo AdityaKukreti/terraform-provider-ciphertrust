@@ -529,7 +529,7 @@ func (r *resourceAWSKey) Schema(_ context.Context, _ resource.SchemaRequest, res
 	}
 }
 
-// Create creates a new AWS key — via native creation, import key material, upload key, or replicate key —
+// Create creates a new AWS key  -  via native creation, import key material, upload key, or replicate key  -
 // and sets Terraform state. After the key itself is successfully created, the following post-creation
 // operations are attempted but only produce warnings (not errors) on failure, ensuring the key is
 // always saved to state regardless of any subsequent partial failure:
@@ -627,7 +627,7 @@ func (r *resourceAWSKey) Create(ctx context.Context, req resource.CreateRequest,
 // If the key is no longer found (returns 0 results from the list query), a warning is emitted and the
 // resource is removed from Terraform state rather than returning an error, allowing Terraform to plan
 // its recreation. This uses a list query (not a direct GetById) so that both the region and the AWS
-// key ID can be used together — required to correctly support terraform import.
+// key ID can be used together  -  required to correctly support terraform import.
 func (r *resourceAWSKey) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
 	id := uuid.New().String()
 	tflog.Debug(ctx, common.MSG_METHOD_START+"[resource_aws_key.go -> Read]["+id+"]")
@@ -666,7 +666,7 @@ func (r *resourceAWSKey) ImportState(ctx context.Context, req resource.ImportSta
 }
 
 // Update applies plan changes to an AWS key including policy, aliases, tags, rotation, and enable/disable state.
-// All attributes are always sent to AWS — unlike XKS and CloudHSM keys, there is no linked-state condition.
+// All attributes are always sent to AWS  -  unlike XKS and CloudHSM keys, there is no linked-state condition.
 func (r *resourceAWSKey) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
 	id := uuid.New().String()
 	tflog.Debug(ctx, common.MSG_METHOD_START+"[resource_aws_key.go -> Update]["+id+"]")
@@ -776,8 +776,7 @@ func (r *resourceAWSKey) Update(ctx context.Context, req resource.UpdateRequest,
 }
 
 // updateAwsKeyCommon applies description, key policy, and rotation-job changes that are shared across
-// all three AWS key resource types. Called during Update by resourceAWSKey, resourceAWSXKSKey (linked only),
-// and resourceAWSCloudHSMKey (linked only).
+// all three AWS key resource types. Used by resourceAWSKey, resourceAWSXKSKey (linked only), resourceAWSCloudHSMKey (linked only).
 func updateAwsKeyCommon(ctx context.Context, id string, client *common.Client, plan *AWSKeyCommonTFSDK, state *AWSKeyCommonTFSDK, keyJSON string, diags *diag.Diagnostics) {
 	if !plan.Description.IsUnknown() {
 		updateDescription(ctx, id, client, plan, keyJSON, diags)
@@ -921,7 +920,7 @@ func (r *resourceAWSKey) setKeyState(ctx context.Context, response string, state
 }
 
 // setCommonKeyState populates the read-only common AWS key fields in Terraform state from an API response JSON string.
-// Shared across resourceAWSKey, resourceAWSXKSKey, and resourceAWSCloudHSMKey.
+// Used by resourceAWSKey, resourceAWSXKSKey, resourceAWSCloudHSMKey.
 func setCommonKeyState(ctx context.Context, response string, state *AWSKeyCommonTFSDK, diags *diag.Diagnostics) {
 	state.KeyID = types.StringValue(gjson.Get(response, "id").String())
 	state.ARN = types.StringValue(gjson.Get(response, "aws_param.Arn").String())
@@ -964,8 +963,8 @@ func setCommonKeyState(ctx context.Context, response string, state *AWSKeyCommon
 }
 
 // setCommonKeyStateEx populates additional AWS key state fields: aliases, tags, description, enable state,
-// policy, and policy-template tag. Called by resourceAWSKey always; called by resourceAWSXKSKey and
-// resourceAWSCloudHSMKey only when linked — unlinked keys retain their existing alias/tag/policy values in state.
+// policy, and policy-template tag. Used by resourceAWSKey (always), resourceAWSXKSKey and resourceAWSCloudHSMKey
+// (linked only; unlinked keys retain their existing alias/tag/policy values in state).
 func setCommonKeyStateEx(ctx context.Context, response string, state *AWSKeyCommonTFSDK, diags *diag.Diagnostics) {
 	setAliases(response, &state.Alias, diags)
 	setKeyTags(ctx, response, &state.Tags, diags)
@@ -1147,8 +1146,7 @@ func (r *resourceAWSKey) disableAutoRotation(ctx context.Context, id string, pla
 }
 
 // enableKeyRotationJob registers an AWS key with a CipherTrust Manager scheduled rotation job.
-// Called during Create (post-creation; failure produces a warning, not an error) and Update by
-// resourceAWSKey, resourceAWSXKSKey, and resourceAWSCloudHSMKey.
+// Used by resourceAWSKey, resourceAWSXKSKey, resourceAWSCloudHSMKey.
 func enableKeyRotationJob(ctx context.Context, id string, client *common.Client, plan *AWSKeyCommonTFSDK, diags *diag.Diagnostics) {
 	tflog.Debug(ctx, common.MSG_METHOD_START+"[resource_aws_key.go -> enableKeyRotationJob]["+id+"]")
 	defer tflog.Debug(ctx, common.MSG_METHOD_END+"[resource_aws_key.go -> enableKeyRotationJob]["+id+"]")
@@ -1190,7 +1188,7 @@ func enableKeyRotationJob(ctx context.Context, id string, client *common.Client,
 }
 
 // disableKeyRotationJob removes an AWS key from its CipherTrust Manager scheduled rotation job.
-// Called during Update by resourceAWSKey, resourceAWSXKSKey (linked only), and resourceAWSCloudHSMKey (linked only).
+// Used by resourceAWSKey, resourceAWSXKSKey (linked only), resourceAWSCloudHSMKey (linked only).
 func disableKeyRotationJob(ctx context.Context, id string, client *common.Client, plan *AWSKeyCommonTFSDK, diags *diag.Diagnostics) {
 	tflog.Debug(ctx, common.MSG_METHOD_START+"[resource_aws_key.go -> disableKeyRotationJob]["+id+"]")
 	defer tflog.Debug(ctx, common.MSG_METHOD_END+"[resource_aws_key.go -> disableKeyRotationJob]["+id+"]")
@@ -1209,8 +1207,8 @@ func disableKeyRotationJob(ctx context.Context, id string, client *common.Client
 // importKeyMaterial creates an EXTERNAL AWS key, then creates a local CipherTrust Manager key and imports
 // its material into the AWS key. The initial AWS key creation is a hard error. After that succeeds, the
 // following steps are post-creation and only produce warnings on failure (the AWS key is returned regardless):
-//   - createKeyMaterial: creating the local CM key fails → warning returned, import skipped
-//   - import-material API call: fails → warning returned
+//   - createKeyMaterial: creating the local CM key fails -> warning returned, import skipped
+//   - import-material API call: fails -> warning returned
 func (r *resourceAWSKey) importKeyMaterial(ctx context.Context, id string, plan *AWSKeyTFSDK, diags *diag.Diagnostics) string {
 	tflog.Debug(ctx, common.MSG_METHOD_START+"[resource_aws_key.go -> importKeyMaterial]["+id+"]")
 	defer tflog.Debug(ctx, common.MSG_METHOD_END+"[resource_aws_key.go -> importKeyMaterial]["+id+"]")
@@ -1706,8 +1704,8 @@ func (r *resourceAWSKey) updatePrimaryRegion(ctx context.Context, id string, pri
 	tflog.Debug(ctx, "[resource_aws_key.go -> updatePrimaryRegion][response:"+response)
 }
 
-// enableKey enables a disabled AWS key. Called during Update by resourceAWSKey, resourceAWSXKSKey (linked only),
-// and resourceAWSCloudHSMKey (linked only).
+// enableKey enables a disabled AWS key.
+// Used by resourceAWSKey, resourceAWSXKSKey (linked only), resourceAWSCloudHSMKey (linked only).
 func enableKey(ctx context.Context, id string, client *common.Client, keyID string, diags *diag.Diagnostics) {
 	tflog.Debug(ctx, common.MSG_METHOD_START+"[resource_aws_key.go -> enableKey]["+id+"]")
 	defer tflog.Debug(ctx, common.MSG_METHOD_END+"[resource_aws_key.go -> enableKey]["+id+"]")
@@ -1722,8 +1720,8 @@ func enableKey(ctx context.Context, id string, client *common.Client, keyID stri
 	tflog.Debug(ctx, "[resource_aws_key.go -> enableKey][response:"+response)
 }
 
-// disableKey disables an enabled AWS key. Called during Create (post-creation; failure → warning) and Update
-// by resourceAWSKey; called during Create and Update (linked only) by resourceAWSXKSKey and resourceAWSCloudHSMKey.
+// disableKey disables an enabled AWS key.
+// Used by resourceAWSKey (Create, Update), resourceAWSXKSKey (Create, Update, linked only), resourceAWSCloudHSMKey (Create, Update, linked only).
 func disableKey(ctx context.Context, id string, client *common.Client, keyID string, diags *diag.Diagnostics) {
 	tflog.Debug(ctx, common.MSG_METHOD_START+"[resource_aws_key.go -> disableKey]["+id+"]")
 	defer tflog.Debug(ctx, common.MSG_METHOD_END+"[resource_aws_key.go -> disableKey]["+id+"]")
@@ -1740,8 +1738,7 @@ func disableKey(ctx context.Context, id string, client *common.Client, keyID str
 
 // addAliases assigns additional aliases (beyond the first) to an AWS key after creation.
 // The first alias is included in the key creation payload; this function handles index 1 onwards.
-// Called during Create (post-creation; failure → warning) by resourceAWSKey, resourceAWSXKSKey (linked only),
-// and resourceAWSCloudHSMKey (linked only).
+// Used by resourceAWSKey, resourceAWSXKSKey (linked only), resourceAWSCloudHSMKey (linked only).
 func addAliases(ctx context.Context, client *common.Client, id string, plan *AWSKeyCommonTFSDK, keyJSON string, diags *diag.Diagnostics) {
 	tflog.Debug(ctx, common.MSG_METHOD_START+"[resource_aws_key.go -> addAliases]["+id+"]")
 	defer tflog.Debug(ctx, common.MSG_METHOD_END+"[resource_aws_key.go -> addAliases]["+id+"]")
@@ -1779,7 +1776,7 @@ func addAliases(ctx context.Context, client *common.Client, id string, plan *AWS
 
 // updateAliases reconciles the plan's alias list against the key's current aliases, adding and removing
 // as needed. Aliases containing "-rotated-" are never removed because they are managed by the rotation job.
-// Called during Update by resourceAWSKey, resourceAWSXKSKey (linked only), and resourceAWSCloudHSMKey (linked only).
+// Used by resourceAWSKey, resourceAWSXKSKey (linked only), resourceAWSCloudHSMKey (linked only).
 func updateAliases(ctx context.Context, id string, client *common.Client, plan *AWSKeyCommonTFSDK, keyJSON string, diags *diag.Diagnostics) {
 	tflog.Debug(ctx, common.MSG_METHOD_START+"[resource_aws_key.go -> updateAliases]["+id+"]")
 	defer tflog.Debug(ctx, common.MSG_METHOD_END+"[resource_aws_key.go -> updateAliases]["+id+"]")
@@ -1914,8 +1911,7 @@ func updateDescription(ctx context.Context, id string, client *common.Client, pl
 
 // updateTags reconciles the plan's tag map against the key's current tags, adding and removing as needed.
 // The internal policy-template tag (cckm_policy_template_id) is excluded from reconciliation and is
-// never added or removed by this function. Called during Update by resourceAWSKey, resourceAWSXKSKey (linked only),
-// and resourceAWSCloudHSMKey (linked only).
+// never added or removed by this function. Used by resourceAWSKey, resourceAWSXKSKey (linked only), resourceAWSCloudHSMKey (linked only).
 func updateTags(ctx context.Context, id string, client *common.Client, planTags map[string]string, keyJSON string, diags *diag.Diagnostics) {
 	tflog.Debug(ctx, common.MSG_METHOD_START+"[resource_aws_key.go -> updateTags]["+id+"]")
 	defer tflog.Debug(ctx, common.MSG_METHOD_END+"[resource_aws_key.go -> updateTags]["+id+"]")
@@ -2037,9 +2033,9 @@ func updateKeyPolicy(ctx context.Context, id string, client *common.Client, plan
 }
 
 // enableDisableKeyRotation enables or disables the CipherTrust Manager scheduled rotation job for an AWS key
-// based on the difference between plan and state. Called during Update by resourceAWSKey, resourceAWSXKSKey,
-// and resourceAWSCloudHSMKey. When plan has no enable_rotation block but state does, the rotation job is
-// disabled. When plan and state differ, the rotation job is enabled with the new plan parameters.
+// based on the difference between plan and state. Used by resourceAWSKey, resourceAWSXKSKey, resourceAWSCloudHSMKey.
+// When plan has no enable_rotation block but state does, the rotation job is disabled. When plan and state
+// differ, the rotation job is enabled with the new plan parameters.
 func enableDisableKeyRotation(ctx context.Context, id string, client *common.Client, plan *AWSKeyCommonTFSDK, state *AWSKeyCommonTFSDK, diags *diag.Diagnostics) {
 	tflog.Debug(ctx, common.MSG_METHOD_START+"[resource_aws_key.go -> enableDisableKeyRotation]["+id+"]")
 	defer tflog.Debug(ctx, common.MSG_METHOD_END+"[resource_aws_key.go -> enableDisableKeyRotation]["+id+"]")
@@ -2160,7 +2156,7 @@ func (r *resourceAWSKey) getAWSKeyCreateParams(ctx context.Context, plan *AWSKey
 }
 
 // getTagsParam converts the plan's tags map into a slice of AWSKeyParamTagJSON structs for the API payload.
-// Called during Create by resourceAWSKey, resourceAWSXKSKey, and resourceAWSCloudHSMKey.
+// Used by resourceAWSKey, resourceAWSXKSKey, resourceAWSCloudHSMKey.
 func getTagsParam(ctx context.Context, plan *AWSKeyCommonTFSDK, diags *diag.Diagnostics) []AWSKeyParamTagJSON {
 	if len(plan.Tags.Elements()) == 0 {
 		return nil
@@ -2185,7 +2181,7 @@ func getTagsParam(ctx context.Context, plan *AWSKeyCommonTFSDK, diags *diag.Diag
 
 // getKeyPolicyParams extracts key policy fields (admins, users, external accounts, policy JSON, policy template)
 // from the plan's key_policy block. Returns a zero-value struct when the block is empty.
-// Called during Create and Update by resourceAWSKey, resourceAWSXKSKey, and resourceAWSCloudHSMKey.
+// Used by resourceAWSKey, resourceAWSXKSKey, resourceAWSCloudHSMKey.
 func getKeyPolicyParams(ctx context.Context, plan *AWSKeyCommonTFSDK, diags *diag.Diagnostics) *KeyPolicyPayloadJSON {
 	var keyPolicy KeyPolicyPayloadJSON
 	if !plan.KeyPolicy.IsNull() && len(plan.KeyPolicy.Elements()) != 0 {
@@ -2558,8 +2554,7 @@ func (r *resourceAWSKey) getKeyByTerraformID(ctx context.Context, id string, ter
 
 // removeKeyPolicyTemplateTag removes the policy template tag (cckm_policy_template_id) from an AWS key
 // prior to scheduled deletion. Errors are downgraded to warnings so that deletion proceeds even if tag
-// removal fails. Called during Delete by resourceAWSKey, resourceAWSXKSKey (linked only), and
-// resourceAWSCloudHSMKey (linked only).
+// removal fails. Used by resourceAWSKey, resourceAWSXKSKey (linked only), resourceAWSCloudHSMKey (linked only).
 func removeKeyPolicyTemplateTag(ctx context.Context, id string, client *common.Client, keyJSON string, diags *diag.Diagnostics) {
 	var policyTemplateID string
 	for _, tag := range gjson.Get(keyJSON, "aws_param.Tags").Array() {

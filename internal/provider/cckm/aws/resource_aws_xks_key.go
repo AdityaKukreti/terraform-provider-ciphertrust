@@ -432,10 +432,10 @@ func (r *resourceAWSXKSKey) Schema(_ context.Context, _ resource.SchemaRequest, 
 // Create creates a new AWS XKS key in CipherTrust Manager and sets Terraform state.
 // After the key is successfully created, the following post-creation operations are attempted but only
 // produce warnings (not errors) on failure, ensuring the key is always saved to state:
-//   - Adding additional aliases beyond the first — only applied when the key is linked (linked_state = true);
+//   - Adding additional aliases beyond the first  -  only applied when the key is linked (linked_state = true);
 //     unlinked keys do not support alias management via AWS
 //   - Registering the key with a CipherTrust Manager scheduled rotation job (enable_rotation block)
-//   - Disabling the key if enable_key = false — only applied when the key is linked
+//   - Disabling the key if enable_key = false  -  only applied when the key is linked
 //   - Refreshing final state from the API after all post-creation operations
 func (r *resourceAWSXKSKey) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
 	id := uuid.New().String()
@@ -612,7 +612,7 @@ func (r *resourceAWSXKSKey) ImportState(ctx context.Context, req resource.Import
 //
 //	When unlinked (linked_state = false):
 //	  - enable_rotation only (a CM-side operation that does not require AWS linked state)
-//	  - All other plan changes — description, key_policy, alias, tags, enable_key — are silently skipped
+//	  - All other plan changes  -  description, key_policy, alias, tags, enable_key  -  are silently skipped
 //	  - description is preserved from the prior state value rather than overwritten
 func (r *resourceAWSXKSKey) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
 	id := uuid.New().String()
@@ -838,9 +838,8 @@ func (r *resourceAWSXKSKey) setXKSKeyState(ctx context.Context, response string,
 // resources. For linked keys (linked_state = true), all AWS-facing attributes are populated via
 // setCommonKeyStateEx, including aliases, tags, description, policy, and policy-template tag.
 // For unlinked keys, those attributes are left as their current state values (aliases and tags retain
-// their prior values; policy_template_tag is set to null). Called by:
-//   - resourceAWSXKSKey via setXKSKeyState (Create, Read, Update)
-//   - resourceAWSCloudHSMKey directly (Create, Read, Update)
+// their prior values; policy_template_tag is set to null). Used by resourceAWSXKSKey (via setXKSKeyState,
+// Create/Read/Update) and resourceAWSCloudHSMKey (Create/Read/Update).
 func setCommonKeyStoreKeyState(ctx context.Context, response string, state *AWSKeyStoreKeyCommonTFSDK, diags *diag.Diagnostics) {
 	setCommonKeyState(ctx, response, &state.AWSKeyCommonTFSDK, diags)
 	state.Blocked = types.BoolValue(gjson.Get(response, "blocked").Bool())
@@ -964,9 +963,8 @@ func (r *resourceAWSXKSKey) getLocalHostedParams(ctx context.Context, plan *AWSX
 }
 
 // getKeyStoreCommonAWSParams builds the AWS parameter payload (alias, description, tags, policy) shared
-// by both the XKS and CloudHSM key resource create and link operations. Called by:
-//   - resourceAWSXKSKey.Create and linkUnlinkXKSKey
-//   - resourceAWSCloudHSMKey.Create
+// by both the XKS and CloudHSM key resource create and link operations. Used by resourceAWSXKSKey (Create,
+// linkUnlinkXKSKey) and resourceAWSCloudHSMKey (Create).
 func getKeyStoreCommonAWSParams(ctx context.Context, plan *AWSKeyStoreKeyCommonTFSDK, diags *diag.Diagnostics) *XKSKeyCommonAWSParamsJSON {
 	var awsParams XKSKeyCommonAWSParamsJSON
 	if plan.Description.ValueString() != "" {

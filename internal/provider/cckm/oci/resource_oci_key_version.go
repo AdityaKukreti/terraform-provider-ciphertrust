@@ -146,10 +146,11 @@ func (r *resourceCCKMOCIVersion) Schema(_ context.Context, _ resource.SchemaRequ
 			"schedule_for_deletion_days": schema.Int64Attribute{
 				Optional:    true,
 				Computed:    true,
-				Description: "(Updatable) Waiting period after the key is destroyed before the key is deleted. Only relevant when the resource is destroyed. Default is " + strconv.Itoa(scheduleForDeletionDays) + ".",
+				Description: "(Updatable) Waiting period after the key is destroyed before the key is deleted. Only relevant when the resource is destroyed. Default is " + strconv.Itoa(scheduleForDeletionDays) + ". Must be between 7 and 30.",
 				Default:     int64default.StaticInt64(scheduleForDeletionDays),
 				Validators: []validator.Int64{
 					int64validator.AtLeast(scheduleForDeletionDays),
+					int64validator.AtMost(30),
 				},
 			},
 			"updated_at": schema.StringAttribute{
@@ -164,10 +165,18 @@ func (r *resourceCCKMOCIVersion) Schema(_ context.Context, _ resource.SchemaRequ
 	}
 }
 
+// Create adds a new native OCI key version via CipherTrust Manager.
+// After the version is successfully created, subsequent operations
+// (waitForKeyVersionState, GetById) are downgraded to warnings so the
+// created version is always preserved in state.
+// Warnings are emitted when:
+//   - the version's lifecycle_state does not settle within oci_operation_timeout
+//   - the post-creation GetById refresh call fails (state is set from the create response)
+//   - setCommonKeyVersionState encounters a field mapping error
 func (r *resourceCCKMOCIVersion) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
 	id := uuid.New().String()
-	tflog.Trace(ctx, common.MSG_METHOD_START+"[resource_oci_key_version.go -> Create]["+id+"]")
-	defer tflog.Trace(ctx, common.MSG_METHOD_END+"[resource_oci_key_version.go -> Create]["+id+"]")
+	tflog.Debug(ctx, common.MSG_METHOD_START+"[resource_oci_key_version.go -> Create]["+id+"]")
+	defer tflog.Debug(ctx, common.MSG_METHOD_END+"[resource_oci_key_version.go -> Create]["+id+"]")
 
 	mutexKey := fmt.Sprintf("ocikeyversion-%s", id)
 	mutex.CckmMutex.Lock(mutexKey)
@@ -199,7 +208,7 @@ func (r *resourceCCKMOCIVersion) Create(ctx context.Context, req resource.Create
 		resp.Diagnostics.AddError(details, "")
 		return
 	}
-	tflog.Trace(ctx, "[resource_oci_key_version.go -> Create][response:"+response)
+	tflog.Debug(ctx, "[resource_oci_key_version.go -> Create][response:"+response+"]")
 	versionID := gjson.Get(response, "id").String()
 	plan.ID = types.StringValue(versionID)
 
@@ -221,7 +230,7 @@ func (r *resourceCCKMOCIVersion) Create(ctx context.Context, req resource.Create
 		resp.Diagnostics.AddWarning(details, "")
 	} else {
 		response = getResponse
-		tflog.Trace(ctx, "[resource_oci_key_version.go -> Create][response:"+response)
+		tflog.Debug(ctx, "[resource_oci_key_version.go -> Create][response:"+response+"]")
 	}
 
 	var setStateDiags diag.Diagnostics
@@ -232,10 +241,12 @@ func (r *resourceCCKMOCIVersion) Create(ctx context.Context, req resource.Create
 	resp.Diagnostics.Append(resp.State.Set(ctx, plan)...)
 }
 
+// Read refreshes the OCI native key version state from CipherTrust Manager.
+// Returns a warning and removes the resource from state if the version is not found (404).
 func (r *resourceCCKMOCIVersion) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
 	id := uuid.New().String()
-	tflog.Trace(ctx, common.MSG_METHOD_START+"[resource_oci_key_version.go -> Read]["+id+"]")
-	defer tflog.Trace(ctx, common.MSG_METHOD_END+"[resource_oci_key_version.go -> Read]["+id+"]")
+	tflog.Debug(ctx, common.MSG_METHOD_START+"[resource_oci_key_version.go -> Read]["+id+"]")
+	defer tflog.Debug(ctx, common.MSG_METHOD_END+"[resource_oci_key_version.go -> Read]["+id+"]")
 
 	var state models.KeyVersionTFSDK
 	resp.Diagnostics.Append(req.State.Get(ctx, &state)...)
@@ -247,13 +258,21 @@ func (r *resourceCCKMOCIVersion) Read(ctx context.Context, req resource.ReadRequ
 	keyID := state.CCKMKeyID.ValueString()
 	response, err := r.client.GetById(ctx, id, versionID, common.URL_OCI+"/keys/"+keyID+"/versions")
 	if err != nil {
+		if strings.Contains(err.Error(), notFoundError) {
+			msg := "OCI key version was not found, it will be removed from state."
+			details := utils.ApiError(msg, map[string]interface{}{"key_id": keyID, "version_id": versionID})
+			tflog.Warn(ctx, details)
+			resp.Diagnostics.AddWarning(details, "")
+			resp.State.RemoveResource(ctx)
+			return
+		}
 		msg := "Error reading OCI key version."
 		details := utils.ApiError(msg, map[string]interface{}{"error": err.Error(), "key_id": keyID, "version_id": versionID})
 		tflog.Error(ctx, details)
 		resp.Diagnostics.AddError(details, "")
 		return
 	}
-	tflog.Trace(ctx, "[resource_oci_key_version.go -> Read][response:"+response)
+	tflog.Debug(ctx, "[resource_oci_key_version.go -> Read][response:"+response+"]")
 	setCommonKeyVersionState(ctx, response, &state, &resp.Diagnostics)
 	if resp.Diagnostics.HasError() {
 		return
@@ -261,10 +280,13 @@ func (r *resourceCCKMOCIVersion) Read(ctx context.Context, req resource.ReadRequ
 	resp.Diagnostics.Append(resp.State.Set(ctx, state)...)
 }
 
+// ImportState imports a native OCI key version using a composite import ID in the form
+// "cckm_key_id.version_id". The Terraform resource ID is set to the CM-level version ID
+// from the API response, overriding the intermediate state set by ImportStatePassthroughID.
 func (r *resourceCCKMOCIVersion) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
 	id := uuid.New().String()
-	tflog.Trace(ctx, common.MSG_METHOD_START+"[resource_oci_byok_version.go -> ImportState]["+id+"]")
-	defer tflog.Trace(ctx, common.MSG_METHOD_END+"[resource_oci_byok_version.go -> ImportState]["+id+"]")
+	tflog.Debug(ctx, common.MSG_METHOD_START+"[resource_oci_key_version.go -> ImportState]["+id+"]")
+	defer tflog.Debug(ctx, common.MSG_METHOD_END+"[resource_oci_key_version.go -> ImportState]["+id+"]")
 	resource.ImportStatePassthroughID(ctx, path.Root("id"), req, resp)
 	versionInfo := strings.Split(req.ID, ".")
 	if len(versionInfo) != 2 {
@@ -284,7 +306,7 @@ func (r *resourceCCKMOCIVersion) ImportState(ctx context.Context, req resource.I
 		resp.Diagnostics.AddError(details, "")
 		return
 	}
-	tflog.Trace(ctx, "[resource_oci_key_version.go -> Import][response:"+response)
+	tflog.Debug(ctx, "[resource_oci_key_version.go -> ImportState][response:"+response+"]")
 	var state models.KeyVersionTFSDK
 	state.CCKMKeyID = types.StringValue(keyID)
 	state.ID = types.StringValue(versionID)
@@ -296,16 +318,25 @@ func (r *resourceCCKMOCIVersion) ImportState(ctx context.Context, req resource.I
 	resp.Diagnostics.Append(resp.State.Set(ctx, state)...)
 }
 
+// Update is a no-op. OCI native key versions are immutable after creation.
+// The only schema attribute that can differ between plan and state is
+// schedule_for_deletion_days, which is stored locally and applied at destroy time only.
 func (r *resourceCCKMOCIVersion) Update(ctx context.Context, _ resource.UpdateRequest, _ *resource.UpdateResponse) {
 	id := uuid.New().String()
-	tflog.Trace(ctx, common.MSG_METHOD_START+"[resource_oci_key_version.go -> Update]["+id+"]")
-	defer tflog.Trace(ctx, common.MSG_METHOD_END+"[resource_oci_key_version.go -> Update]["+id+"]")
+	tflog.Debug(ctx, common.MSG_METHOD_START+"[resource_oci_key_version.go -> Update]["+id+"]")
+	defer tflog.Debug(ctx, common.MSG_METHOD_END+"[resource_oci_key_version.go -> Update]["+id+"]")
 }
 
+// Delete schedules the OCI native key version for deletion via deleteKeyVersion
+// (oci_key_version_common.go).
+// Returns a warning (not error) if:
+//   - the version is not found (404)  -  resource is removed from state
+//   - the version is the current version of the parent key  -  resource is removed from
+//     state but the version remains active in OCI until the parent key is deleted
 func (r *resourceCCKMOCIVersion) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
 	id := uuid.New().String()
-	tflog.Trace(ctx, common.MSG_METHOD_START+"[resource_oci_key_version.go -> Delete]["+id+"]")
-	defer tflog.Trace(ctx, common.MSG_METHOD_END+"[resource_oci_key_version.go -> Delete]["+id+"]")
+	tflog.Debug(ctx, common.MSG_METHOD_START+"[resource_oci_key_version.go -> Delete]["+id+"]")
+	defer tflog.Debug(ctx, common.MSG_METHOD_END+"[resource_oci_key_version.go -> Delete]["+id+"]")
 	var state models.KeyVersionTFSDK
 	resp.Diagnostics.Append(req.State.Get(ctx, &state)...)
 	if resp.Diagnostics.HasError() {

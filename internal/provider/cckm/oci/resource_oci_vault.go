@@ -207,10 +207,14 @@ func (r *resourceCCKMOCIVault) Schema(_ context.Context, _ resource.SchemaReques
 	}
 }
 
+// Create creates an OCI vault resource in CipherTrust Manager.
+// Failures that occur after the vault has been successfully created (setVaultState from
+// the add-vaults response, and the subsequent GetById refresh) are downgraded to
+// warnings so that the vault is not lost from state.
 func (r *resourceCCKMOCIVault) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
 	id := uuid.New().String()
-	tflog.Trace(ctx, common.MSG_METHOD_START+"[resource_oci_vault.go -> Create]["+id+"]")
-	defer tflog.Trace(ctx, common.MSG_METHOD_END+"[resource_oci_vault.go -> Create]["+id+"]")
+	tflog.Debug(ctx, common.MSG_METHOD_START+"[resource_oci_vault.go -> Create]["+id+"]")
+	defer tflog.Debug(ctx, common.MSG_METHOD_END+"[resource_oci_vault.go -> Create]["+id+"]")
 
 	var plan models.VaultTFSDK
 	resp.Diagnostics.Append(req.Plan.Get(ctx, &plan)...)
@@ -252,13 +256,18 @@ func (r *resourceCCKMOCIVault) Create(ctx context.Context, req resource.CreateRe
 		vaultsJSON := gjson.Get(response, "vaults").Array()
 		for _, vaultJSON := range vaultsJSON {
 			plan.ID = types.StringValue(gjson.Get(vaultJSON.Raw, "id").String())
-			tflog.Trace(ctx, "[resource_oci_vault.go -> Create][response:"+vaultJSON.Raw)
+			tflog.Debug(ctx, "[resource_oci_vault.go -> Create][response:"+vaultJSON.Raw+"]")
 			var diags diag.Diagnostics
 			r.setVaultState(ctx, vaultJSON.Raw, &plan, &diags)
 			for _, d := range diags {
 				resp.Diagnostics.AddWarning(d.Summary(), d.Detail())
 			}
 		}
+	}
+
+	if plan.ID.ValueString() == "" {
+		resp.Diagnostics.AddError("Error adding OCI vault: no vault returned in API response.", "")
+		return
 	}
 
 	getResponse, err := r.client.GetById(ctx, id, plan.ID.ValueString(), common.URL_OCI+"/vaults")
@@ -273,15 +282,17 @@ func (r *resourceCCKMOCIVault) Create(ctx context.Context, req resource.CreateRe
 		for _, d := range diags {
 			resp.Diagnostics.AddWarning(d.Summary(), d.Detail())
 		}
-		tflog.Trace(ctx, "[resource_oci_vault.go -> Create][response:"+getResponse)
+		tflog.Debug(ctx, "[resource_oci_vault.go -> Create][response:"+getResponse+"]")
 	}
 	resp.Diagnostics.Append(resp.State.Set(ctx, plan)...)
 }
 
+// Read refreshes state from GET /oci/vaults/:id. A 404 response removes the resource
+// from state and returns a warning instead of an error.
 func (r *resourceCCKMOCIVault) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
 	id := uuid.New().String()
-	tflog.Trace(ctx, common.MSG_METHOD_START+"[resource_oci_vault.go -> Read]["+id+"]")
-	defer tflog.Trace(ctx, common.MSG_METHOD_END+"[resource_oci_vault.go -> Read]["+id+"]")
+	tflog.Debug(ctx, common.MSG_METHOD_START+"[resource_oci_vault.go -> Read]["+id+"]")
+	defer tflog.Debug(ctx, common.MSG_METHOD_END+"[resource_oci_vault.go -> Read]["+id+"]")
 	var state models.VaultTFSDK
 	resp.Diagnostics.Append(req.State.Get(ctx, &state)...)
 	if resp.Diagnostics.HasError() {
@@ -290,13 +301,21 @@ func (r *resourceCCKMOCIVault) Read(ctx context.Context, req resource.ReadReques
 	vaultID := state.ID.ValueString()
 	response, err := r.client.GetById(ctx, id, vaultID, common.URL_OCI+"/vaults")
 	if err != nil {
-		msg := "Error reading OCI vault."
-		details := utils.ApiError(msg, map[string]interface{}{"error": err.Error(), "vault_id": vaultID})
-		tflog.Error(ctx, details)
-		resp.Diagnostics.AddError(details, "")
+		if strings.Contains(err.Error(), "status: 404") {
+			msg := "OCI vault was not found, it will be removed from state."
+			details := utils.ApiError(msg, map[string]interface{}{"vault_id": vaultID})
+			tflog.Warn(ctx, details)
+			resp.Diagnostics.AddWarning(details, "")
+			resp.State.RemoveResource(ctx)
+		} else {
+			msg := "Error reading OCI vault."
+			details := utils.ApiError(msg, map[string]interface{}{"error": err.Error(), "vault_id": vaultID})
+			tflog.Error(ctx, details)
+			resp.Diagnostics.AddError(details, "")
+		}
 		return
 	}
-	tflog.Trace(ctx, "[resource_oci_vault.go -> Read][response:"+response)
+	tflog.Debug(ctx, "[resource_oci_vault.go -> Read][response:"+response+"]")
 	r.setVaultState(ctx, response, &state, &resp.Diagnostics)
 	if resp.Diagnostics.HasError() {
 		return
@@ -310,15 +329,18 @@ func (r *resourceCCKMOCIVault) Read(ctx context.Context, req resource.ReadReques
 
 func (r *resourceCCKMOCIVault) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
 	id := uuid.New().String()
-	tflog.Trace(ctx, common.MSG_METHOD_START+"[resource_oci_vault.go -> ImportState]["+id+"]")
-	defer tflog.Trace(ctx, common.MSG_METHOD_END+"[resource_oci_vault.go -> ImportState]["+id+"]")
+	tflog.Debug(ctx, common.MSG_METHOD_START+"[resource_oci_vault.go -> ImportState]["+id+"]")
+	defer tflog.Debug(ctx, common.MSG_METHOD_END+"[resource_oci_vault.go -> ImportState]["+id+"]")
 	resource.ImportStatePassthroughID(ctx, path.Root("id"), req, resp)
 }
 
+// Update patches connection_id, bucket_name, and bucket_namespace via
+// PATCH /oci/vaults/:id. All other attributes are Computed-only and cannot be
+// changed through this resource.
 func (r *resourceCCKMOCIVault) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
 	id := uuid.New().String()
-	tflog.Trace(ctx, common.MSG_METHOD_START+"[resource_oci_vault.go -> Update]["+id+"]")
-	defer tflog.Trace(ctx, common.MSG_METHOD_END+"[resource_oci_vault.go -> Update]["+id+"]")
+	tflog.Debug(ctx, common.MSG_METHOD_START+"[resource_oci_vault.go -> Update]["+id+"]")
+	defer tflog.Debug(ctx, common.MSG_METHOD_END+"[resource_oci_vault.go -> Update]["+id+"]")
 
 	var plan models.VaultTFSDK
 	resp.Diagnostics.Append(req.Plan.Get(ctx, &plan)...)
@@ -337,8 +359,9 @@ func (r *resourceCCKMOCIVault) Update(ctx context.Context, req resource.UpdateRe
 	if err != nil {
 		msg := "Error reading OCI vault."
 		details := utils.ApiError(msg, map[string]interface{}{"error": err.Error(), "vault_id": vaultID})
-		tflog.Warn(ctx, details)
-		resp.Diagnostics.AddWarning(details, "")
+		tflog.Error(ctx, details)
+		resp.Diagnostics.AddError(details, "")
+		return
 	}
 	if plan.Connection.ValueString() != gjson.Get(response, "connection").String() ||
 		plan.BucketName.ValueString() != gjson.Get(response, "bucket_name").String() ||
@@ -380,7 +403,7 @@ func (r *resourceCCKMOCIVault) Update(ctx context.Context, req resource.UpdateRe
 			return
 		}
 	}
-	tflog.Trace(ctx, "[resource_oci_vault.go -> Update][response:"+response)
+	tflog.Debug(ctx, "[resource_oci_vault.go -> Update][response:"+response+"]")
 	r.setVaultState(ctx, response, &state, &resp.Diagnostics)
 	if resp.Diagnostics.HasError() {
 		return
@@ -389,10 +412,13 @@ func (r *resourceCCKMOCIVault) Update(ctx context.Context, req resource.UpdateRe
 	resp.Diagnostics.Append(resp.State.Set(ctx, state)...)
 }
 
+// Delete removes the vault from CipherTrust Manager. If the vault is already absent
+// (NCERRResourceNotFound), a warning is returned instead of an error so that
+// Terraform can still remove the resource from state.
 func (r *resourceCCKMOCIVault) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
 	id := uuid.New().String()
-	tflog.Trace(ctx, common.MSG_METHOD_START+"[resource_oci_vault.go -> Delete]["+id+"]")
-	defer tflog.Trace(ctx, common.MSG_METHOD_END+"[resource_oci_vault.go -> Delete]["+id+"]")
+	tflog.Debug(ctx, common.MSG_METHOD_START+"[resource_oci_vault.go -> Delete]["+id+"]")
+	defer tflog.Debug(ctx, common.MSG_METHOD_END+"[resource_oci_vault.go -> Delete]["+id+"]")
 
 	var state models.VaultTFSDK
 	resp.Diagnostics.Append(req.State.Get(ctx, &state)...)
@@ -402,12 +428,15 @@ func (r *resourceCCKMOCIVault) Delete(ctx context.Context, req resource.DeleteRe
 	vaultID := state.ID.ValueString()
 	_, err := r.client.DeleteByURL(ctx, id, common.URL_OCI+"/vaults/"+vaultID)
 	if err != nil {
-		msg := "Error deleting OCI Vault."
-		details := utils.ApiError(msg, map[string]interface{}{"error": err.Error(), "vault_id": vaultID})
-		tflog.Error(ctx, details)
 		if strings.Contains(err.Error(), "NCERRResourceNotFound") {
+			msg := "OCI vault was not found, it will be removed from state."
+			details := utils.ApiError(msg, map[string]interface{}{"vault_id": vaultID})
+			tflog.Warn(ctx, details)
 			resp.Diagnostics.AddWarning(details, "")
 		} else {
+			msg := "Error deleting OCI Vault."
+			details := utils.ApiError(msg, map[string]interface{}{"error": err.Error(), "vault_id": vaultID})
+			tflog.Error(ctx, details)
 			resp.Diagnostics.AddError(details, "")
 		}
 	}
@@ -436,6 +465,7 @@ func (r *resourceCCKMOCIVault) setVaultState(ctx context.Context, response strin
 	}
 }
 
+// setCommonVaultState populates VaultCommonTFSDK fields from a JSON response string.
 func setCommonVaultState(ctx context.Context, response string, state *models.VaultCommonTFSDK, diags *diag.Diagnostics) {
 	state.Account = types.StringValue(gjson.Get(response, "account").String())
 	acls.SetAclsStateFromJSON(ctx, gjson.Get(response, "acls"), &state.Acls, diags)

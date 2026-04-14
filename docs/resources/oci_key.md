@@ -59,7 +59,7 @@ resource "ciphertrust_oci_key" "test_key" {
 
 - `enable_auto_rotation` (Attributes) (Updatable) Enable the key for a scheduled rotation job. (see [below for nested schema](#nestedatt--enable_auto_rotation))
 - `enable_key` (Boolean) (Updatable) Enable or disable the key. Default is true.
-- `schedule_for_deletion_days` (Number) (Updatable) Waiting period after the key is destroyed before the key is deleted. Only relevant when the resource is destroyed. Default is 7.
+- `schedule_for_deletion_days` (Number) (Updatable) Waiting period after the key is destroyed before the key is deleted. Only relevant when the resource is destroyed. Default is 7. Must be between 7 and 30.
 
 ### Read-Only
 

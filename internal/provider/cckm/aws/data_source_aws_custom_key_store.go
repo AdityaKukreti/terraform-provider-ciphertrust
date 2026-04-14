@@ -189,7 +189,7 @@ func (d *datasourceAWSCustomKeyStoreDataSource) Schema(ctx context.Context, _ da
 						},
 						"mtls_enabled": schema.BoolAttribute{
 							Computed:    true,
-							Description: "Set it to true to enable tls client-side certificate verification — where cipher trust manager authenticates the AWS KMS client . Default value is false.",
+							Description: "Set it to true to enable tls client-side certificate verification  -  where cipher trust manager authenticates the AWS KMS client . Default value is false.",
 						},
 						"partition_id": schema.StringAttribute{
 							Computed:    true,

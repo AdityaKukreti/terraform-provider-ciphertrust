@@ -61,11 +61,11 @@ func TestCckmAWSDataSourceXksKey(t *testing.T) {
 	createConfigStr := awsConnectionResource + createKeyStoreConfigStr + createXKSKeyConfig
 
 	// Only by_id is exercisable for an unlinked key. The remaining filters are commented out:
-	//   by_alias               — alias not applied/returned for unlinked keys; Read resets alias to empty set.
-	//   by_aws_key_id          — aws_key_id is empty for unlinked keys (no AWS-side key exists until linked).
-	//   by_ciphertrust_key_id  — key_id IS set for unlinked keys; this filter COULD be un-commented.
-	//   by_key_id_and_region   — requires aws_key_id (empty for unlinked).
-	//   by_key_id_region_and_alias — requires both aws_key_id (empty) and alias (empty) for unlinked keys.
+	//   by_alias               - alias not applied/returned for unlinked keys; Read resets alias to empty set.
+	//   by_aws_key_id          - aws_key_id is empty for unlinked keys (no AWS-side key exists until linked).
+	//   by_ciphertrust_key_id  - key_id IS set for unlinked keys; this filter COULD be un-commented.
+	//   by_key_id_and_region   - requires aws_key_id (empty for unlinked).
+	//   by_key_id_region_and_alias - requires both aws_key_id (empty) and alias (empty) for unlinked keys.
 	datasourceConfig := `
 		data "ciphertrust_aws_xks_key" "by_id" {
 			id = ciphertrust_aws_xks_key.xks_key.id

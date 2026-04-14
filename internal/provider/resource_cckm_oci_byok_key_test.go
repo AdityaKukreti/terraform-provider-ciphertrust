@@ -54,10 +54,8 @@ func TestCckmOCIKeysAndVersionsBYOK(t *testing.T) {
 	connectionResource := initCckmOCITest(t)
 
 	localsConfig := `locals {
-		connection_name     = "tf-%s"
 		cm_key_name         = "tf-%s"
 		oci_key_name        = "tf-%s"
-		oci_min_key_name    = "tf-%s"
 		cm_key_version_name = "tf-%s"
 		rotation_job_name   = "tf-%s"
 		rotation_job_name_2 = "tf-%s"
@@ -65,8 +63,8 @@ func TestCckmOCIKeysAndVersionsBYOK(t *testing.T) {
 	}`
 
 	localsResource := fmt.Sprintf(localsConfig,
-		uuid.New().String()[:8], uuid.New().String()[:8], uuid.New().String()[:8], uuid.New().String()[:8],
-		uuid.New().String()[:8], uuid.New().String()[:8], uuid.New().String()[:8], uuid.New().String()[:8])
+		uuid.New().String()[:8], uuid.New().String()[:8], uuid.New().String()[:8],
+		uuid.New().String()[:8], uuid.New().String()[:8], uuid.New().String()[:8])
 
 	maxConfig := `
 		%s
@@ -328,9 +326,32 @@ func TestCckmOCIKeysAndVersionsBYOK(t *testing.T) {
 			{
 				Config: createResourceStr,
 				Check: resource.ComposeTestCheckFunc(
+					// Key resource
+					resource.TestCheckResourceAttrSet(keyResource, "id"),
+					resource.TestCheckResourceAttr(keyResource, "enable_key", "true"),
+					resource.TestCheckResourceAttr(keyResource, "source_key_tier", "local"),
+					resource.TestCheckResourceAttr(keyResource, "oci_key_params.protection_mode", "SOFTWARE"),
+					resource.TestCheckResourceAttrPair(keyResource, "vault", "ciphertrust_oci_vault.vault", "id"),
+					resource.TestCheckResourceAttrSet(keyResource, "oci_key_params.key_id"), // was oci_key_id — bug fix
+					resource.TestCheckResourceAttrSet(keyResource, "vault_id"),
 					resource.TestCheckResourceAttr(keyResource, "labels.%", "2"),
+				// version_summary reflects versions present at key-read time (not later-added versions in same apply)
+				resource.TestCheckResourceAttrSet(keyResource, "version_summary.0.version_id"),
+				// Version resource (byok_v1)
+					resource.TestCheckResourceAttrSet(versionResource, "id"),
+					resource.TestCheckResourceAttrPair(versionResource, "cckm_key_id", keyResource, "id"),
+					resource.TestCheckResourceAttrSet(versionResource, "oci_key_version_params.vault_id"), // validates KV-2 fix
+					resource.TestCheckResourceAttrSet(versionResource, "oci_key_version_params.key_id"),
+					resource.TestCheckResourceAttrSet(versionResource, "oci_key_version_params.version_id"),
+					// Key list data source
 					resource.TestCheckResourceAttr(keysDataSource, "keys.#", "1"),
+					resource.TestCheckResourceAttr(keysDataSource, "matched", "1"),
+					resource.TestCheckResourceAttrPair(keysDataSource, "keys.0.id", keyResource, "id"),
+					resource.TestCheckResourceAttr(keysDataSource, "keys.0.oci_key_params.protection_mode", "SOFTWARE"),
+					// Key version list data source
 					resource.TestCheckResourceAttr(versionDataSource, "versions.#", "4"),
+					resource.TestCheckResourceAttr(versionDataSource, "matched", "4"),
+					resource.TestCheckResourceAttrSet(versionDataSource, "versions.0.id"),
 				),
 			},
 			{
@@ -355,7 +376,11 @@ func TestCckmOCIKeysAndVersionsBYOK(t *testing.T) {
 			{
 				Config: updateResourceStr,
 				Check: resource.ComposeTestCheckFunc(
-					resource.TestCheckResourceAttr(keyResource, "version_summary.#", "4"),
+					// Key resource
+					resource.TestCheckResourceAttrSet(keyResource, "id"),
+					resource.TestCheckResourceAttrSet(keyResource, "version_summary.0.version_id"),
+					// Version resource
+					resource.TestCheckResourceAttrSet(versionResource, "id"),
 				),
 			},
 			{
@@ -366,7 +391,12 @@ func TestCckmOCIKeysAndVersionsBYOK(t *testing.T) {
 			{
 				Config: minResourceStr,
 				Check: resource.ComposeTestCheckFunc(
+					// Key resource
+					resource.TestCheckResourceAttrSet(keyResource, "id"),
 					resource.TestCheckResourceAttr(keyResource, "labels.%", "0"),
+					resource.TestCheckResourceAttr(keyResource, "oci_key_params.protection_mode", "SOFTWARE"),
+					// Version resource
+					resource.TestCheckResourceAttrSet(versionResource, "id"),
 				),
 			},
 			{
@@ -390,11 +420,26 @@ func TestCckmOCIKeysAndVersionsBYOK(t *testing.T) {
 			},
 			{
 				Config: updateResourceStr,
-				Check:  resource.ComposeTestCheckFunc(),
+				Check: resource.ComposeTestCheckFunc(
+					// Key resource
+					resource.TestCheckResourceAttrSet(keyResource, "id"),
+					// Version resource
+					resource.TestCheckResourceAttrSet(versionResource, "id"),
+				),
 			},
 			{
 				Config: createResourceStr,
-				Check:  resource.ComposeTestCheckFunc(),
+				Check: resource.ComposeTestCheckFunc(
+					// Key resource
+					resource.TestCheckResourceAttrSet(keyResource, "id"),
+					resource.TestCheckResourceAttrSet(keyResource, "version_summary.0.version_id"),
+					// Version resource
+					resource.TestCheckResourceAttrSet(versionResource, "id"),
+					// Key list data source
+					resource.TestCheckResourceAttr(keysDataSource, "keys.#", "1"),
+					// Key version list data source
+					resource.TestCheckResourceAttr(versionDataSource, "versions.#", "4"),
+				),
 			},
 		},
 	})

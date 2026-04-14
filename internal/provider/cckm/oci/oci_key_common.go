@@ -23,6 +23,10 @@ const (
 	currentVersionError = "cannot be deleted because it is the current key version"
 )
 
+// updateKey applies all mutable changes to an OCI key.
+// Used by resourceCCKMOCIKey and resourceCCKMOCIBYOKKey.
+// Does NOT update: algorithm, length, protection_mode, curve_id (immutable in OCI).
+// Compartment changes are applied via a separate change-compartment endpoint.
 func updateKey(ctx context.Context, id string, client *common.Client, keyID string, plan *models.KeyCommonTFSDK, state *models.KeyCommonTFSDK, diags *diag.Diagnostics) {
 	response, err := client.PostNoData(ctx, id, common.URL_OCI+"/keys/"+keyID+"/refresh")
 	if err != nil {
@@ -46,16 +50,16 @@ func updateKey(ctx context.Context, id string, client *common.Client, keyID stri
 		}
 	}
 
-	keyRotationEnabled := gjson.Get(response, "labels").Exists()
-	if plan.EnableAutoRotation != nil {
-		planRotationEnabled := plan.EnableAutoRotation != nil
-		if keyRotationEnabled && !planRotationEnabled {
+	keyRotationEnabled := gjson.Get(response, "auto_rotate").Bool()
+	if plan.EnableAutoRotation == nil {
+		if keyRotationEnabled {
 			disableSchedulerRotation(ctx, id, client, keyID, diags)
 			if diags.HasError() {
 				return
 			}
 		}
-		if planRotationEnabled && (!keyRotationEnabled || plan.EnableAutoRotation != state.EnableAutoRotation) {
+	} else {
+		if !keyRotationEnabled || plan.EnableAutoRotation != state.EnableAutoRotation {
 			enableSchedulerRotation(ctx, id, client, keyID, plan.EnableAutoRotation, diags)
 			if diags.HasError() {
 				return
@@ -89,15 +93,21 @@ func updateKey(ctx context.Context, id string, client *common.Client, keyID stri
 	}
 }
 
+// deleteKey schedules an OCI key for deletion.
+// Used by resourceCCKMOCIKey and resourceCCKMOCIBYOKKey.
+// Returns a warning (not error) if the key is not found (404) or already scheduled for deletion,
+// so Terraform removes the resource from state in both cases.
 func deleteKey(ctx context.Context, id string, client *common.Client, keyID string, days int64, diags *diag.Diagnostics) {
 	response, err := client.PostNoData(ctx, id, common.URL_OCI+"/keys/"+keyID+"/refresh")
 	if err != nil {
-		msg := "Error refreshing OCI key."
-		details := utils.ApiError(msg, map[string]interface{}{"error": err.Error(), "key_id": keyID})
 		if strings.Contains(err.Error(), notFoundError) {
+			msg := "OCI key was not found, it will be removed from state."
+			details := utils.ApiError(msg, map[string]interface{}{"key_id": keyID})
 			tflog.Warn(ctx, details)
 			diags.AddWarning(details, "")
 		} else {
+			msg := "Error refreshing OCI key."
+			details := utils.ApiError(msg, map[string]interface{}{"error": err.Error(), "key_id": keyID})
 			diags.AddError(details, "")
 			tflog.Error(ctx, details)
 		}
@@ -137,9 +147,26 @@ func deleteKey(ctx context.Context, id string, client *common.Client, keyID stri
 			return
 		}
 	}
-	tflog.Trace(ctx, "[oci_key_common.go -> deleteKey][response:"+response)
+	tflog.Debug(ctx, "[oci_key_common.go -> deleteKey][response:"+response)
 }
 
+// setKeyState sets the full Terraform state. Used by resourceCCKMOCIKey and resourceCCKMOCIByokKey.
+func setKeyState(ctx context.Context, id string, client *common.Client, response string, state *models.KeyTFSDK, diags *diag.Diagnostics) {
+	setCommonKeyState(ctx, id, client, response, &state.KeyCommonTFSDK, diags)
+	if diags.HasError() {
+		return
+	}
+	state.VaultID = types.StringValue(gjson.Get(response, "vault_id").String())
+	if state.KeyParams.LifecycleState.ValueString() == "ENABLED" {
+		state.EnableKey = types.BoolValue(true)
+	} else {
+		state.EnableKey = types.BoolValue(false)
+	}
+	state.Vault = types.StringValue(gjson.Get(response, "cckm_vault_id").String())
+}
+
+// setCommonKeyState populates all shared TFSDK state fields from a raw CM API response string.
+// Makes a secondary API call to GET /oci/keys/:id/versions to populate version_summary.
 func setCommonKeyState(ctx context.Context, id string, client *common.Client, response string, state *models.KeyCommonTFSDK, diags *diag.Diagnostics) {
 	state.Account = types.StringValue(gjson.Get(response, "account").String())
 	state.AutoRotate = types.BoolValue(gjson.Get(response, "auto_rotate").Bool())
@@ -199,8 +226,7 @@ func setCommonKeyState(ctx context.Context, id string, client *common.Client, re
 	state.UpdatedAt = types.StringValue(gjson.Get(response, "updatedAt").String())
 	state.URI = types.StringValue(gjson.Get(response, "uri").String())
 	setKeyVersionSummaryState(ctx, id, client, gjson.Get(response, "id").String(), &state.KeyVersionSummary, diags)
-	if dg.HasError() {
-		diags.Append(dg...)
+	if diags.HasError() {
 		return
 	}
 	if state.EnableAutoRotation == nil && len(labels) != 0 {
@@ -214,6 +240,7 @@ func setCommonKeyState(ctx context.Context, id string, client *common.Client, re
 	}
 }
 
+// setKeyVersionSummaryState fetches the key version list and populates the version_summary state.
 func setKeyVersionSummaryState(ctx context.Context, id string, client *common.Client, keyID string, state *types.List, diags *diag.Diagnostics) {
 	filters := url.Values{}
 	response, err := client.ListWithFilters(ctx, id, common.URL_OCI+"/keys/"+keyID+"/versions", filters)
@@ -252,6 +279,8 @@ func setKeyVersionSummaryState(ctx context.Context, id string, client *common.Cl
 	*state = stateList
 }
 
+// patchKey sends a PATCH request to update display_name, freeform_tags, or defined_tags on an OCI key.
+// Only sends the request if at least one of those fields differs from current state.
 func patchKey(ctx context.Context, id string, client *common.Client, keyID string, plan *models.KeyCommonTFSDK, diags *diag.Diagnostics) {
 	response, err := client.GetById(ctx, id, keyID, common.URL_OCI+"/keys")
 	if err != nil {
@@ -325,7 +354,7 @@ func patchKey(ctx context.Context, id string, client *common.Client, keyID strin
 			diags.AddError(details, "")
 			return
 		}
-		tflog.Trace(ctx, "[oci_key_common.go -> updateKey][response:"+response)
+		tflog.Debug(ctx, "[oci_key_common.go -> updateKey][response:"+response)
 		keyState := gjson.Get(response, "oci_params.lifecycle_state").String()
 		if keyState == keyStateUpdating {
 			waitForKeyStateChange(ctx, id, client, keyID, keyState, true, diags)
@@ -336,6 +365,7 @@ func patchKey(ctx context.Context, id string, client *common.Client, keyID strin
 	}
 }
 
+// getKeyLabelsFromJSON parses the CM-side labels map from a raw API response string.
 func getKeyLabelsFromJSON(ctx context.Context, response string, keyID string, diags *diag.Diagnostics) map[string]string {
 	labels := make(map[string]string)
 	if gjson.Get(response, "labels").Exists() {
@@ -351,6 +381,7 @@ func getKeyLabelsFromJSON(ctx context.Context, response string, keyID string, di
 	return labels
 }
 
+// enableSchedulerRotation enables scheduled auto-rotation for an OCI key.
 func enableSchedulerRotation(ctx context.Context, id string, client *common.Client, keyID string, tfsdkParams *models.EnableAutoRotationTFSDK, diags *diag.Diagnostics) {
 	payload := models.EnableAutoRotationJSON{
 		AutoRotateKeySource: tfsdkParams.KeySource.ValueString(),
@@ -372,9 +403,10 @@ func enableSchedulerRotation(ctx context.Context, id string, client *common.Clie
 		diags.AddError(details, "")
 		return
 	}
-	tflog.Trace(ctx, "[oci_key_common.go -> enableSchedulerRotation][response:"+response)
+	tflog.Debug(ctx, "[oci_key_common.go -> enableSchedulerRotation][response:"+response)
 }
 
+// disableSchedulerRotation disables scheduled auto-rotation for an OCI key.
 func disableSchedulerRotation(ctx context.Context, id string, client *common.Client, keyID string, diags *diag.Diagnostics) {
 	response, err := client.PostNoData(ctx, id, common.URL_OCI+"/keys/"+keyID+"/disable-auto-rotation")
 	if err != nil {
@@ -384,9 +416,10 @@ func disableSchedulerRotation(ctx context.Context, id string, client *common.Cli
 		tflog.Error(ctx, details)
 		return
 	}
-	tflog.Trace(ctx, "[oci_key_common.go -> disableSchedulerRotation][response:"+response)
+	tflog.Debug(ctx, "[oci_key_common.go -> disableSchedulerRotation][response:"+response)
 }
 
+// enableKey enables an OCI key and waits for the state to settle.
 func enableKey(ctx context.Context, id string, client *common.Client, keyID string, diags *diag.Diagnostics) {
 	response, err := client.PostNoData(ctx, id, common.URL_OCI+"/keys/"+keyID+"/enable")
 	if err != nil {
@@ -396,7 +429,7 @@ func enableKey(ctx context.Context, id string, client *common.Client, keyID stri
 		diags.AddError(details, "")
 		return
 	}
-	tflog.Trace(ctx, "[oci_key_common.go -> enableKey][response:"+response)
+	tflog.Debug(ctx, "[oci_key_common.go -> enableKey][response:"+response)
 	keyState := gjson.Get(response, "oci_params.lifecycle_state").String()
 	if keyState == keyStateEnabling {
 		waitForKeyStateChange(ctx, id, client, keyID, keyState, false, diags)
@@ -406,6 +439,7 @@ func enableKey(ctx context.Context, id string, client *common.Client, keyID stri
 	}
 }
 
+// disableKey disables an OCI key and waits for the state to settle.
 func disableKey(ctx context.Context, id string, client *common.Client, keyID string, diags *diag.Diagnostics) {
 	response, err := client.PostNoData(ctx, id, common.URL_OCI+"/keys/"+keyID+"/disable")
 	if err != nil {
@@ -415,7 +449,7 @@ func disableKey(ctx context.Context, id string, client *common.Client, keyID str
 		diags.AddError(details, "")
 		return
 	}
-	tflog.Trace(ctx, "[oci_key_common.go -> disableKey][response:"+response)
+	tflog.Debug(ctx, "[oci_key_common.go -> disableKey][response:"+response)
 	keyState := gjson.Get(response, "oci_params.lifecycle_state").String()
 	if keyState == keyStateDisabling {
 		waitForKeyStateChange(ctx, id, client, keyID, keyState, false, diags)
@@ -425,6 +459,7 @@ func disableKey(ctx context.Context, id string, client *common.Client, keyID str
 	}
 }
 
+// changeKeyCompartment moves an OCI key to a different compartment.
 func changeKeyCompartment(ctx context.Context, id string, client *common.Client, keyID string, compartmentID string, diags *diag.Diagnostics) {
 	payload := models.ChangeCompartmentPayload{
 		CompartmentID: compartmentID,
@@ -445,7 +480,7 @@ func changeKeyCompartment(ctx context.Context, id string, client *common.Client,
 		diags.AddError(details, "")
 		return
 	}
-	tflog.Trace(ctx, "[oci_key_common.go -> changeKeyCompartment][response:"+response)
+	tflog.Debug(ctx, "[oci_key_common.go -> changeKeyCompartment][response:"+response)
 	keyState := gjson.Get(response, "oci_params.lifecycle_state").String()
 	if keyState == keyStateUpdating || keyState == keyStateChangingCompartment {
 		waitForKeyStateChange(ctx, id, client, keyID, keyState, true, diags)
@@ -455,6 +490,10 @@ func changeKeyCompartment(ctx context.Context, id string, client *common.Client,
 	}
 }
 
+// waitForKeyStateChange polls until the OCI key's lifecycle_state differs from currentState.
+// If refresh is true, polls via the /refresh endpoint; otherwise polls via GET.
+// Returns an error if the state does not change within the configured oci_operation_timeout.
+// Returns a warning if the final state is neither ENABLED nor DISABLED.
 func waitForKeyStateChange(ctx context.Context, id string, client *common.Client, keyID string, currentState string, refresh bool, diags *diag.Diagnostics) {
 	response, err := client.PostNoData(ctx, id, common.URL_OCI+"/keys/"+keyID+"/refresh")
 	if err != nil {
@@ -514,5 +553,5 @@ func waitForKeyStateChange(ctx context.Context, id string, client *common.Client
 		tflog.Warn(ctx, details)
 		diags.AddWarning(details, "")
 	}
-	tflog.Trace(ctx, "[oci_key_common.go -> waitForKeyStateChange][response:"+response)
+	tflog.Debug(ctx, "[oci_key_common.go -> waitForKeyStateChange][response:"+response)
 }

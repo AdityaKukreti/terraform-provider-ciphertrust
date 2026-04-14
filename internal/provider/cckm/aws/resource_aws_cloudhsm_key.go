@@ -395,10 +395,10 @@ func (r *resourceAWSCloudHSMKey) Schema(_ context.Context, _ resource.SchemaRequ
 // Create creates a new AWS CloudHSM key in a custom key store via CipherTrust Manager and sets Terraform state.
 // After the key is successfully created, the following post-creation operations are attempted but only
 // produce warnings (not errors) on failure, ensuring the key is always saved to state:
-//   - Adding additional aliases beyond the first — only applied when the key is linked (linked_state = true);
+//   - Adding additional aliases beyond the first  -  only applied when the key is linked (linked_state = true);
 //     unlinked keys do not support alias management via AWS
 //   - Registering the key with a CipherTrust Manager scheduled rotation job (enable_rotation block)
-//   - Disabling the key if enable_key = false — only applied when the key is linked
+//   - Disabling the key if enable_key = false  -  only applied when the key is linked
 //   - Refreshing final state from the API after all post-creation operations
 func (r *resourceAWSCloudHSMKey) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
 	id := uuid.New().String()

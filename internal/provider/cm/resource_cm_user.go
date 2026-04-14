@@ -346,7 +346,7 @@ func (r *resourceCMUser) Update(ctx context.Context, req resource.UpdateRequest,
 		if json.Unmarshal([]byte(userResponse), &user) == nil {
 			plan.Nickname = types.StringValue(user.Nickname)
 			plan.Name = types.StringValue(user.Name)
-			plan.Email = types.StringValue(user.Email) 
+			plan.Email = types.StringValue(user.Email)
 		}
 	}
 
