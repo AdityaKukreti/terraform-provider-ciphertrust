@@ -358,7 +358,7 @@ func (r *resourceCCKMOCIAcl) applyAcls(ctx context.Context, id string, vaultID s
 		diags.AddError(details, "")
 		return ""
 	}
-	response, err := r.client.PostDataV2(ctx, id, common.URL_OCI+"/vaults/"+vaultID+"/update-acls", payloadJSON)
+	response, err := ociPostDataV2WithRetry(ctx, r.client, id, common.URL_OCI+"/vaults/"+vaultID+"/update-acls", payloadJSON)
 	if err != nil {
 		if ignoreNotFoundErrors && strings.Contains(err.Error(), "NCERRResourceNotFound") {
 			return ""

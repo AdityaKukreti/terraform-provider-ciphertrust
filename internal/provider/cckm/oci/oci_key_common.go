@@ -28,7 +28,7 @@ const (
 // Does NOT update: algorithm, length, protection_mode, curve_id (immutable in OCI).
 // Compartment changes are applied via a separate change-compartment endpoint.
 func updateKey(ctx context.Context, id string, client *common.Client, keyID string, plan *models.KeyCommonTFSDK, state *models.KeyCommonTFSDK, diags *diag.Diagnostics) {
-	response, err := client.PostNoData(ctx, id, common.URL_OCI+"/keys/"+keyID+"/refresh")
+	response, err := ociPostNoDataWithRetry(ctx, client, id, common.URL_OCI+"/keys/"+keyID+"/refresh")
 	if err != nil {
 		msg := "Error refreshing OCI key."
 		details := utils.ApiError(msg, map[string]interface{}{"error": err.Error(), "key_id": keyID})
@@ -98,7 +98,7 @@ func updateKey(ctx context.Context, id string, client *common.Client, keyID stri
 // Returns a warning (not error) if the key is not found (404) or already scheduled for deletion,
 // so Terraform removes the resource from state in both cases.
 func deleteKey(ctx context.Context, id string, client *common.Client, keyID string, days int64, diags *diag.Diagnostics) {
-	response, err := client.PostNoData(ctx, id, common.URL_OCI+"/keys/"+keyID+"/refresh")
+	response, err := ociPostNoDataWithRetry(ctx, client, id, common.URL_OCI+"/keys/"+keyID+"/refresh")
 	if err != nil {
 		if strings.Contains(err.Error(), notFoundError) {
 			msg := "OCI key was not found, it will be removed from state."
@@ -133,7 +133,7 @@ func deleteKey(ctx context.Context, id string, client *common.Client, keyID stri
 			diags.AddError(details, "")
 			return
 		}
-		response, err = client.PostDataV2(ctx, id, common.URL_OCI+"/keys/"+keyID+"/schedule-deletion", payloadJSON)
+		response, err = ociPostDataV2WithRetry(ctx, client, id, common.URL_OCI+"/keys/"+keyID+"/schedule-deletion", payloadJSON)
 		if err != nil {
 			msg := "Error scheduling OCI key for deletion."
 			details := utils.ApiError(msg, map[string]interface{}{"error": err.Error(), "key_id": keyID})
@@ -346,7 +346,7 @@ func patchKey(ctx context.Context, id string, client *common.Client, keyID strin
 			diags.AddError(details, "")
 			return
 		}
-		response, err = client.UpdateDataV2(ctx, keyID, common.URL_OCI+"/keys", payloadJSON)
+		response, err = ociUpdateDataV2WithRetry(ctx, client, keyID, common.URL_OCI+"/keys", payloadJSON)
 		if err != nil {
 			msg := "Error updating OCI key"
 			details := utils.ApiError(msg, map[string]interface{}{"error": err.Error(), "key_id": keyID})
@@ -395,7 +395,7 @@ func enableSchedulerRotation(ctx context.Context, id string, client *common.Clie
 		diags.AddError(details, "")
 		return
 	}
-	response, err := client.PostDataV2(ctx, id, common.URL_OCI+"/keys/"+keyID+"/enable-auto-rotation", payloadJSON)
+	response, err := ociPostDataV2WithRetry(ctx, client, id, common.URL_OCI+"/keys/"+keyID+"/enable-auto-rotation", payloadJSON)
 	if err != nil {
 		msg := "Error enabling auto rotation for OCI key."
 		details := utils.ApiError(msg, map[string]interface{}{"error": err.Error(), "key_id": keyID})
@@ -408,7 +408,7 @@ func enableSchedulerRotation(ctx context.Context, id string, client *common.Clie
 
 // disableSchedulerRotation disables scheduled auto-rotation for an OCI key.
 func disableSchedulerRotation(ctx context.Context, id string, client *common.Client, keyID string, diags *diag.Diagnostics) {
-	response, err := client.PostNoData(ctx, id, common.URL_OCI+"/keys/"+keyID+"/disable-auto-rotation")
+	response, err := ociPostNoDataWithRetry(ctx, client, id, common.URL_OCI+"/keys/"+keyID+"/disable-auto-rotation")
 	if err != nil {
 		msg := "Error updating OCI key, failed to disable scheduled key rotation for OCI key."
 		details := utils.ApiError(msg, map[string]interface{}{"error": err.Error(), "key_id": keyID})
@@ -421,7 +421,7 @@ func disableSchedulerRotation(ctx context.Context, id string, client *common.Cli
 
 // enableKey enables an OCI key and waits for the state to settle.
 func enableKey(ctx context.Context, id string, client *common.Client, keyID string, diags *diag.Diagnostics) {
-	response, err := client.PostNoData(ctx, id, common.URL_OCI+"/keys/"+keyID+"/enable")
+	response, err := ociPostNoDataWithRetry(ctx, client, id, common.URL_OCI+"/keys/"+keyID+"/enable")
 	if err != nil {
 		msg := "Error enabling OCI key."
 		details := utils.ApiError(msg, map[string]interface{}{"error": err.Error(), "key_id": keyID})
@@ -441,7 +441,7 @@ func enableKey(ctx context.Context, id string, client *common.Client, keyID stri
 
 // disableKey disables an OCI key and waits for the state to settle.
 func disableKey(ctx context.Context, id string, client *common.Client, keyID string, diags *diag.Diagnostics) {
-	response, err := client.PostNoData(ctx, id, common.URL_OCI+"/keys/"+keyID+"/disable")
+	response, err := ociPostNoDataWithRetry(ctx, client, id, common.URL_OCI+"/keys/"+keyID+"/disable")
 	if err != nil {
 		msg := "Error disabling OCI key."
 		details := utils.ApiError(msg, map[string]interface{}{"error": err.Error(), "key_id": keyID})
@@ -472,7 +472,7 @@ func changeKeyCompartment(ctx context.Context, id string, client *common.Client,
 		diags.AddError(details, "")
 		return
 	}
-	response, err := client.PostDataV2(ctx, id, common.URL_OCI+"/keys/"+keyID+"/change-compartment", payloadJSON)
+	response, err := ociPostDataV2WithRetry(ctx, client, id, common.URL_OCI+"/keys/"+keyID+"/change-compartment", payloadJSON)
 	if err != nil {
 		msg := "Error changing OCI key compartment ID."
 		details := utils.ApiError(msg, map[string]interface{}{"error": err.Error(), "key_id": keyID, "compartment_id": compartmentID})

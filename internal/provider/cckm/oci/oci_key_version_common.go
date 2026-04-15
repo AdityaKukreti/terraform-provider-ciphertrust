@@ -35,7 +35,7 @@ func deleteKeyVersion(ctx context.Context, id string, client *common.Client, key
 		diags.AddError(details, "")
 		return
 	}
-	response, err := client.PostDataV2(ctx, id, common.URL_OCI+"/keys/"+keyID+"/versions/"+versionID+"/schedule-deletion", payloadJSON)
+	response, err := ociPostDataV2WithRetry(ctx, client, id, common.URL_OCI+"/keys/"+keyID+"/versions/"+versionID+"/schedule-deletion", payloadJSON)
 	if err != nil {
 		if strings.Contains(err.Error(), currentVersionError) {
 			msg := "OCI BYOK key version is the current key version and cannot be deleted independently. It will be removed from state but remains active in OCI until the parent key is deleted."

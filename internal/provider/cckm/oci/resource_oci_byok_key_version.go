@@ -217,7 +217,7 @@ func (r *resourceCCKMOCIByokVersion) Create(ctx context.Context, req resource.Cr
 		resp.Diagnostics.AddError(details, "")
 		return
 	}
-	response, err := r.client.PostDataV2(ctx, id, common.URL_OCI+"/keys/"+keyID+"/versions", payloadJSON)
+	response, err := ociPostDataV2WithRetry(ctx, r.client, id, common.URL_OCI+"/keys/"+keyID+"/versions", payloadJSON)
 	if err != nil {
 		msg := "Error adding key version to OCI."
 		details := utils.ApiError(msg, map[string]interface{}{"error": err.Error(), "key_id": keyID})

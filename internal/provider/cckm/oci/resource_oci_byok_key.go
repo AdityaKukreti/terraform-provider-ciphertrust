@@ -354,7 +354,7 @@ func (r *resourceCCKMOCIByokKey) Create(ctx context.Context, req resource.Create
 		return
 	}
 
-	response, err := r.client.PostDataV2(ctx, id, common.URL_OCI+"/upload-key", payloadJSON)
+	response, err := ociPostDataV2WithRetry(ctx, r.client, id, common.URL_OCI+"/upload-key", payloadJSON)
 	if err != nil {
 		msg := "Error uploading key to OCI."
 		details := utils.ApiError(msg, map[string]interface{}{"error": err.Error(), "name": payload.Name})
@@ -397,7 +397,7 @@ func (r *resourceCCKMOCIByokKey) Create(ctx context.Context, req resource.Create
 		}
 	}
 
-	refreshResponse, err := r.client.PostNoData(ctx, id, common.URL_OCI+"/keys/"+keyID+"/refresh")
+	refreshResponse, err := ociPostNoDataWithRetry(ctx, r.client, id, common.URL_OCI+"/keys/"+keyID+"/refresh")
 	if err != nil {
 		msg := "Error refreshing OCI key."
 		details := utils.ApiError(msg, map[string]interface{}{"error": err.Error(), "key_id": keyID})

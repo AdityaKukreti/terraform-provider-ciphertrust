@@ -243,7 +243,7 @@ func (r *resourceCCKMOCIVault) Create(ctx context.Context, req resource.CreateRe
 		return
 	}
 
-	response, err := r.client.PostDataV2(ctx, id, common.URL_OCI+"/add-vaults", payloadJSON)
+	response, err := ociPostDataV2WithRetry(ctx, r.client, id, common.URL_OCI+"/add-vaults", payloadJSON)
 	if err != nil {
 		msg := "Error adding OCI vault."
 		details := utils.ApiError(msg, map[string]interface{}{"error": err.Error(), "vault": payload.VaultIDs[0]})
@@ -386,7 +386,7 @@ func (r *resourceCCKMOCIVault) Update(ctx context.Context, req resource.UpdateRe
 			resp.Diagnostics.AddError(details, "")
 			return
 		}
-		_, err = r.client.UpdateDataV2(ctx, vaultID, common.URL_OCI+"/vaults", payloadJSON)
+		_, err = ociUpdateDataV2WithRetry(ctx, r.client, vaultID, common.URL_OCI+"/vaults", payloadJSON)
 		if err != nil {
 			msg := "Error updating OCI Vault."
 			details := utils.ApiError(msg, map[string]interface{}{"error": err.Error(), "vault_id": vaultID})
