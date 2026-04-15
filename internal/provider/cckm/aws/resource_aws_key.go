@@ -55,16 +55,17 @@ var (
 )
 
 const (
-	policyTemplateTagKey          = "cckm_policy_template_id"
-	longAwsKeyOpSleep             = 20
-	shortAwsKeyOpSleep            = 5
-	awsValidToRegEx               = `^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})Z$`
-	awsValidToFormatMsg           = "must conform to the following example 2027-07-03T14:24:00Z"
-	refreshTokenSeconds           = 200
-	cckmSyncAutoRotationDelay     = 5
-	disabledKeyException          = "DisabledException"
-	autoRotationWaitSeconds       = 30
-	cckmMultiRegionBackgroundWait = 100
+	policyTemplateTagKey                 = "cckm_policy_template_id"
+	longAwsKeyOpSleep                    = 20
+	shortAwsKeyOpSleep                   = 5
+	awsValidToRegEx                      = `^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})Z$`
+	awsValidToFormatMsg                  = "must conform to the following example 2027-07-03T14:24:00Z"
+	refreshTokenSeconds                  = 200
+	autoRotationWaitSeconds              = 180
+	updatePrimaryRegionWaitSeconds       = 180
+	enableDisableAutoRotationWaitSeconds = 180
+	disabledKeyException                 = "DisabledException"
+	notMultiRegionPrimaryException       = "is not a multi-Region primary key"
 )
 
 func NewResourceAWSKey() resource.Resource {
@@ -534,7 +535,7 @@ func (r *resourceAWSKey) Schema(_ context.Context, _ resource.SchemaRequest, res
 // operations are attempted but only produce warnings (not errors) on failure, ensuring the key is
 // always saved to state regardless of any subsequent partial failure:
 //   - Adding additional aliases beyond the first (the first alias is set during key creation)
-//   - Enabling or disabling AWS auto-rotation (enable_auto_rotate / auto_rotation_period_in_days)
+//   - Enabling or disabling AWS autorotation (enable_auto_rotate / auto_rotation_period_in_days)
 //   - Registering the key with a CipherTrust Manager scheduled rotation job (enable_rotation block)
 //   - Disabling the key if enable_key = false
 //   - Refreshing final state from the API after all post-creation operations
@@ -978,7 +979,7 @@ func setCommonKeyStateEx(ctx context.Context, response string, state *AWSKeyComm
 	setPolicyTemplateTag(ctx, response, &state.PolicyTemplateTag, diags)
 }
 
-// enableDisableAutoRotation enables or disables AWS auto-rotation for a key and polls until the change is confirmed.
+// enableDisableAutoRotation enables or disables AWS autorotation for a key and polls until the change is confirmed.
 func (r *resourceAWSKey) enableDisableAutoRotation(ctx context.Context, id string, plan *AWSKeyTFSDK, keyJSON string, diags *diag.Diagnostics) {
 	tflog.Debug(ctx, common.MSG_METHOD_START+"[resource_aws_key.go -> enableDisableAutoRotation]["+id+"]")
 	defer tflog.Debug(ctx, common.MSG_METHOD_END+"[resource_aws_key.go -> enableDisableAutoRotation]["+id+"]")
@@ -993,21 +994,23 @@ func (r *resourceAWSKey) enableDisableAutoRotation(ctx context.Context, id strin
 	keyDays := gjson.Get(keyJSON, "aws_param.RotationPeriodInDays").Int()
 	keyID := plan.KeyID.ValueString()
 	daysMatch := !planPeriodIsSet || keyDays == planDays
-	updated := false
+	updatedAutoRotation := false
 	if planAutoRotateEnabled {
 		if keyAutoRotateEnabled != planAutoRotateEnabled || !daysMatch {
-			updated = r.enableAutoRotation(ctx, id, plan, keyJSON, diags)
+			r.enableAutoRotation(ctx, id, plan, keyJSON, diags)
 			if diags.HasError() {
 				return
 			}
+			updatedAutoRotation = true
 		}
 	} else if keyAutoRotateEnabled != planAutoRotateEnabled {
-		updated = r.disableAutoRotation(ctx, id, plan, keyJSON, diags)
+		r.disableAutoRotation(ctx, id, plan, keyJSON, diags)
 		if diags.HasError() {
 			return
 		}
+		updatedAutoRotation = true
 	}
-	if updated {
+	if updatedAutoRotation {
 		response, err = r.client.GetById(ctx, id, keyID, common.URL_AWS_KEY)
 		if err != nil {
 			msg := "Error reading AWS key after auto-rotation change."
@@ -1020,10 +1023,15 @@ func (r *resourceAWSKey) enableDisableAutoRotation(ctx context.Context, id strin
 		keyDays = gjson.Get(response, "aws_param.RotationPeriodInDays").Int()
 		daysMatch = !planPeriodIsSet || keyDays == planDays
 		if keyAutoRotateEnabled != planAutoRotateEnabled || !daysMatch {
-			numRetries := autoRotationWaitSeconds / shortAwsKeyOpSleep
+			time.Sleep(time.Duration(shortAwsKeyOpSleep) * time.Second)
+			ticker := time.NewTicker(time.Duration(shortAwsKeyOpSleep) * time.Second)
+			defer ticker.Stop()
+			deadline := time.Now().Add(time.Duration(autoRotationWaitSeconds) * time.Second)
 			tStart := time.Now()
-			for retry := 0; retry < numRetries && (keyAutoRotateEnabled != planAutoRotateEnabled || !daysMatch); retry++ {
-				time.Sleep(time.Duration(shortAwsKeyOpSleep) * time.Second)
+			for range ticker.C {
+				if time.Now().After(deadline) {
+					break
+				}
 				if time.Since(tStart).Seconds() > refreshTokenSeconds {
 					if err = r.client.RefreshToken(ctx, id); err != nil {
 						msg := "Error enabling auto-rotation for AWS key. Error refreshing authentication token."
@@ -1044,6 +1052,9 @@ func (r *resourceAWSKey) enableDisableAutoRotation(ctx context.Context, id strin
 				keyAutoRotateEnabled = gjson.Get(response, "aws_param.KeyRotationEnabled").Bool()
 				keyDays = gjson.Get(response, "aws_param.RotationPeriodInDays").Int()
 				daysMatch = !planPeriodIsSet || keyDays == planDays
+				if keyAutoRotateEnabled == planAutoRotateEnabled && daysMatch {
+					return
+				}
 			}
 		}
 	}
@@ -1056,7 +1067,7 @@ func (r *resourceAWSKey) enableDisableAutoRotation(ctx context.Context, id strin
 }
 
 // enableAutoRotation sends the enable-auto-rotation request to AWS, retrying on transient disabled-key errors.
-func (r *resourceAWSKey) enableAutoRotation(ctx context.Context, id string, plan *AWSKeyTFSDK, keyJSON string, diags *diag.Diagnostics) bool {
+func (r *resourceAWSKey) enableAutoRotation(ctx context.Context, id string, plan *AWSKeyTFSDK, keyJSON string, diags *diag.Diagnostics) {
 	tflog.Debug(ctx, common.MSG_METHOD_START+"[resource_aws_key.go -> enableAutoRotation]["+id+"]")
 	defer tflog.Debug(ctx, common.MSG_METHOD_END+"[resource_aws_key.go -> enableAutoRotation]["+id+"]")
 	keyEnabled := gjson.Get(keyJSON, "aws_param.Enabled").Bool()
@@ -1072,26 +1083,33 @@ func (r *resourceAWSKey) enableAutoRotation(ctx context.Context, id string, plan
 		details := utils.ApiError(msg, map[string]interface{}{"error": err.Error(), "key_id": keyID})
 		tflog.Error(ctx, details)
 		diags.AddError(details, "")
-		return false
+		return
 	}
 	response, err := r.client.PostDataV2(ctx, id, common.URL_AWS_KEY+"/"+keyID+"/enable-auto-rotation", payloadJSON)
 	if err != nil {
 		if strings.Contains(err.Error(), disabledKeyException) && keyEnabled {
-			numRetries := int(r.client.CCKMConfig.AwsOperationTimeout / shortAwsKeyOpSleep)
+			ticker := time.NewTicker(time.Duration(shortAwsKeyOpSleep) * time.Second)
+			defer ticker.Stop()
+			deadline := time.Now().Add(time.Duration(enableDisableAutoRotationWaitSeconds) * time.Second)
 			tStart := time.Now()
-			for retry := 0; retry < numRetries && err != nil; retry++ {
-				time.Sleep(time.Duration(shortAwsKeyOpSleep) * time.Second)
+			for range ticker.C {
+				if time.Now().After(deadline) {
+					break
+				}
 				if time.Since(tStart).Seconds() > refreshTokenSeconds {
 					if err = r.client.RefreshToken(ctx, id); err != nil {
 						msg := "Error enabling auto-rotation for AWS key. Error refreshing authentication token."
 						details := utils.ApiError(msg, map[string]interface{}{"error": err.Error(), "key_id": keyID})
 						tflog.Error(ctx, details)
 						diags.AddError(details, "")
-						return false
+						return
 					}
 					tStart = time.Now()
 				}
 				_, err = r.client.PostDataV2(ctx, id, common.URL_AWS_KEY+"/"+keyID+"/enable-auto-rotation", payloadJSON)
+				if err == nil || !strings.Contains(err.Error(), disabledKeyException) {
+					break
+				}
 			}
 		}
 		if err != nil {
@@ -1099,16 +1117,14 @@ func (r *resourceAWSKey) enableAutoRotation(ctx context.Context, id string, plan
 			details := utils.ApiError(msg, map[string]interface{}{"error": err.Error(), "key_id": keyID})
 			diags.AddError(details, "")
 			tflog.Error(ctx, details)
-			return false
+			return
 		}
 	}
-
 	tflog.Debug(ctx, "[resource_aws_key.go -> enableAutoRotation][response:"+response)
-	return true
 }
 
 // disableAutoRotation sends the disable-auto-rotation request to AWS, retrying on transient disabled-key errors.
-func (r *resourceAWSKey) disableAutoRotation(ctx context.Context, id string, plan *AWSKeyTFSDK, keyJSON string, diags *diag.Diagnostics) bool {
+func (r *resourceAWSKey) disableAutoRotation(ctx context.Context, id string, plan *AWSKeyTFSDK, keyJSON string, diags *diag.Diagnostics) {
 	tflog.Debug(ctx, common.MSG_METHOD_START+"[resource_aws_key.go -> disableAutoRotation]["+id+"]")
 	defer tflog.Debug(ctx, common.MSG_METHOD_END+"[resource_aws_key.go -> disableAutoRotation]["+id+"]")
 	keyEnabled := gjson.Get(keyJSON, "aws_param.Enabled").Bool()
@@ -1116,21 +1132,28 @@ func (r *resourceAWSKey) disableAutoRotation(ctx context.Context, id string, pla
 	response, err := r.client.PostNoData(ctx, id, common.URL_AWS_KEY+"/"+keyID+"/disable-auto-rotation")
 	if err != nil {
 		if strings.Contains(err.Error(), disabledKeyException) && keyEnabled {
-			numRetries := int(r.client.CCKMConfig.AwsOperationTimeout / shortAwsKeyOpSleep)
+			ticker := time.NewTicker(time.Duration(shortAwsKeyOpSleep) * time.Second)
+			defer ticker.Stop()
+			deadline := time.Now().Add(time.Duration(r.client.CCKMConfig.AwsOperationTimeout) * time.Second)
 			tStart := time.Now()
-			for retry := 0; retry < numRetries && err != nil; retry++ {
-				time.Sleep(time.Duration(shortAwsKeyOpSleep) * time.Second)
+			for range ticker.C {
+				if time.Now().After(deadline) {
+					break
+				}
 				if time.Since(tStart).Seconds() > refreshTokenSeconds {
 					if err = r.client.RefreshToken(ctx, id); err != nil {
 						msg := "Error disabling auto-rotation for AWS key. Error refreshing authentication token."
 						details := utils.ApiError(msg, map[string]interface{}{"error": err.Error(), "key_id": keyID})
 						tflog.Error(ctx, details)
 						diags.AddError(details, "")
-						return false
+						return
 					}
 					tStart = time.Now()
 				}
 				response, err = r.client.PostNoData(ctx, id, common.URL_AWS_KEY+"/"+keyID+"/disable-auto-rotation")
+				if err == nil || !strings.Contains(err.Error(), disabledKeyException) {
+					break
+				}
 			}
 		}
 		if err != nil {
@@ -1138,11 +1161,10 @@ func (r *resourceAWSKey) disableAutoRotation(ctx context.Context, id string, pla
 			details := utils.ApiError(msg, map[string]interface{}{"error": err.Error(), "key_id": keyID})
 			diags.AddError(details, "")
 			tflog.Error(ctx, details)
-			return false
+			return
 		}
 	}
 	tflog.Debug(ctx, "[resource_aws_key.go -> disableAutoRotation][response:"+response)
-	return true
 }
 
 // enableKeyRotationJob registers an AWS key with a CipherTrust Manager scheduled rotation job.
@@ -1454,24 +1476,18 @@ func (r *resourceAWSKey) waitForReplication(ctx context.Context, id string, repl
 	var (
 		err      error
 		response string
+		keyState string
 	)
-	response, err = r.client.GetById(ctx, id, replicaKeyID, common.URL_AWS_KEY)
-	if err != nil {
-		msg := "Error creating AWS key. Error reading replicated key."
-		details := utils.ApiError(msg, map[string]interface{}{
-			"error":          err.Error(),
-			"replica_key_id": replicaKeyID,
-		})
-		tflog.Error(ctx, details)
-		diags.AddWarning(details, "")
-		return ""
-	}
-	keyState := gjson.Get(response, "aws_param.KeyState").String()
-
-	numRetries := cckmMultiRegionBackgroundWait / longAwsKeyOpSleep
+	// Give CCKM/AWS a head start before the first poll.
+	time.Sleep(time.Duration(longAwsKeyOpSleep) * time.Second)
+	ticker := time.NewTicker(time.Duration(longAwsKeyOpSleep) * time.Second)
+	defer ticker.Stop()
+	deadline := time.Now().Add(time.Duration(r.client.CCKMConfig.AwsOperationTimeout) * time.Second)
 	tStart := time.Now()
-	for retry := 0; retry < numRetries && keyState == "Creating"; retry++ {
-		time.Sleep(time.Duration(longAwsKeyOpSleep) * time.Second)
+	for range ticker.C {
+		if time.Now().After(deadline) {
+			break
+		}
 		if time.Since(tStart).Seconds() > refreshTokenSeconds {
 			if err = r.client.RefreshToken(ctx, id); err != nil {
 				msg := "Error creating AWS key. Error refreshing authentication token while waiting for key replication."
@@ -1498,42 +1514,40 @@ func (r *resourceAWSKey) waitForReplication(ctx context.Context, id string, repl
 		}
 		keyState = gjson.Get(response, "aws_param.KeyState").String()
 		tflog.Debug(ctx, fmt.Sprintf("Key state: %s", keyState))
+		if keyState != "Creating" {
+			tflog.Debug(ctx, "[resource_aws_key.go -> waitForReplication][response:"+response)
+			return response
+		}
 	}
-	if keyState == "Creating" {
-		msg := fmt.Sprintf("Error replicating AWS key, key state is still '%s'.", keyState)
-		details := utils.ApiError(msg, map[string]interface{}{"key_id": replicaKeyID})
-		tflog.Warn(ctx, details)
-		diags.AddWarning(details, "")
-	}
-
+	msg := fmt.Sprintf("Error replicating AWS key, key state is still '%s'.", keyState)
+	details := utils.ApiError(msg, map[string]interface{}{"key_id": replicaKeyID})
+	tflog.Warn(ctx, details)
+	diags.AddWarning(details, "")
 	tflog.Debug(ctx, "[resource_aws_key.go -> waitForReplication][response:"+response)
 	return response
 }
 
-// waitForReplicatedKeyIsEnabled polls the replica key until its state reaches "Enabled" or a timeout is reached.
+// waitForReplicatedKeyIsEnabled polls the replica key until its state reaches "Enabled" or a timeout is
+// reached. An EXTERNAL/BYOK replica key requires AWS to enable it after key material has been imported;
+// this function also covers the window between a native replica leaving "Creating" state and reaching "Enabled".
 func (r *resourceAWSKey) waitForReplicatedKeyIsEnabled(ctx context.Context, id string, replicaKeyID string, diags *diag.Diagnostics) string {
 	tflog.Debug(ctx, common.MSG_METHOD_START+"[resource_aws_key.go -> waitForKeyIsEnabled]["+id+"]")
 	defer tflog.Debug(ctx, common.MSG_METHOD_END+"[resource_aws_key.go -> waitForKeyIsEnabled]["+id+"]")
 	var (
 		err      error
 		response string
+		keyState string
 	)
-	response, err = r.client.GetById(ctx, id, replicaKeyID, common.URL_AWS_KEY)
-	if err != nil {
-		msg := "Error creating AWS key. Error reading replicated key."
-		details := utils.ApiError(msg, map[string]interface{}{
-			"error":          err.Error(),
-			"replica_key_id": replicaKeyID,
-		})
-		tflog.Error(ctx, details)
-		diags.AddWarning(details, "")
-		return ""
-	}
-	keyState := gjson.Get(response, "aws_param.KeyState").String()
-	numRetries := cckmMultiRegionBackgroundWait / longAwsKeyOpSleep
+	// Give AWS/CCKM a head start before the first poll.
+	time.Sleep(time.Duration(longAwsKeyOpSleep) * time.Second)
+	ticker := time.NewTicker(time.Duration(longAwsKeyOpSleep) * time.Second)
+	defer ticker.Stop()
+	deadline := time.Now().Add(time.Duration(r.client.CCKMConfig.AwsOperationTimeout) * time.Second)
 	tStart := time.Now()
-	for retry := 0; retry < numRetries && keyState != "Enabled"; retry++ {
-		time.Sleep(time.Duration(longAwsKeyOpSleep) * time.Second)
+	for range ticker.C {
+		if time.Now().After(deadline) {
+			break
+		}
 		if time.Since(tStart).Seconds() > refreshTokenSeconds {
 			if err = r.client.RefreshToken(ctx, id); err != nil {
 				msg := "Error replicating AWS key. Error refreshing authentication token."
@@ -1545,6 +1559,7 @@ func (r *resourceAWSKey) waitForReplicatedKeyIsEnabled(ctx context.Context, id s
 				diags.AddWarning(details, "")
 				return ""
 			}
+			tStart = time.Now()
 		}
 		response, err = r.client.GetById(ctx, id, replicaKeyID, common.URL_AWS_KEY)
 		if err != nil {
@@ -1559,13 +1574,15 @@ func (r *resourceAWSKey) waitForReplicatedKeyIsEnabled(ctx context.Context, id s
 		}
 		keyState = gjson.Get(response, "aws_param.KeyState").String()
 		tflog.Debug(ctx, fmt.Sprintf("Key state: %s", keyState))
+		if keyState == "Enabled" {
+			tflog.Debug(ctx, "[resource_aws_key.go -> waitForReplicatedKeyIsEnabled][response:"+response)
+			return response
+		}
 	}
-	if keyState != "Enabled" {
-		msg := fmt.Sprintf("Error replicating AWS key, keystate is '%s' instead of 'Enabled'.", keyState)
-		details := utils.ApiError(msg, map[string]interface{}{"key_id": replicaKeyID})
-		tflog.Warn(ctx, details)
-		diags.AddWarning(details, "")
-	}
+	msg := fmt.Sprintf("Error replicating AWS key, keystate is '%s' instead of 'Enabled'.", keyState)
+	details := utils.ApiError(msg, map[string]interface{}{"key_id": replicaKeyID})
+	tflog.Warn(ctx, details)
+	diags.AddWarning(details, "")
 	tflog.Debug(ctx, "[resource_aws_key.go -> waitForReplicatedKeyIsEnabled][response:"+response)
 	return response
 }
@@ -1639,15 +1656,6 @@ func (r *resourceAWSKey) importKeyMaterialToReplica(ctx context.Context, id stri
 func (r *resourceAWSKey) updatePrimaryRegion(ctx context.Context, id string, primaryKeyID string, newPrimaryRegion string, diags *diag.Diagnostics) {
 	tflog.Debug(ctx, common.MSG_METHOD_START+"[resource_aws_key.go -> updatePrimaryRegion]["+id+"]")
 	defer tflog.Debug(ctx, common.MSG_METHOD_END+"[resource_aws_key.go -> updatePrimaryRegion]["+id+"]")
-	response, err := r.client.GetById(ctx, id, primaryKeyID, common.URL_AWS_KEY)
-	if err != nil {
-		msg := "Error updating AWS key, failed to read key."
-		details := utils.ApiError(msg, map[string]interface{}{"error": err.Error(), "key_id": primaryKeyID})
-		tflog.Error(ctx, details)
-		diags.AddError(details, "")
-		return
-	}
-	currentPrimaryRegion := gjson.Get(response, "aws_param.MultiRegionConfiguration.PrimaryKey.Region").String()
 	payload := UpdatePrimaryRegionPayloadJSON{
 		PrimaryRegion: &newPrimaryRegion,
 	}
@@ -1659,21 +1667,60 @@ func (r *resourceAWSKey) updatePrimaryRegion(ctx context.Context, id string, pri
 		diags.AddError(details, "")
 		return
 	}
-	response, err = r.client.PostDataV2(ctx, id, common.URL_AWS_KEY+"/"+primaryKeyID+"/update-primary-region", payloadJSON)
+	_, err = r.client.PostDataV2(ctx, id, common.URL_AWS_KEY+"/"+primaryKeyID+"/update-primary-region", payloadJSON)
 	if err != nil {
-		msg := "Error updating primary region."
-		details := utils.ApiError(msg, map[string]interface{}{"error": err.Error(), "primary key_id": primaryKeyID})
-		tflog.Error(ctx, details)
-		diags.AddError(details, "")
-		return
+		if strings.Contains(err.Error(), notMultiRegionPrimaryException) {
+			// AWS might not have yet finished propagating a prior primary-region change.
+			// Retry until the key is recognised as a primary key in AWS, or until timeout.
+			retryTicker := time.NewTicker(time.Duration(shortAwsKeyOpSleep) * time.Second)
+			defer retryTicker.Stop()
+			retryDeadline := time.Now().Add(time.Duration(updatePrimaryRegionWaitSeconds) * time.Second)
+			tStartRetry := time.Now()
+			for range retryTicker.C {
+				// stop if we've hit the timeout
+				if time.Now().After(retryDeadline) {
+					break
+				}
+				if time.Since(tStartRetry).Seconds() > refreshTokenSeconds {
+					if err = r.client.RefreshToken(ctx, id); err != nil {
+						msg := "Error updating primary region for AWS key. Error refreshing authentication token."
+						details := utils.ApiError(msg, map[string]interface{}{"error": err.Error(), "key_id": primaryKeyID})
+						tflog.Error(ctx, details)
+						diags.AddError(details, "")
+						return
+					}
+					tStartRetry = time.Now()
+				}
+				_, err = r.client.PostDataV2(ctx, id, common.URL_AWS_KEY+"/"+primaryKeyID+"/update-primary-region", payloadJSON)
+				if err == nil || !strings.Contains(err.Error(), notMultiRegionPrimaryException) {
+					break
+				}
+			}
+		}
+		if err != nil {
+			msg := "Error updating primary region."
+			details := utils.ApiError(msg, map[string]interface{}{"error": err.Error(), "primary key_id": primaryKeyID})
+			tflog.Error(ctx, details)
+			diags.AddError(details, "")
+			return
+		}
 	}
-	numRetries := int(r.client.CCKMConfig.AwsOperationTimeout / shortAwsKeyOpSleep)
+
+	// Give AWS a head start before polling.
+	time.Sleep(time.Duration(shortAwsKeyOpSleep) * time.Second)
+	ticker := time.NewTicker(time.Duration(shortAwsKeyOpSleep) * time.Second)
+	defer ticker.Stop()
+	deadline := time.Now().Add(time.Duration(r.client.CCKMConfig.AwsOperationTimeout) * time.Second)
 	tStart := time.Now()
-	for retry := 0; retry < numRetries && currentPrimaryRegion != newPrimaryRegion; retry++ {
-		time.Sleep(time.Duration(shortAwsKeyOpSleep) * time.Second)
+	var (
+		response             string
+		currentPrimaryRegion string
+	)
+
+	for time.Now().Before(deadline) {
 		if time.Since(tStart).Seconds() > refreshTokenSeconds {
 			if err = r.client.RefreshToken(ctx, id); err != nil {
-				msg := "Error disabling auto-rotation for AWS key. Error refreshing authentication token."
+				msg := "Error updating primary region for AWS key. Error refreshing authentication token."
 				details := utils.ApiError(msg, map[string]interface{}{"error": err.Error(), "key_id": primaryKeyID})
 				tflog.Error(ctx, details)
 				diags.AddError(details, "")
@@ -1691,6 +1738,12 @@ func (r *resourceAWSKey) updatePrimaryRegion(ctx context.Context, id string, pri
 		}
 		currentPrimaryRegion = gjson.Get(response, "aws_param.MultiRegionConfiguration.PrimaryKey.Region").String()
 		tflog.Debug(ctx, fmt.Sprintf("Key primary region: %s", currentPrimaryRegion))
+		if currentPrimaryRegion == newPrimaryRegion {
+			// Success - return before firing any /refresh so no background task is left running.
+			tflog.Debug(ctx, "[resource_aws_key.go -> updatePrimaryRegion][response:"+response)
+			return
+		}
+		<-ticker.C
 	}
 	if currentPrimaryRegion != newPrimaryRegion {
 		msg := "Error updating AWS key. Failed to confirm primary region is set. Consider extending provider configuration option 'aws_operation_timeout'."
@@ -1737,7 +1790,7 @@ func disableKey(ctx context.Context, id string, client *common.Client, keyID str
 }
 
 // addAliases assigns additional aliases (beyond the first) to an AWS key after creation.
-// The first alias is included in the key creation payload; this function handles index 1 onwards.
+// The first alias is included in the key creation payload.
 // Used by resourceAWSKey, resourceAWSXKSKey (linked only), resourceAWSCloudHSMKey (linked only).
 func addAliases(ctx context.Context, client *common.Client, id string, plan *AWSKeyCommonTFSDK, keyJSON string, diags *diag.Diagnostics) {
 	tflog.Debug(ctx, common.MSG_METHOD_START+"[resource_aws_key.go -> addAliases]["+id+"]")
@@ -2286,22 +2339,42 @@ func setPolicyTemplateTag(ctx context.Context, response string, statePolicyTempl
 	*statePolicyTemplateTag = statePolicyTemplateTagMap
 }
 
-// setKeyTags parses the AWS key's tag list from the API response and stores it in Terraform state, excluding internal tags.
-func setKeyTags(ctx context.Context, response string, planTags *types.Map, diags *diag.Diagnostics) {
-	tags := make(map[string]string)
+// setKeyTags populates the user-managed tags in state from the AWS response.
+// If stateTags already contains a known set of keys (from the plan or prior state), only response
+// tags whose keys are present in stateTags are stored. This prevents AWS-policy-added tags (e.g.
+// an organisation-wide "owner" tag) from causing "inconsistent result after apply" errors when
+// those tags are not in the Terraform config. On first use (null or unknown state, e.g. import),
+// all response tags are stored as-is.
+func setKeyTags(ctx context.Context, response string, stateTags *types.Map, diags *diag.Diagnostics) {
+	// Read all user-visible tags from the response (exclude internal policy-template tag).
+	allTags := make(map[string]string)
 	for _, tag := range gjson.Get(response, "aws_param.Tags").Array() {
 		tagKey := gjson.Get(tag.Raw, "TagKey").String()
 		tagValue := gjson.Get(tag.Raw, "TagValue").String()
 		if tagKey != policyTemplateTagKey {
-			tags[tagKey] = tagValue
+			allTags[tagKey] = tagValue
 		}
 	}
-	tagMap, d := types.MapValueFrom(ctx, types.StringType, tags)
+
+	// When stateTags is already a known map (plan value or prior state), filter to only those keys.
+	// An empty but known map (user set tags = {}) results in an empty filtered map - correct behaviour.
+	filteredTags := allTags
+	if !stateTags.IsNull() && !stateTags.IsUnknown() {
+		priorKeys := stateTags.Elements()
+		filteredTags = make(map[string]string, len(priorKeys))
+		for k := range priorKeys {
+			if v, ok := allTags[k]; ok {
+				filteredTags[k] = v
+			}
+		}
+	}
+
+	tagMap, d := types.MapValueFrom(ctx, types.StringType, filteredTags)
 	if d.HasError() {
 		diags.Append(d...)
 		return
 	}
-	*planTags = tagMap
+	*stateTags = tagMap
 }
 
 // setKeyLabels parses the CipherTrust Manager labels from the API response and stores them in Terraform state.
