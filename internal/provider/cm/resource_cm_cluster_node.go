@@ -20,9 +20,38 @@ import (
 	"github.com/hashicorp/terraform-plugin-log/tflog"
 )
 
+// Node status codes returned by GET /v1/cluster on the joining node.
+const (
+	nodeStatusReady               = "r"
+	nodeStatusJoiningCreating     = "creating"
+	nodeStatusJoiningBootstrapping = "b"
+	nodeStatusJoiningSyncing      = "i"
+	nodeStatusJoiningCatchingUp   = "c"
+	nodeStatusJoiningCompleting   = "o"
+	nodeStatusDown                = "d"
+	nodeStatusKilled              = "k"
+	nodeStatusRemoving            = "m"
+	nodeStatusRemoved             = "v"
+)
+
+// nodeIsJoining returns true for any in-progress joining state.
+func nodeIsJoining(code string) bool {
+	switch code {
+	case nodeStatusJoiningCreating, nodeStatusJoiningBootstrapping,
+		nodeStatusJoiningSyncing, nodeStatusJoiningCatchingUp,
+		nodeStatusJoiningCompleting:
+		return true
+	}
+	return false
+}
+
 var (
 	_ resource.Resource              = &resourceCMClusterNode{}
 	_ resource.ResourceWithConfigure = &resourceCMClusterNode{}
+
+	// clusterJoinSemaphore ensures only one node joins the cluster at a time.
+	// This prevents parallel joins which can cause consensus issues.
+	clusterJoinSemaphore = make(chan struct{}, 1)
 )
 
 func NewResourceCMClusterNode() resource.Resource {
@@ -63,6 +92,10 @@ func (r *resourceCMClusterNode) Schema(_ context.Context, _ resource.SchemaReque
 				Optional:    true,
 				Description: "Credentials for the new node. If omitted, the provider's configured credentials are used.",
 				Attributes: map[string]schema.Attribute{
+					"address": schema.StringAttribute{
+						Required:    true,
+						Description: "Address Terraform uses to connect to the joining node (e.g. public FQDN, public IP, or any reachable endpoint). Allows host to hold a private/internal address for CM API payloads while Terraform connects via a different endpoint.",
+					},
 					"username": schema.StringAttribute{
 						Optional:    true,
 						Description: "Username for the new node.",
@@ -88,7 +121,7 @@ func (r *resourceCMClusterNode) Schema(_ context.Context, _ resource.SchemaReque
 			},
 			"member_host": schema.StringAttribute{
 				Optional:    true,
-				Description: "Hostname or FQDN of the existing cluster member. If omitted, the provider's configured address is used. Use an FQDN (e.g. ec2-1-2-3-4.compute-1.amazonaws.com) to match the member node's TLS certificate.",
+				Description: "Hostname or FQDN of any existing cluster member to join through. Can be any node already in the cluster, not necessarily the first/original node. If omitted, the provider's configured address is used. Use an FQDN (e.g. ec2-1-2-3-4.compute-1.amazonaws.com) to match the member node's TLS certificate.",
 			},
 			"member_port": schema.Int64Attribute{
 				Optional:    true,
@@ -131,6 +164,27 @@ func (r *resourceCMClusterNode) Create(ctx context.Context, req resource.CreateR
 		return
 	}
 
+	// Acquire semaphore to ensure only one node joins at a time
+	nodeHost := plan.Host.ValueString()
+	tflog.Info(ctx, fmt.Sprintf("[%s] [resource_cm_cluster_node.go -> Create] ATTEMPTING to acquire cluster join lock at %v", nodeHost, time.Now()))
+	clusterJoinSemaphore <- struct{}{}
+	tflog.Info(ctx, fmt.Sprintf("[%s] [resource_cm_cluster_node.go -> Create] LOCK ACQUIRED at %v, proceeding with node join", nodeHost, time.Now()))
+	defer func() {
+		<-clusterJoinSemaphore
+		tflog.Info(ctx, fmt.Sprintf("[%s] [resource_cm_cluster_node.go -> Create] LOCK RELEASED at %v", nodeHost, time.Now()))
+	}()
+
+	// Snapshot member's current node count. After the joining node reports ready, we will
+	// hold the semaphore until the member also reflects the updated count and status=r,
+	// ensuring consensus has fully settled before the next node attempts to join.
+	initialMemberNodeCount := int64(-1)
+	if memberStatusBefore, memberErr := r.client.ReadDataByParam(ctx, id, "all", common.URL_CLUSTER_INFO); memberErr == nil {
+		initialMemberNodeCount = gjson.Get(memberStatusBefore, "nodeCount").Int()
+		tflog.Info(ctx, fmt.Sprintf("[resource_cm_cluster_node.go -> Create] Member node count before join: %d", initialMemberNodeCount))
+	} else {
+		tflog.Debug(ctx, fmt.Sprintf("[resource_cm_cluster_node.go -> Create] Could not read member node count before join (will poll for status=r only): %s", memberErr.Error()))
+	}
+
 	joiningNodeHost, err := extractHost(plan.Host.ValueString())
 	if err != nil {
 		resp.Diagnostics.AddError("Invalid host for joining node", err.Error())
@@ -162,7 +216,19 @@ func (r *resourceCMClusterNode) Create(ctx context.Context, req resource.CreateR
 		}
 	}
 
-	nodeURL := "https://" + joiningNodeHost
+	// credentials.address is the endpoint Terraform uses to connect to the joining node.
+	// This allows host to hold a private/internal address for CM API payloads while
+	// Terraform connects via a public FQDN or alternate reachable endpoint.
+	nodeConnAddr := joiningNodeHost
+	if plan.Creds != nil && !plan.Creds.Address.IsNull() && !plan.Creds.Address.IsUnknown() {
+		if addr := plan.Creds.Address.ValueString(); addr != "" {
+			nodeConnAddr = addr
+		}
+	}
+	nodeURL := nodeConnAddr
+	if !strings.Contains(nodeURL, "://") {
+		nodeURL = "https://" + nodeURL
+	}
 	nodeClient, err := common.NewClient(ctx, id, &nodeURL, &nodeAuthDomain, &nodeDomain, &nodeUsername, &nodePassword, true, 180)
 	if err != nil {
 		tflog.Debug(ctx, common.ERR_METHOD_END+err.Error()+" [resource_cm_cluster_node.go -> Create]["+id+"]")
@@ -243,6 +309,7 @@ func (r *resourceCMClusterNode) Create(ctx context.Context, req resource.CreateR
 		MemberNodePort:         plan.MemberPort.ValueInt64(),
 		LocalNodePort:          plan.Port.ValueInt64(),
 		LocalNodePublicAddress: joiningNodePubAddress,
+		Blocking:               false, // Use async join with status polling
 	}
 	payloadJoinNodeJSON, err := json.Marshal(payloadJoinNode)
 	if err != nil {
@@ -256,11 +323,143 @@ func (r *resourceCMClusterNode) Create(ctx context.Context, req resource.CreateR
 		return
 	}
 
-	plan.ID = types.StringValue(gjson.Get(responseJoinNode, "nodeID").String())
-	plan.NodeId = types.StringValue(gjson.Get(responseJoinNode, "nodeID").String())
-	plan.NodeCount = types.Int64Value(gjson.Get(responseJoinNode, "nodeCount").Int())
-	plan.StatusCode = types.StringValue(gjson.Get(responseJoinNode, "status.code").String())
-	plan.StatusDescription = types.StringValue(gjson.Get(responseJoinNode, "status.description").String())
+	// Extract initial node ID from join response
+	nodeID := gjson.Get(responseJoinNode, "nodeID").String()
+	tflog.Info(ctx, fmt.Sprintf("[resource_cm_cluster_node.go -> Create] Join request initiated for node %s, polling for completion...", nodeID))
+
+	// Poll cluster status until node is ready
+	maxPollRetries := 180 // 30 minutes total
+	pollInterval := 10 * time.Second
+
+	// seenJoining becomes true once the node enters any in-progress joining state
+	// (creating/bootstrapping/syncing/catching-up/completing). A "d" or "k" before
+	// any joining state is a transient restart right after the async join request;
+	// the same codes after joining has started are genuine failures.
+	seenJoining := false
+
+	var finalStatusResponse string
+	for attempt := 1; attempt <= maxPollRetries; attempt++ {
+		statusResponse, err := nodeClient.ReadDataByParam(ctx, id, "all", common.URL_CLUSTER_INFO)
+		if err != nil {
+			if strings.Contains(err.Error(), "status: 401") {
+				if refreshErr := nodeClient.RefreshToken(ctx, id); refreshErr == nil {
+					tflog.Info(ctx, fmt.Sprintf("[resource_cm_cluster_node.go -> Create] Re-authenticated joining node client after token expiry (attempt %d/%d)", attempt, maxPollRetries))
+				} else {
+					tflog.Debug(ctx, fmt.Sprintf("[resource_cm_cluster_node.go -> Create] Failed to re-authenticate joining node client: %s", refreshErr.Error()))
+				}
+			}
+			tflog.Debug(ctx, fmt.Sprintf("[resource_cm_cluster_node.go -> Create] Error reading cluster status (attempt %d/%d): %s", attempt, maxPollRetries, err.Error()))
+			if attempt < maxPollRetries {
+				time.Sleep(pollInterval)
+				continue
+			}
+			resp.Diagnostics.AddError("Error polling cluster status after join", err.Error())
+			return
+		}
+
+		statusCode := gjson.Get(statusResponse, "status.code").String()
+		statusDesc := gjson.Get(statusResponse, "status.description").String()
+
+		tflog.Debug(ctx, fmt.Sprintf("[resource_cm_cluster_node.go -> Create] Node status: %s - %s (attempt %d/%d)", statusCode, statusDesc, attempt, maxPollRetries))
+
+		switch {
+		case statusCode == nodeStatusReady:
+			tflog.Info(ctx, fmt.Sprintf("[resource_cm_cluster_node.go -> Create] Node ready after %d attempts (%.1f minutes)", attempt, float64(attempt)*pollInterval.Seconds()/60))
+			finalStatusResponse = statusResponse
+
+		case nodeIsJoining(statusCode):
+			seenJoining = true
+
+		case statusCode == nodeStatusDown || statusCode == nodeStatusKilled:
+			if seenJoining {
+				resp.Diagnostics.AddError(
+					"Node join failed",
+					fmt.Sprintf("Node entered status %q after starting join: %s", statusCode, statusDesc),
+				)
+				return
+			}
+			// Transient: node briefly restarts right after the async join request is accepted.
+			tflog.Debug(ctx, fmt.Sprintf("[resource_cm_cluster_node.go -> Create] Node status %q before join started (attempt %d/%d); treating as transient", statusCode, attempt, maxPollRetries))
+
+		case statusCode == nodeStatusRemoving || statusCode == nodeStatusRemoved:
+			resp.Diagnostics.AddError(
+				"Node join failed",
+				fmt.Sprintf("Node unexpectedly entered status %q during join: %s", statusCode, statusDesc),
+			)
+			return
+		}
+
+		if finalStatusResponse != "" {
+			break
+		}
+
+		if attempt < maxPollRetries {
+			time.Sleep(pollInterval)
+		} else {
+			resp.Diagnostics.AddError(
+				"Timeout waiting for node to join cluster",
+				fmt.Sprintf("Node did not reach ready state after %d attempts (30 minutes). Last status: %s - %s", maxPollRetries, statusCode, statusDesc),
+			)
+			return
+		}
+	}
+
+	// Poll the cluster member until it reflects the joined node and status=r.
+	// The semaphore is still held here, so no other node can start joining until
+	// this loop exits. We always run this poll — even when we couldn't snapshot the
+	// initial node count — to guarantee cluster stability before reporting success.
+	{
+		var expectedNodeCount int64 = -1
+		if initialMemberNodeCount >= 0 {
+			expectedNodeCount = initialMemberNodeCount + 1
+			tflog.Info(ctx, fmt.Sprintf("[resource_cm_cluster_node.go -> Create] Waiting for member to report nodeCount=%d and status=r...", expectedNodeCount))
+		} else {
+			tflog.Info(ctx, "[resource_cm_cluster_node.go -> Create] Waiting for member to report status=r (initial node count unknown)...")
+		}
+		maxMemberRetries := 120 // up to 20 minutes
+		memberPollInterval := 10 * time.Second
+		memberReady := false
+		for attempt := 1; attempt <= maxMemberRetries; attempt++ {
+			memberStatus, memberErr := r.client.ReadDataByParam(ctx, id, "all", common.URL_CLUSTER_INFO)
+			if memberErr != nil {
+				if strings.Contains(memberErr.Error(), "status: 401") {
+					if refreshErr := r.client.RefreshToken(ctx, id); refreshErr == nil {
+						tflog.Info(ctx, fmt.Sprintf("[resource_cm_cluster_node.go -> Create] Re-authenticated member client after token expiry (attempt %d/%d)", attempt, maxMemberRetries))
+					}
+				}
+				tflog.Debug(ctx, fmt.Sprintf("[resource_cm_cluster_node.go -> Create] Member poll error (attempt %d/%d): %s", attempt, maxMemberRetries, memberErr.Error()))
+			} else {
+				memberCount := gjson.Get(memberStatus, "nodeCount").Int()
+				memberCode := gjson.Get(memberStatus, "status.code").String()
+				tflog.Debug(ctx, fmt.Sprintf("[resource_cm_cluster_node.go -> Create] Member: nodeCount=%d (want %d), status=%s (attempt %d/%d)", memberCount, expectedNodeCount, memberCode, attempt, maxMemberRetries))
+				stable := memberCode == "r" && (expectedNodeCount < 0 || memberCount == expectedNodeCount)
+				if stable {
+					tflog.Info(ctx, fmt.Sprintf("[resource_cm_cluster_node.go -> Create] Member stable after %d attempts", attempt))
+					memberReady = true
+					break
+				}
+			}
+			if attempt < maxMemberRetries {
+				time.Sleep(memberPollInterval)
+			}
+		}
+		if !memberReady {
+			resp.Diagnostics.AddError(
+				"Cluster member did not stabilize after node join",
+				fmt.Sprintf("Member did not reach ready state with updated node count after %d attempts (20 minutes). "+
+					"The joining node reported ready but the cluster member has not yet converged. "+
+					"Check cluster health before retrying.", maxMemberRetries),
+			)
+			return
+		}
+	}
+
+	// Set plan values from final status
+	plan.ID = types.StringValue(gjson.Get(finalStatusResponse, "nodeID").String())
+	plan.NodeId = types.StringValue(gjson.Get(finalStatusResponse, "nodeID").String())
+	plan.NodeCount = types.Int64Value(gjson.Get(finalStatusResponse, "nodeCount").Int())
+	plan.StatusCode = types.StringValue(gjson.Get(finalStatusResponse, "status.code").String())
+	plan.StatusDescription = types.StringValue(gjson.Get(finalStatusResponse, "status.description").String())
 
 	tflog.Trace(ctx, common.MSG_METHOD_END+"[resource_cm_cluster_node.go -> Create]["+id+"]")
 	diags = resp.State.Set(ctx, plan)
@@ -302,7 +501,16 @@ func (r *resourceCMClusterNode) Read(ctx context.Context, req resource.ReadReque
 			nodeAuthDomain = state.Creds.AuthDomain.ValueString()
 		}
 	}
-	nodeURL := "https://" + joiningNodeHost
+	nodeConnAddr := joiningNodeHost
+	if state.Creds != nil && !state.Creds.Address.IsNull() && !state.Creds.Address.IsUnknown() {
+		if addr := state.Creds.Address.ValueString(); addr != "" {
+			nodeConnAddr = addr
+		}
+	}
+	nodeURL := nodeConnAddr
+	if !strings.Contains(nodeURL, "://") {
+		nodeURL = "https://" + nodeURL
+	}
 	nodeClient, err := common.NewClient(ctx, id, &nodeURL, &nodeAuthDomain, &nodeDomain, &nodeUsername, &nodePassword, true, 180)
 	if err != nil {
 		tflog.Debug(ctx, common.ERR_METHOD_END+err.Error()+" [resource_cm_cluster_node.go -> Read]["+id+"]")
@@ -329,8 +537,57 @@ func (r *resourceCMClusterNode) Read(ctx context.Context, req resource.ReadReque
 	resp.Diagnostics.Append(diags...)
 }
 
-// Update is not implemented; node properties cannot be changed after joining.
+// Update updates the node properties. Currently only public_address is updatable.
 func (r *resourceCMClusterNode) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
+	id := uuid.New().String()
+	tflog.Trace(ctx, common.MSG_METHOD_START+"[resource_cm_cluster_node.go -> Update]["+id+"]")
+
+	var plan, state CMAddClusterNodeTFSDK
+	resp.Diagnostics.Append(req.Plan.Get(ctx, &plan)...)
+	resp.Diagnostics.Append(req.State.Get(ctx, &state)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	// Only public_address is updatable
+	if !plan.PublicAddress.Equal(state.PublicAddress) {
+		nodeID := state.NodeId.ValueString()
+
+		// Build PATCH payload
+		updatePayload := map[string]interface{}{}
+		if !plan.PublicAddress.IsNull() && !plan.PublicAddress.IsUnknown() {
+			updatePayload["publicAddress"] = plan.PublicAddress.ValueString()
+		} else {
+			// Empty string clears the public address
+			updatePayload["publicAddress"] = ""
+		}
+
+		payloadJSON, err := json.Marshal(updatePayload)
+		if err != nil {
+			tflog.Debug(ctx, common.ERR_METHOD_END+err.Error()+" [resource_cm_cluster_node.go -> Update]["+id+"]")
+			resp.Diagnostics.AddError("Invalid update payload", err.Error())
+			return
+		}
+
+		// PATCH /v1/nodes/{id} - called on cluster member (provider's node), not on the node itself
+		_, err = r.client.UpdateDataV2(ctx, nodeID, common.URL_NODES, payloadJSON)
+		if err != nil {
+			tflog.Debug(ctx, common.ERR_METHOD_END+err.Error()+" [resource_cm_cluster_node.go -> Update]["+id+"]")
+			resp.Diagnostics.AddError(
+				"Error updating public_address",
+				"Could not update public_address for node "+nodeID+": "+err.Error(),
+			)
+			return
+		}
+
+		tflog.Debug(ctx, "[resource_cm_cluster_node.go -> Update] Successfully updated public_address for node "+nodeID)
+	}
+
+	// Copy plan to state
+	state.PublicAddress = plan.PublicAddress
+
+	tflog.Trace(ctx, common.MSG_METHOD_END+"[resource_cm_cluster_node.go -> Update]["+id+"]")
+	resp.Diagnostics.Append(resp.State.Set(ctx, state)...)
 }
 
 // Delete removes the node from the cluster and clears the cluster config on the node itself.
@@ -342,6 +599,18 @@ func (r *resourceCMClusterNode) Delete(ctx context.Context, req resource.DeleteR
 	if resp.Diagnostics.HasError() {
 		return
 	}
+
+	// Acquire the same semaphore used by Create so that node removals are serialized
+	// with node additions. A concurrent add+remove causes the nodeCount stability
+	// check to target the wrong count and can disrupt Raft consensus.
+	nodeHost := state.Host.ValueString()
+	tflog.Info(ctx, fmt.Sprintf("[%s] [resource_cm_cluster_node.go -> Delete] ATTEMPTING to acquire cluster join lock", nodeHost))
+	clusterJoinSemaphore <- struct{}{}
+	tflog.Info(ctx, fmt.Sprintf("[%s] [resource_cm_cluster_node.go -> Delete] LOCK ACQUIRED, proceeding with node removal", nodeHost))
+	defer func() {
+		<-clusterJoinSemaphore
+		tflog.Info(ctx, fmt.Sprintf("[%s] [resource_cm_cluster_node.go -> Delete] LOCK RELEASED", nodeHost))
+	}()
 
 	joiningNodeHost, err := extractHost(state.Host.ValueString())
 	if err != nil {
@@ -366,12 +635,30 @@ func (r *resourceCMClusterNode) Delete(ctx context.Context, req resource.DeleteR
 			nodeAuthDomain = state.Creds.AuthDomain.ValueString()
 		}
 	}
-	nodeURL := "https://" + joiningNodeHost
+	nodeConnAddr := joiningNodeHost
+	if state.Creds != nil && !state.Creds.Address.IsNull() && !state.Creds.Address.IsUnknown() {
+		if addr := state.Creds.Address.ValueString(); addr != "" {
+			nodeConnAddr = addr
+		}
+	}
+	nodeURL := nodeConnAddr
+	if !strings.Contains(nodeURL, "://") {
+		nodeURL = "https://" + nodeURL
+	}
 	nodeClient, err := common.NewClient(ctx, id, &nodeURL, &nodeAuthDomain, &nodeDomain, &nodeUsername, &nodePassword, true, 180)
 	if err != nil {
 		tflog.Debug(ctx, common.ERR_METHOD_END+err.Error()+" [resource_cm_cluster_node.go -> Delete]["+id+"]")
 		resp.Diagnostics.AddError("Unable to create HTTPS client for the removed node", err.Error())
 		return
+	}
+
+	// Snapshot member's current node count before removal so we can verify it decrements.
+	initialMemberNodeCount := int64(-1)
+	if memberStatusBefore, memberErr := r.client.ReadDataByParam(ctx, id, "all", common.URL_CLUSTER_INFO); memberErr == nil {
+		initialMemberNodeCount = gjson.Get(memberStatusBefore, "nodeCount").Int()
+		tflog.Info(ctx, fmt.Sprintf("[resource_cm_cluster_node.go -> Delete] Member node count before removal: %d", initialMemberNodeCount))
+	} else {
+		tflog.Debug(ctx, fmt.Sprintf("[resource_cm_cluster_node.go -> Delete] Could not read member node count before removal (will poll for status=r only): %s", memberErr.Error()))
 	}
 
 	// Recover node ID from the joining node if missing from state (e.g. after a failed apply).
@@ -409,6 +696,55 @@ func (r *resourceCMClusterNode) Delete(ctx context.Context, req resource.DeleteR
 			"Error deleting cluster config from removed node",
 			"Node was removed from the cluster but its local cluster config could not be cleared: "+err.Error(),
 		)
+		return
+	}
+
+	// Step 3: Poll the cluster member until it reflects the removal (nodeCount decremented, status=r).
+	// The semaphore is still held here — the next join or removal cannot start until the cluster
+	// has fully settled, preventing a concurrent Create from snapshotting a stale node count.
+	{
+		var expectedNodeCount int64 = -1
+		if initialMemberNodeCount >= 0 {
+			expectedNodeCount = initialMemberNodeCount - 1
+			tflog.Info(ctx, fmt.Sprintf("[resource_cm_cluster_node.go -> Delete] Waiting for member to report nodeCount=%d and status=r...", expectedNodeCount))
+		} else {
+			tflog.Info(ctx, "[resource_cm_cluster_node.go -> Delete] Waiting for member to report status=r (initial node count unknown)...")
+		}
+		maxMemberRetries := 60 // up to 10 minutes
+		memberPollInterval := 10 * time.Second
+		memberReady := false
+		for attempt := 1; attempt <= maxMemberRetries; attempt++ {
+			memberStatus, memberErr := r.client.ReadDataByParam(ctx, id, "all", common.URL_CLUSTER_INFO)
+			if memberErr != nil {
+				if strings.Contains(memberErr.Error(), "status: 401") {
+					if refreshErr := r.client.RefreshToken(ctx, id); refreshErr == nil {
+						tflog.Info(ctx, fmt.Sprintf("[resource_cm_cluster_node.go -> Delete] Re-authenticated member client after token expiry (attempt %d/%d)", attempt, maxMemberRetries))
+					}
+				}
+				tflog.Debug(ctx, fmt.Sprintf("[resource_cm_cluster_node.go -> Delete] Member poll error (attempt %d/%d): %s", attempt, maxMemberRetries, memberErr.Error()))
+			} else {
+				memberCount := gjson.Get(memberStatus, "nodeCount").Int()
+				memberCode := gjson.Get(memberStatus, "status.code").String()
+				tflog.Debug(ctx, fmt.Sprintf("[resource_cm_cluster_node.go -> Delete] Member: nodeCount=%d (want %d), status=%s (attempt %d/%d)", memberCount, expectedNodeCount, memberCode, attempt, maxMemberRetries))
+				stable := memberCode == "r" && (expectedNodeCount < 0 || memberCount == expectedNodeCount)
+				if stable {
+					tflog.Info(ctx, fmt.Sprintf("[resource_cm_cluster_node.go -> Delete] Member stable after removal, attempt %d", attempt))
+					memberReady = true
+					break
+				}
+			}
+			if attempt < maxMemberRetries {
+				time.Sleep(memberPollInterval)
+			}
+		}
+		if !memberReady {
+			resp.Diagnostics.AddError(
+				"Cluster member did not stabilize after node removal",
+				fmt.Sprintf("Member did not reach ready state with updated node count after %d attempts (10 minutes). "+
+					"The node was removed but the cluster may still be converging. "+
+					"Check cluster health before retrying.", maxMemberRetries),
+			)
+		}
 	}
 }
 

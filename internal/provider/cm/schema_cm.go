@@ -685,6 +685,7 @@ type CMNTPJSON struct {
 }
 
 type CMClusterNodeCredsTFSDK struct {
+	Address     types.String `tfsdk:"address"`
 	Username    types.String `tfsdk:"username"`
 	Password    types.String `tfsdk:"password"`
 	Domain      types.String `tfsdk:"domain"`
@@ -701,12 +702,14 @@ type CMClusterNodeTFSDK struct {
 }
 
 type CMClusterTFSDK struct {
-	ID                types.String         `tfsdk:"id"`
-	Nodes             []CMClusterNodeTFSDK `tfsdk:"nodes"`
-	NodeCount         types.Int64          `tfsdk:"node_count"`
-	NodeId            types.String         `tfsdk:"node_id"`
-	StatusCode        types.String         `tfsdk:"status_code"`
-	StatusDescription types.String         `tfsdk:"status_description"`
+	ID                types.String `tfsdk:"id"`
+	LocalNodeHost     types.String `tfsdk:"local_node_host"`
+	LocalNodePort     types.Int64  `tfsdk:"local_node_port"`
+	PublicAddress     types.String `tfsdk:"public_address"`
+	NodeCount         types.Int64  `tfsdk:"node_count"`
+	NodeId            types.String `tfsdk:"node_id"`
+	StatusCode        types.String `tfsdk:"status_code"`
+	StatusDescription types.String `tfsdk:"status_description"`
 }
 
 type CMClusterNodeJSON struct {
