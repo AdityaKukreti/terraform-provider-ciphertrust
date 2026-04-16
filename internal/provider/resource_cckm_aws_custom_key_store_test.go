@@ -174,3 +174,78 @@ func TestCckmAWSCustomKeyStoreUnlinked(t *testing.T) {
 		},
 	})
 }
+
+// TestCckmAWSCustomKeyStoreEmptyAwsParams verifies that a custom key store can be
+// created without an aws_param block 
+func TestCckmAWSCustomKeyStoreEmptyAwsParams(t *testing.T) {
+	awsConnectionResource, ok := initCckmAwsTest()
+	if !ok {
+		t.Skip()
+	}
+	keyStoreConfig := `
+		resource "ciphertrust_cm_key" "cm_aes_key" {
+			name         = "%s"
+			algorithm    = "AES"
+			usage_mask   = 60
+			unexportable = true
+			undeletable  = true
+			remove_from_state_on_destroy = true
+		}
+		resource "ciphertrust_aws_custom_keystore" "unlinked_xks_custom_keystore" {
+			name    = "%s"
+			region  = ciphertrust_aws_kms.kms.regions[0]
+			kms     = ciphertrust_aws_kms.kms.id
+			linked_state = false
+			connect_disconnect_keystore = "DISCONNECT_KEYSTORE"
+			enable_success_audit_event = %t
+			local_hosted_params {
+				blocked = false
+				health_check_key_id = ciphertrust_cm_key.cm_aes_key.id
+				max_credentials = 8
+				source_key_tier = "local"
+				mtls_enabled = true
+			}
+		}`
+
+	cmKeyName := "tf-cm-key-" + uuid.New().String()[:8]
+	keyStoreName := "tf-custom-key-store" + uuid.New().String()[:8]
+	createKeyStoreConfigStr := fmt.Sprintf(keyStoreConfig, cmKeyName, keyStoreName, false)
+	updateKeyStoreConfigStr := fmt.Sprintf(keyStoreConfig, cmKeyName, keyStoreName, true)
+
+	keyStoreResourceName := "ciphertrust_aws_custom_keystore.unlinked_xks_custom_keystore"
+	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { cleanupCckmAwsKMS() },
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		Steps: []resource.TestStep{
+			{
+				Config: awsConnectionResource + createKeyStoreConfigStr,
+				Check: resource.ComposeTestCheckFunc(
+					resource.TestCheckResourceAttrSet(keyStoreResourceName, "id"),
+					resource.TestCheckResourceAttr(keyStoreResourceName, "name", keyStoreName),
+					resource.TestCheckResourceAttr(keyStoreResourceName, "enable_success_audit_event", "false"),
+					resource.TestCheckResourceAttr(keyStoreResourceName, "connect_disconnect_keystore", "DISCONNECT_KEYSTORE"),
+					resource.TestCheckResourceAttr(keyStoreResourceName, "local_hosted_params.0.mtls_enabled", "true"),
+					resource.TestCheckResourceAttr(keyStoreResourceName, "aws_param.#", "0"),
+					resource.TestCheckResourceAttr(keyStoreResourceName, "aws_param_output.custom_key_store_type", "EXTERNAL_KEY_STORE"),
+					resource.TestCheckResourceAttr(keyStoreResourceName, "aws_param_output.custom_key_store_name", keyStoreName),
+					resource.TestCheckResourceAttrSet(keyStoreResourceName, "aws_param_output.connection_state"),
+					resource.TestCheckResourceAttrSet(keyStoreResourceName, "aws_param_output.xks_proxy_connectivity"),
+					resource.TestCheckResourceAttrSet(keyStoreResourceName, "aws_param_output.xks_proxy_uri_path"),
+				),
+			},
+			{
+				Config: awsConnectionResource + updateKeyStoreConfigStr,
+				Check: resource.ComposeTestCheckFunc(
+					resource.TestCheckResourceAttrSet(keyStoreResourceName, "id"),
+					resource.TestCheckResourceAttr(keyStoreResourceName, "name", keyStoreName),
+					resource.TestCheckResourceAttr(keyStoreResourceName, "enable_success_audit_event", "true"),
+					resource.TestCheckResourceAttr(keyStoreResourceName, "aws_param.#", "0"),
+					resource.TestCheckResourceAttr(keyStoreResourceName, "aws_param_output.custom_key_store_type", "EXTERNAL_KEY_STORE"),
+					resource.TestCheckResourceAttr(keyStoreResourceName, "aws_param_output.custom_key_store_name", keyStoreName),
+					resource.TestCheckResourceAttrSet(keyStoreResourceName, "aws_param_output.connection_state"),
+					resource.TestCheckResourceAttrSet(keyStoreResourceName, "aws_param_output.xks_proxy_uri_path"),
+				),
+			},
+		},
+	})
+}

@@ -60,7 +60,8 @@ type AWSCustomKeyStoreCommonTFSDK struct {
 
 type AWSCustomKeyStoreTFSDK struct {
 	AWSCustomKeyStoreCommonTFSDK
-	EnableCredentialRotation types.List `tfsdk:"enable_credential_rotation"`
+	AWSParamOutput           types.Object `tfsdk:"aws_param_output"`
+	EnableCredentialRotation types.List   `tfsdk:"enable_credential_rotation"`
 }
 
 type AWSKeyEnableRotationTFSDK struct {

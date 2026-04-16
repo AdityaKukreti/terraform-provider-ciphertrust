@@ -135,6 +135,52 @@ func (r *resourceAWSCustomKeyStore) Schema(ctx context.Context, _ resource.Schem
 				Computed:    true,
 				Description: "A list of key:value pairs associated with the key.",
 			},
+			"aws_param_output": schema.SingleNestedAttribute{
+				Computed:    true,
+				Description: "AWS parameters returned by the API for this custom key store. Always populated from the API response.",
+				Attributes: map[string]schema.Attribute{
+					"cloud_hsm_cluster_id": schema.StringAttribute{
+						Computed:    true,
+						Description: "ID of a CloudHSM cluster for a custom key store.",
+					},
+					"connection_state": schema.StringAttribute{
+						Computed:    true,
+						Description: "Connection state of the custom key store with AWS.",
+					},
+					"custom_key_store_id": schema.StringAttribute{
+						Computed:    true,
+						Description: "ID of the custom key store in AWS KMS.",
+					},
+					"custom_key_store_name": schema.StringAttribute{
+						Computed:    true,
+						Description: "Name of the custom key store in AWS KMS.",
+					},
+					"custom_key_store_type": schema.StringAttribute{
+						Computed:    true,
+						Description: "Type of the custom key store (AWS_CLOUDHSM or EXTERNAL_KEY_STORE).",
+					},
+					"trust_anchor_certificate": schema.StringAttribute{
+						Computed:    true,
+						Description: "CA certificate or self-signed certificate for CloudHSM cluster initialization.",
+					},
+					"xks_proxy_connectivity": schema.StringAttribute{
+						Computed:    true,
+						Description: "Indicates how AWS KMS communicates with CipherTrust Manager.",
+					},
+					"xks_proxy_uri_endpoint": schema.StringAttribute{
+						Computed:    true,
+						Description: "Protocol and DNS hostname to which KMS sends XKS API requests.",
+					},
+					"xks_proxy_uri_path": schema.StringAttribute{
+						Computed:    true,
+						Description: "URI path of the XKS proxy endpoint.",
+					},
+					"xks_proxy_vpc_endpoint_service_name": schema.StringAttribute{
+						Computed:    true,
+						Description: "VPC endpoint service name used by the custom key store.",
+					},
+				},
+			},
 		},
 		Blocks: map[string]schema.Block{
 			"aws_param": schema.ListNestedBlock{
@@ -390,7 +436,9 @@ func (r *resourceAWSCustomKeyStore) Create(ctx context.Context, req resource.Cre
 	if planAWSParamTFSDK.XKSProxyVPCEndpointServiceName.ValueString() != "" && planAWSParamTFSDK.XKSProxyVPCEndpointServiceName.ValueString() != types.StringNull().ValueString() {
 		awsParamJSON.XKSProxyVPCEndpointServiceName = planAWSParamTFSDK.XKSProxyVPCEndpointServiceName.ValueString()
 	}
-	payload.AWSParams = &awsParamJSON
+	if len(plan.AWSParams.Elements()) > 0 {
+		payload.AWSParams = &awsParamJSON
+	}
 
 	var LocalHostedParams LocalHostedParamsJSON
 	var planLocalHostedParamsTFSDK LocalHostedParamsTFSDK
@@ -669,7 +717,9 @@ func (r *resourceAWSCustomKeyStore) Update(ctx context.Context, req resource.Upd
 		planAWSParamTFSDK.XKSProxyVPCEndpointServiceName.ValueString() != types.StringNull().ValueString() {
 		awsParamJSON.XKSProxyVPCEndpointServiceName = planAWSParamTFSDK.XKSProxyVPCEndpointServiceName.ValueString()
 	}
-	payload.AWSParams = &awsParamJSON
+	if len(plan.AWSParams.Elements()) > 0 {
+		payload.AWSParams = &awsParamJSON
+	}
 
 	var planLocalHostedParams LocalHostedParamsJSON
 	var planLocalHostedParamsTFSDK LocalHostedParamsTFSDK
@@ -1023,15 +1073,6 @@ func (r *resourceAWSCustomKeyStore) setCustomKeyStoreState(ctx context.Context, 
 	}
 	plan.EnableSuccessAuditEvent = types.BoolValue(gjson.Get(response, "enable_success_audit_event").Bool())
 
-	var awsParamJSONResponse AWSParamJSONResponse
-	err := json.Unmarshal([]byte(gjson.Get(response, "aws_param").String()), &awsParamJSONResponse)
-	if err != nil {
-		diags.AddError(
-			"Error Unmarshaling JSON Response",
-			fmt.Sprintf("Could not unmarshal JSON response: %v", err),
-		)
-		return
-	}
 	attributeTypes := map[string]attr.Type{
 		"cloud_hsm_cluster_id":                types.StringType,
 		"custom_key_store_type":               types.StringType,
@@ -1048,30 +1089,46 @@ func (r *resourceAWSCustomKeyStore) setCustomKeyStoreState(ctx context.Context, 
 	itemObjectType := types.ObjectType{
 		AttrTypes: attributeTypes,
 	}
-	terraformList := make([]attr.Value, 0)
 
-	attributeValues := map[string]attr.Value{
-		"cloud_hsm_cluster_id":                types.StringValue(awsParamJSONResponse.CloudHSMClusterID),
-		"custom_key_store_type":               types.StringValue(awsParamJSONResponse.CustomKeystoreType),
-		"key_store_password":                  types.StringValue(planAWSParamTFSDK.KeyStorePassword.ValueString()),
-		"trust_anchor_certificate":            types.StringValue(awsParamJSONResponse.TrustAnchorCertificate),
-		"xks_proxy_connectivity":              types.StringValue(awsParamJSONResponse.XKSProxyConnectivity),
-		"xks_proxy_uri_endpoint":              types.StringValue(awsParamJSONResponse.XKSProxyURIEndpoint),
-		"xks_proxy_vpc_endpoint_service_name": types.StringValue(awsParamJSONResponse.XKSProxyVPCEndpointServiceName),
-		"connection_state":                    types.StringValue(awsParamJSONResponse.ConnectionState),
-		"custom_key_store_id":                 types.StringValue(awsParamJSONResponse.CustomKeystoreID),
-		"custom_key_store_name":               types.StringValue(awsParamJSONResponse.CustomKeystoreName),
-		"xks_proxy_uri_path":                  types.StringValue(awsParamJSONResponse.XKSProxyURIPath),
+	var awsParamJSONResponse AWSParamJSONResponse
+	awsParamStr := gjson.Get(response, "aws_param").String()
+	if awsParamStr != "" && awsParamStr != "null" {
+		if err := json.Unmarshal([]byte(awsParamStr), &awsParamJSONResponse); err != nil {
+			diags.AddError(
+				"Error Unmarshaling JSON Response",
+				fmt.Sprintf("Could not unmarshal JSON response: %v", err),
+			)
+			return
+		}
 	}
 
-	objectValue, newDiags := types.ObjectValue(attributeTypes, attributeValues)
-	diags.Append(newDiags...)
-	terraformList = append(terraformList, objectValue)
+	if len(plan.AWSParams.Elements()) == 0 {
+		emptyList, newDiags := types.ListValue(itemObjectType, []attr.Value{})
+		diags.Append(newDiags...)
+		plan.AWSParams = emptyList
+	} else {
+		attributeValues := map[string]attr.Value{
+			"cloud_hsm_cluster_id":                types.StringValue(awsParamJSONResponse.CloudHSMClusterID),
+			"custom_key_store_type":               types.StringValue(awsParamJSONResponse.CustomKeystoreType),
+			"key_store_password":                  types.StringValue(planAWSParamTFSDK.KeyStorePassword.ValueString()),
+			"trust_anchor_certificate":            types.StringValue(awsParamJSONResponse.TrustAnchorCertificate),
+			"xks_proxy_connectivity":              types.StringValue(awsParamJSONResponse.XKSProxyConnectivity),
+			"xks_proxy_uri_endpoint":              types.StringValue(awsParamJSONResponse.XKSProxyURIEndpoint),
+			"xks_proxy_vpc_endpoint_service_name": types.StringValue(awsParamJSONResponse.XKSProxyVPCEndpointServiceName),
+			"connection_state":                    types.StringValue(awsParamJSONResponse.ConnectionState),
+			"custom_key_store_id":                 types.StringValue(awsParamJSONResponse.CustomKeystoreID),
+			"custom_key_store_name":               types.StringValue(awsParamJSONResponse.CustomKeystoreName),
+			"xks_proxy_uri_path":                  types.StringValue(awsParamJSONResponse.XKSProxyURIPath),
+		}
 
-	listValue, newDiags := types.ListValue(itemObjectType, terraformList)
-	diags.Append(newDiags...)
+		objectValue, newDiags := types.ObjectValue(attributeTypes, attributeValues)
+		diags.Append(newDiags...)
 
-	plan.AWSParams = listValue
+		listValue, newDiags := types.ListValue(itemObjectType, []attr.Value{objectValue})
+		diags.Append(newDiags...)
+
+		plan.AWSParams = listValue
+	}
 	if diags.HasError() {
 		return
 	}
@@ -1081,6 +1138,37 @@ func (r *resourceAWSCustomKeyStore) setCustomKeyStoreState(ctx context.Context, 
 	} else {
 		plan.ConnectDisconnectKeystore = types.StringValue("DISCONNECT_KEYSTORE")
 	}
+
+	outputAttrTypes := map[string]attr.Type{
+		"cloud_hsm_cluster_id":                types.StringType,
+		"connection_state":                    types.StringType,
+		"custom_key_store_id":                 types.StringType,
+		"custom_key_store_name":               types.StringType,
+		"custom_key_store_type":               types.StringType,
+		"trust_anchor_certificate":            types.StringType,
+		"xks_proxy_connectivity":              types.StringType,
+		"xks_proxy_uri_endpoint":              types.StringType,
+		"xks_proxy_uri_path":                  types.StringType,
+		"xks_proxy_vpc_endpoint_service_name": types.StringType,
+	}
+	outputAttrValues := map[string]attr.Value{
+		"cloud_hsm_cluster_id":                types.StringValue(awsParamJSONResponse.CloudHSMClusterID),
+		"connection_state":                    types.StringValue(awsParamJSONResponse.ConnectionState),
+		"custom_key_store_id":                 types.StringValue(awsParamJSONResponse.CustomKeystoreID),
+		"custom_key_store_name":               types.StringValue(awsParamJSONResponse.CustomKeystoreName),
+		"custom_key_store_type":               types.StringValue(awsParamJSONResponse.CustomKeystoreType),
+		"trust_anchor_certificate":            types.StringValue(awsParamJSONResponse.TrustAnchorCertificate),
+		"xks_proxy_connectivity":              types.StringValue(awsParamJSONResponse.XKSProxyConnectivity),
+		"xks_proxy_uri_endpoint":              types.StringValue(awsParamJSONResponse.XKSProxyURIEndpoint),
+		"xks_proxy_uri_path":                  types.StringValue(awsParamJSONResponse.XKSProxyURIPath),
+		"xks_proxy_vpc_endpoint_service_name": types.StringValue(awsParamJSONResponse.XKSProxyVPCEndpointServiceName),
+	}
+	awsParamOutput, newDiags := types.ObjectValue(outputAttrTypes, outputAttrValues)
+	diags.Append(newDiags...)
+	if diags.HasError() {
+		return
+	}
+	plan.AWSParamOutput = awsParamOutput
 
 	keyStoreID := gjson.Get(response, "id").String()
 	var labels types.Map

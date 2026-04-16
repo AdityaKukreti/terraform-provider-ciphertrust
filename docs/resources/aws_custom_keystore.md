@@ -157,6 +157,7 @@ resource "ciphertrust_aws_custom_keystore" "imported_external_custom_keystore" {
 ### Read-Only
 
 - `access_key_id` (String)
+- `aws_param_output` (Attributes) AWS parameters returned by the API for this custom key store. Always populated from the API response. (see [below for nested schema](#nestedatt--aws_param_output))
 - `cloud_name` (String)
 - `created_at` (String)
 - `credential_version` (String)
@@ -229,3 +230,20 @@ Optional:
 - `delete` (String) A string that can be [parsed as a duration](https://pkg.go.dev/time#ParseDuration) consisting of numbers and unit suffixes, such as "30s" or "2h45m". Valid time units are "s" (seconds), "m" (minutes), "h" (hours). Setting a timeout for a Delete operation is only applicable if changes are saved into state before the destroy operation occurs.
 - `read` (String) A string that can be [parsed as a duration](https://pkg.go.dev/time#ParseDuration) consisting of numbers and unit suffixes, such as "30s" or "2h45m". Valid time units are "s" (seconds), "m" (minutes), "h" (hours). Read operations occur during any refresh or planning operation when refresh is enabled.
 - `update` (String) A string that can be [parsed as a duration](https://pkg.go.dev/time#ParseDuration) consisting of numbers and unit suffixes, such as "30s" or "2h45m". Valid time units are "s" (seconds), "m" (minutes), "h" (hours).
+
+
+<a id="nestedatt--aws_param_output"></a>
+### Nested Schema for `aws_param_output`
+
+Read-Only:
+
+- `cloud_hsm_cluster_id` (String) ID of a CloudHSM cluster for a custom key store.
+- `connection_state` (String) Connection state of the custom key store with AWS.
+- `custom_key_store_id` (String) ID of the custom key store in AWS KMS.
+- `custom_key_store_name` (String) Name of the custom key store in AWS KMS.
+- `custom_key_store_type` (String) Type of the custom key store (AWS_CLOUDHSM or EXTERNAL_KEY_STORE).
+- `trust_anchor_certificate` (String) CA certificate or self-signed certificate for CloudHSM cluster initialization.
+- `xks_proxy_connectivity` (String) Indicates how AWS KMS communicates with CipherTrust Manager.
+- `xks_proxy_uri_endpoint` (String) Protocol and DNS hostname to which KMS sends XKS API requests.
+- `xks_proxy_uri_path` (String) URI path of the XKS proxy endpoint.
+- `xks_proxy_vpc_endpoint_service_name` (String) VPC endpoint service name used by the custom key store.
