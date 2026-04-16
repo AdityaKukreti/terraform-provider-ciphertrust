@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"os"
 	"regexp"
-	"sort"
 	"strings"
 	"testing"
 	"time"
@@ -831,115 +830,6 @@ func TestCckmAWSKeyMultiRegion(t *testing.T) {
 			},
 		})
 	})
-}
-
-// testAccListResourceAttributes can help with test development
-func testAccListResourceAttributes(resourceName string) resource.TestCheckFunc {
-	return func(s *terraform.State) error {
-		fmt.Printf("************ %s attributes\n", resourceName)
-		for rn, rs := range s.RootModule().Resources {
-			if rn != resourceName {
-				continue
-			}
-			if rs.Primary.ID == "" {
-				return fmt.Errorf("error: %s resource ID is not set", resourceName)
-			}
-			keys := make([]string, 0, len(rs.Primary.Attributes))
-			for k := range rs.Primary.Attributes {
-				keys = append(keys, k)
-			}
-			sort.Strings(keys)
-			for _, k := range keys {
-				fmt.Printf("k:%s v:%v\n", k, rs.Primary.Attributes[k])
-			}
-			fmt.Printf("**************** end %s attributes\n", resourceName)
-			return nil
-		}
-		return fmt.Errorf("error: did not find resource %s so can't list attributes", resourceName)
-	}
-}
-
-func testCheckAttributeNotSet(resourceName string, attributeName string) resource.TestCheckFunc {
-	return func(s *terraform.State) error {
-		for rn, rs := range s.RootModule().Resources {
-			if rn != resourceName {
-				continue
-			}
-			if rs.Primary.ID == "" {
-				return fmt.Errorf("error: %s resource ID is not set", resourceName)
-			}
-			keys := make([]string, 0, len(rs.Primary.Attributes))
-			for k := range rs.Primary.Attributes {
-				keys = append(keys, k)
-			}
-			sort.Strings(keys)
-			for _, k := range keys {
-				if k == attributeName {
-					return fmt.Errorf("error: found %s:%s is set to %s but it should not be set", resourceName, attributeName, rs.Primary.Attributes[k])
-				}
-			}
-			return nil
-		}
-		return fmt.Errorf("error: did not find resource %s so can't list attributes", resourceName)
-	}
-}
-
-func testCheckAttributeContains(resourceName string, attributeName string, stringsToFind []string, contains bool) resource.TestCheckFunc {
-	return func(s *terraform.State) error {
-		for rn, rs := range s.RootModule().Resources {
-			if rn != resourceName {
-				continue
-			}
-			if rs.Primary.ID == "" {
-				return fmt.Errorf("error: %s resource ID is not set", resourceName)
-			}
-			keys := make([]string, 0, len(rs.Primary.Attributes))
-			for k := range rs.Primary.Attributes {
-				keys = append(keys, k)
-			}
-			sort.Strings(keys)
-			found := false
-			for _, k := range keys {
-				if k == attributeName {
-					found = true
-					for _, str := range stringsToFind {
-						if contains {
-							if !strings.Contains(rs.Primary.Attributes[k], str) {
-								return fmt.Errorf("error: %s.%s does not contain %s", resourceName, attributeName, str)
-							}
-						} else {
-							if strings.Contains(rs.Primary.Attributes[k], str) {
-								return fmt.Errorf("error: %s.%s does contain %s", resourceName, attributeName, str)
-							}
-						}
-					}
-				}
-			}
-			if !found {
-				return fmt.Errorf("error: did not find %s.%s", resourceName, attributeName)
-			}
-			return nil
-		}
-		return fmt.Errorf("error: did not find resource %s so can't list attributes", resourceName)
-	}
-}
-
-func testVerifyResourceDeleted(resourceName string) resource.TestCheckFunc {
-	return func(s *terraform.State) error {
-		if _, ok := s.RootModule().Resources[resourceName]; ok {
-			return fmt.Errorf("error: resource %s still exists", resourceName)
-		}
-		return nil
-	}
-}
-
-func testAccListResources() resource.TestCheckFunc {
-	return func(s *terraform.State) error {
-		for rn, rs := range s.RootModule().Resources {
-			fmt.Printf("rn: %s rt: %s\n", rn, rs.Type)
-		}
-		return nil
-	}
 }
 
 func TestCckmAWSKeyRotation(t *testing.T) {

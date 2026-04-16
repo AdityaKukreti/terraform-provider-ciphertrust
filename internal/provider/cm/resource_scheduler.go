@@ -208,8 +208,7 @@ func (r *resourceScheduler) Schema(_ context.Context, _ resource.SchemaRequest, 
 				Description: "CCKM XKS credential rotation operation specific arguments.",
 				Attributes: map[string]schema.Attribute{
 					"cloud_name": schema.StringAttribute{
-						Computed:    true,
-						Optional:    true,
+						Required:    true,
 						Description: "Name of the cloud in which the Rotation operation will be triggered. The only supported value is 'aws'.",
 						Validators: []validator.String{
 							stringvalidator.OneOf("aws"),

@@ -46,13 +46,13 @@ func TestCckmOCIDataSourceConnection(t *testing.T) {
 		}
 		data "ciphertrust_get_oci_vaults" "vaults_no_limit" {
 			connection_id = ciphertrust_oci_connection.connection.name
-			compartment_id = data.ciphertrust_get_oci_compartments.compartments_with_limit.compartments.0.id
+			compartment_id = tolist(data.ciphertrust_get_oci_compartments.compartments_with_limit.compartments)[0].id
 			region = data.ciphertrust_get_oci_regions.regions_by_connection_id.oci_regions.0
 		}
 		data "ciphertrust_get_oci_vaults" "vaults_with_limit" {
 			limit = 1
 			connection_id = ciphertrust_oci_connection.connection.name
-			compartment_id = data.ciphertrust_get_oci_compartments.compartments_with_limit.compartments.0.id
+			compartment_id = tolist(data.ciphertrust_get_oci_compartments.compartments_with_limit.compartments)[0].id
 			region = data.ciphertrust_get_oci_regions.regions_by_connection_id.oci_regions.0
 		}`
 

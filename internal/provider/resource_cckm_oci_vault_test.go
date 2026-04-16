@@ -92,13 +92,13 @@ func TestCckmOCIVault(t *testing.T) {
 		data "ciphertrust_get_oci_vaults" "vaults" {
 			limit = 1
 			connection_id = ciphertrust_oci_connection.connection.name
-			compartment_id = data.ciphertrust_get_oci_compartments.compartments.compartments.0.id
+			compartment_id = tolist(data.ciphertrust_get_oci_compartments.compartments.compartments)[0].id
 			region = data.ciphertrust_get_oci_regions.regions.oci_regions.0
 		}
 		 resource "ciphertrust_oci_vault" "vault" {
 		   region = data.ciphertrust_get_oci_regions.regions.oci_regions.0
 		   connection_id = ciphertrust_oci_connection.connection.name
-		   vault_id = data.ciphertrust_get_oci_vaults.vaults.vaults.0.vault_id
+		   vault_id = tolist(data.ciphertrust_get_oci_vaults.vaults.vaults)[0].vault_id
 		}`
 
 	updateConfig := `
@@ -122,13 +122,13 @@ func TestCckmOCIVault(t *testing.T) {
 		data "ciphertrust_get_oci_vaults" "vaults" {
 			limit = 1
 			connection_id = ciphertrust_oci_connection.connection.name
-			compartment_id = data.ciphertrust_get_oci_compartments.compartments.compartments.0.id
+			compartment_id = tolist(data.ciphertrust_get_oci_compartments.compartments.compartments)[0].id
 			region = data.ciphertrust_get_oci_regions.regions.oci_regions.0
 		}
 		resource "ciphertrust_oci_vault" "vault" {
 				region = data.ciphertrust_get_oci_regions.regions.oci_regions.0
 				connection_id = ciphertrust_oci_connection.connection_two.name
-				vault_id = data.ciphertrust_get_oci_vaults.vaults.vaults.0.vault_id
+				vault_id = tolist(data.ciphertrust_get_oci_vaults.vaults.vaults)[0].vault_id
 		}
 		resource "ciphertrust_oci_connection" "connection_two" {
 			key_file = <<-EOT
