@@ -101,7 +101,7 @@ func (r *resourceAWSKey) Schema(_ context.Context, _ resource.SchemaRequest, res
 		Attributes: map[string]schema.Attribute{
 			"id": schema.StringAttribute{
 				Computed:    true,
-				Description: "AWS region and AWS key identifier separated by a backslash.",
+				Description: "CipherTrust Manager key ID. The legacy format '<aws-region>\\<key-id>' is also accepted for backwards compatibility when migrating from beta provider versions.",
 				PlanModifiers: []planmodifier.String{
 					stringplanmodifier.UseStateForUnknown(),
 				},
