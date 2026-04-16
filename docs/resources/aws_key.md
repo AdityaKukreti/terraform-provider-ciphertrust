@@ -170,7 +170,7 @@ resource "ciphertrust_aws_key" "auto_rotated_aws_key" {
 - `encryption_algorithms` (List of String) Encryption algorithms of an asymmetric key
 - `expiration_model` (String) Expiration model.
 - `external_accounts` (Set of String) Other AWS accounts that have access to this key.
-- `id` (String) AWS region and AWS key identifier separated by a backslash.
+- `id` (String) CipherTrust Manager key ID. The legacy format '<aws-region>\<key-id>' is also accepted for backwards compatibility when migrating from beta provider versions.
 - `key_admins` (Set of String) Key administrators - users.
 - `key_admins_roles` (Set of String) Key administrators - roles.
 - `key_id` (String) CipherTrust Manager Key ID.
