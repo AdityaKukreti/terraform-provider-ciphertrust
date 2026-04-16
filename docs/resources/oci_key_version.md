@@ -36,7 +36,7 @@ resource "ciphertrust_oci_byok_key_version" "byok_version_0" {
 
 ### Optional
 
-- `schedule_for_deletion_days` (Number) (Updatable) Waiting period after the key is destroyed before the key is deleted. Only relevant when the resource is destroyed. Default is 7.
+- `schedule_for_deletion_days` (Number) (Updatable) Waiting period after the key is destroyed before the key is deleted. Only relevant when the resource is destroyed. Default is 7. Must be between 7 and 30.
 
 ### Read-Only
 

@@ -159,7 +159,7 @@ resource "ciphertrust_aws_xks_key" "imported_xks_key" {
 Required:
 
 - `job_config_id` (String) ID of the scheduler configuration job that will schedule the key rotation.
-- `key_source` (String) Key source from where the key will be uploaded. Currently, the only option is 'local'.
+- `key_source` (String) Key source from where the key will be uploaded. Options are 'ciphertrust' and 'local'. Both use CipherTrust Manager as the key source.
 
 Optional:
 

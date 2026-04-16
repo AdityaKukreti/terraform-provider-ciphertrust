@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/hashicorp/terraform-plugin-log/tflog"
@@ -68,7 +69,7 @@ func NewCMClientBoot(ctx context.Context, uuid string, address *string, insecure
 	}
 
 	if address != nil {
-		c.CipherTrustURL = *address
+		c.CipherTrustURL = strings.TrimRight(*address, "/")
 	}
 
 	tflog.Trace(ctx, MSG_METHOD_END+" [client.go -> NewCMClientBoot]["+uuid+"]")
@@ -92,7 +93,7 @@ func NewClient(ctx context.Context, uuid string, address, auth_domain, domain, u
 	}
 
 	if address != nil {
-		c.CipherTrustURL = *address
+		c.CipherTrustURL = strings.TrimRight(*address, "/")
 	}
 
 	// If username or password not provided, return empty client

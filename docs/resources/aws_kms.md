@@ -51,9 +51,9 @@ resource "ciphertrust_aws_key" "aws_key" {
 
 ### Required
 
-- `account_id` (String) ID of the AWS account.
+- `account_id` (String) ID of the AWS account. Changing this value forces the KMS registration to be destroyed and recreated.
 - `aws_connection` (String) (Updatable) Name or ID of the connection in which the account is managed.
-- `name` (String) Unique name for the KMS.
+- `name` (String) Unique name for the KMS. Changing this value forces the KMS registration to be destroyed and recreated.
 - `regions` (List of String) AWS regions to be added to the KMS.
 
 ### Optional

@@ -65,15 +65,16 @@ func (d *dataSourceGetOCIRegions) Schema(_ context.Context, _ datasource.SchemaR
 	}
 }
 
+// Read retrieves the list of OCI regions available to the connection by calling the
+// CM get-subscribed-regions API and saves the result to state.
 func (d *dataSourceGetOCIRegions) Read(ctx context.Context, req datasource.ReadRequest, resp *datasource.ReadResponse) {
-	tflog.Trace(ctx, common.MSG_METHOD_START+"[data_source_get_oci_regions.go -> Read]")
-	defer tflog.Trace(ctx, common.MSG_METHOD_END+"[data_source_get_oci_regions.go -> Read]")
-
 	id := uuid.New().String()
+	tflog.Debug(ctx, common.MSG_METHOD_START+"[data_source_get_oci_regions.go -> Read]["+id+"]")
+	defer tflog.Debug(ctx, common.MSG_METHOD_END+"[data_source_get_oci_regions.go -> Read]["+id+"]")
+
 	var state models.GetOCIRegionsDataSourceTFSDK
-	diags := req.Config.Get(ctx, &state)
-	if diags.HasError() {
-		resp.Diagnostics = append(resp.Diagnostics, diags...)
+	resp.Diagnostics.Append(req.Config.Get(ctx, &state)...)
+	if resp.Diagnostics.HasError() {
 		return
 	}
 	connection := state.Connection.ValueString()
@@ -98,5 +99,4 @@ func (d *dataSourceGetOCIRegions) Read(ctx context.Context, req datasource.ReadR
 	}
 	state.Regions = utils.StringSliceJSONToListValue(gjson.Get(response, "regions").Array(), &resp.Diagnostics)
 	resp.Diagnostics.Append(resp.State.Set(ctx, state)...)
-	tflog.Trace(ctx, common.MSG_METHOD_END+"[data_source_oci_get_regions.go -> Read]["+id+"]")
 }

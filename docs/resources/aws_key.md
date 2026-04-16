@@ -140,9 +140,9 @@ resource "ciphertrust_aws_key" "auto_rotated_aws_key" {
 
 - `alias` (Set of String) (Updatable) Alias(es) of the key. To allow for key rotation changing or removing original aliases, all aliases already assigned to another key will be ignored.
 - `auto_rotate` (Boolean) (Updatable) Enable AWS autorotation of the key. Auto-Rotation only is only applicable to native symmetric keys.
-- `auto_rotation_period_in_days` (Number) Rotation period in days. Optional parameter for auto_rotate. Must be at least 90 days.
+- `auto_rotation_period_in_days` (Number) (Updatable) Rotation period in days. Optional when auto_rotate is true. If not set, AWS uses its default rotation period.
 - `bypass_policy_lockout_safety_check` (Boolean) Whether to bypass the key policy lockout safety check.
-- `customer_master_key_spec` (String) Whether the KMS key contains a symmetric key or an asymmetric key pair. Valid values: SYMMETRIC_DEFAULT, RSA_2048, RSA_3072, RSA_4096, ECC_NIST_P256, ECC_NIST_P384, ECC_NIST_P521, ECC_SECG_P256K1, HMAC_224, HMAC_256, HMAC_384, HMAC_512. Default is SYMMETRIC_DEFAULT.
+- `customer_master_key_spec` (String) Whether the KMS key contains a symmetric key or an asymmetric key pair. Valid values: SYMMETRIC_DEFAULT, RSA_2048, RSA_3072, RSA_4096, ECC_NIST_P256, ECC_NIST_P384, ECC_NIST_P521, ECC_SECG_P256K1, HMAC_224, HMAC_256, HMAC_384, HMAC_512. Default is SYMMETRIC_DEFAULT. When using 'import_key_material', ECC_NIST_P256 and HMAC_224 are not supported as CipherTrust Manager cannot create those key types locally.
 - `description` (String) (Updatable) Description of the AWS key. Descriptions can be updated but not removed.
 - `enable_key` (Boolean) (Updatable) Enable or disable the key. Default is true.
 - `enable_rotation` (Block List) (Updatable) Enable the key for scheduled rotation job. Parameters 'disable_encrypt' and 'disable_encrypt_on_all_accounts' are mutually exclusive (see [below for nested schema](#nestedblock--enable_rotation))
@@ -170,7 +170,7 @@ resource "ciphertrust_aws_key" "auto_rotated_aws_key" {
 - `encryption_algorithms` (List of String) Encryption algorithms of an asymmetric key
 - `expiration_model` (String) Expiration model.
 - `external_accounts` (Set of String) Other AWS accounts that have access to this key.
-- `id` (String) AWS region and AWS key identifier separated by a backslash.
+- `id` (String) CipherTrust Manager key ID. The legacy format '<aws-region>\<key-id>' is also accepted for backwards compatibility when migrating from beta provider versions.
 - `key_admins` (Set of String) Key administrators - users.
 - `key_admins_roles` (Set of String) Key administrators - roles.
 - `key_id` (String) CipherTrust Manager Key ID.
@@ -207,7 +207,7 @@ resource "ciphertrust_aws_key" "auto_rotated_aws_key" {
 Required:
 
 - `job_config_id` (String) ID of the scheduler configuration job that will schedule the key rotation.
-- `key_source` (String) Key source from where the key will be uploaded. Currently, the only option is 'ciphertrust'.
+- `key_source` (String) Key source from where the key will be uploaded. Options are 'ciphertrust' and 'local'. Both use CipherTrust Manager as the key source.
 
 Optional:
 

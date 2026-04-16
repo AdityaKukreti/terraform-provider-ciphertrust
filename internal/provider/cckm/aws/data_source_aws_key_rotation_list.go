@@ -174,9 +174,11 @@ func (d *dataSourceAWSKeyRotationList) Schema(_ context.Context, _ datasource.Sc
 	}
 }
 
+// Read lists the rotation history for a given AWS key and populates Terraform state.
 func (d *dataSourceAWSKeyRotationList) Read(ctx context.Context, req datasource.ReadRequest, resp *datasource.ReadResponse) {
 	id := uuid.New().String()
-	tflog.Trace(ctx, common.MSG_METHOD_START+"[data_source_aws_key_rotation_list.go -> Read]["+id+"]")
+	tflog.Debug(ctx, common.MSG_METHOD_START+"[data_source_aws_key_rotation_list.go -> Read]["+id+"]")
+	defer tflog.Debug(ctx, common.MSG_METHOD_END+"[data_source_aws_key_rotation_list.go -> Read]["+id+"]")
 
 	var state KeyRotationsDataSourceModel
 	resp.Diagnostics.Append(req.Config.Get(ctx, &state)...)
@@ -226,20 +228,20 @@ func (d *dataSourceAWSKeyRotationList) Read(ctx context.Context, req datasource.
 				RotationType:           types.StringValue(rotation.RotationType),
 				ValidTo:                types.StringValue(rotation.ValidTo),
 			},
-			CreatedAt:            types.StringValue(rotation.CreatedAt),
-			ID:                   types.StringValue(rotation.ID),
-			KeyMaterialOrigin:    types.StringValue(rotation.KeyMaterialOrigin),
-			KeySource:            types.StringValue(rotation.KeySource),
-			KeySourceContainerID: types.StringValue(rotation.KeySourceContainerID),
-			KmsID:                types.StringValue(rotation.KmsID),
-			SourceKeyID:          types.StringValue(rotation.SourceKeyID),
-			SourceKeyName:        types.StringValue(rotation.SourceKeyName),
-			UpdatedAt:            types.StringValue(rotation.UpdatedAt),
-			URI:                  types.StringValue(rotation.URI),
+			CreatedAt:              types.StringValue(rotation.CreatedAt),
+			ID:                     types.StringValue(rotation.ID),
+			KeyMaterialOrigin:      types.StringValue(rotation.KeyMaterialOrigin),
+			KeySource:              types.StringValue(rotation.KeySource),
+			KeySourceContainerID:   types.StringValue(rotation.KeySourceContainerID),
+			KeySourceContainerName: types.StringValue(rotation.KeySourceContainerName),
+			KmsID:                  types.StringValue(rotation.KmsID),
+			SourceKeyID:            types.StringValue(rotation.SourceKeyID),
+			SourceKeyName:          types.StringValue(rotation.SourceKeyName),
+			UpdatedAt:              types.StringValue(rotation.UpdatedAt),
+			URI:                    types.StringValue(rotation.URI),
 		}
 		state.Rotations = append(state.Rotations, keyTFSDK)
 	}
 	state.Matched = types.Int64Value(gjson.Get(jsonStr, "total").Int())
 	resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
-	tflog.Trace(ctx, common.MSG_METHOD_END+"[data_source_aws_key_rotation_list.go -> Read]["+id+"]")
 }

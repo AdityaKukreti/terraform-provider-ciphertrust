@@ -106,6 +106,7 @@ func TestCckmSchedulersRotationResource(t *testing.T) {
 			updateConfig2 = strings.ReplaceAll(updateConfig2, "rotate_material = true", "")
 		}
 		resource.Test(t, resource.TestCase{
+			PreCheck:                 func() { cleanupCckmAwsKMS() },
 			ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
 			Steps: []resource.TestStep{
 				{
@@ -182,6 +183,7 @@ func TestCckmSchedulersRotationResource(t *testing.T) {
 		schedulerConfigStr := fmt.Sprintf(schedulerConfig, schedulerName)
 		schedulerResourceName := "ciphertrust_scheduler.xks_credential_rotation"
 		resource.Test(t, resource.TestCase{
+			PreCheck:                 func() { cleanupCckmAwsKMS() },
 			ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
 			Steps: []resource.TestStep{
 				{
@@ -212,6 +214,7 @@ func TestCckmSchedulersRotationResource(t *testing.T) {
 		name := "tf" + uuid.New().String()[:8]
 		createConfigStr := fmt.Sprintf(createConfig, expiration, expireIn, name)
 		resource.Test(t, resource.TestCase{
+			PreCheck:                 func() { cleanupCckmOCIVaults() },
 			ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
 			Steps: []resource.TestStep{
 				{
@@ -273,6 +276,7 @@ func TestCckmSchedulersSyncResource(t *testing.T) {
 		createConfig := connectionResource + fmt.Sprintf(createParams, kmsParamsName, syncAllParamsName)
 		updateConfig := connectionResource + fmt.Sprintf(updateParams, kmsParamsName, syncAllParamsName)
 		resource.Test(t, resource.TestCase{
+			PreCheck:                 func() { cleanupCckmAwsKMS() },
 			ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
 			Steps: []resource.TestStep{
 				{
@@ -345,6 +349,7 @@ func TestCckmSchedulersSyncResource(t *testing.T) {
 		syncAllName := "oci-sync-all" + uuid.New().String()[:8]
 		createConfigStr := connectionResource + fmt.Sprintf(createConfig, syncVaultName, syncAllName)
 		resource.Test(t, resource.TestCase{
+			PreCheck:                 func() { cleanupCckmOCIVaults() },
 			ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
 			Steps: []resource.TestStep{
 				{

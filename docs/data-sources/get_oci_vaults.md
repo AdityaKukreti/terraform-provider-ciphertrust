@@ -28,9 +28,9 @@ data "ciphertrust_get_oci_vaults" "connection_vaults" {
 
 ### Required
 
-- `compartment_id` (String) Compartment OICD to get vaults from.
+- `compartment_id` (String) Compartment OCID to get vaults from.
 - `connection_id` (String) CipherTrust Manager OCI connection name or ID.
-- `region` (String) OCI region OICD to get vaults from.
+- `region` (String) OCI region OCID to get vaults from.
 
 ### Optional
 
@@ -52,7 +52,7 @@ Read-Only:
 - `lifecycle_state` (String) The vault's current lifecycle state.
 - `management_endpoint` (String) The vault's management endpoint.
 - `time_created` (String) The time the vault was created in OCI.
-- `vault_id` (String) The vaults OCID.
+- `vault_id` (String) The vault's OCID.
 - `vault_type` (String) OCI Vault type.
 
 <a id="nestedatt--vaults--defined_tags"></a>
@@ -60,5 +60,5 @@ Read-Only:
 
 Read-Only:
 
-- `tag` (String) The vault's defined tags.
-- `values` (Map of String) The key:vault pair's associated with the tag.
+- `tag` (String) The tag's namespace.
+- `values` (Map of String) The key:value pairs associated with the tag.

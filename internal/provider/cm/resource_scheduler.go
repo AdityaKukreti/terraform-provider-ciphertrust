@@ -208,8 +208,7 @@ func (r *resourceScheduler) Schema(_ context.Context, _ resource.SchemaRequest, 
 				Description: "CCKM XKS credential rotation operation specific arguments.",
 				Attributes: map[string]schema.Attribute{
 					"cloud_name": schema.StringAttribute{
-						Computed:    true,
-						Optional:    true,
+						Required:    true,
 						Description: "Name of the cloud in which the Rotation operation will be triggered. The only supported value is 'aws'.",
 						Validators: []validator.String{
 							stringvalidator.OneOf("aws"),
@@ -352,6 +351,8 @@ func (r *resourceScheduler) Create(ctx context.Context, req resource.CreateReque
 		payload.RunAt = plan.RunAt.ValueString()
 	}
 
+	payload.Disabled = plan.Disabled.ValueBool()
+
 	switch plan.Operation.ValueString() {
 	case "database_backup":
 		dbBackupParams := getDatabaseOperationBackupParams(plan)
@@ -360,12 +361,12 @@ func (r *resourceScheduler) Create(ctx context.Context, req resource.CreateReque
 		}
 	case "cckm_key_rotation":
 		payload.CCKMKeyRotationParams = getCckmKeyRotationOperationParams(ctx, plan, nil, &resp.Diagnostics)
-		if diags.HasError() {
+		if resp.Diagnostics.HasError() {
 			return
 		}
 	case "cckm_synchronization":
 		payload.CCKMSynchronizationParams = getCckmSyncParams(ctx, plan, &resp.Diagnostics)
-		if diags.HasError() {
+		if resp.Diagnostics.HasError() {
 			return
 		}
 	case "cckm_xks_credential_rotation":
@@ -424,13 +425,13 @@ func (r *resourceScheduler) Create(ctx context.Context, req resource.CreateReque
 	plan.ID = types.StringValue(gjson.Get(response, "id").String())
 	response, err = r.client.GetById(ctx, id, plan.ID.ValueString(), common.URL_SCHEDULER_JOB_CONFIGS)
 	if err != nil {
-		tflog.Debug(ctx, common.ERR_METHOD_END+err.Error()+" [resource_scheduler.go -> Read]["+id+"]")
+		tflog.Debug(ctx, common.ERR_METHOD_END+err.Error()+" [resource_scheduler.go -> Create]["+id+"]")
 		resp.Diagnostics.AddError("Read Error", "Error fetching scheduler job configs : "+err.Error())
 		return
 	}
 
 	getParamsFromResponse(ctx, response, &plan, &resp.Diagnostics)
-	if diags.HasError() {
+	if resp.Diagnostics.HasError() {
 		return
 	}
 
@@ -457,12 +458,17 @@ func (r *resourceScheduler) Read(ctx context.Context, req resource.ReadRequest, 
 
 	response, err := r.client.GetById(ctx, id, state.ID.ValueString(), common.URL_SCHEDULER_JOB_CONFIGS)
 	if err != nil {
+		if strings.Contains(err.Error(), "404") {
+			tflog.Warn(ctx, "[resource_scheduler.go -> Read][scheduler not found, removing from state][scheduler id: "+state.ID.ValueString()+"]")
+			resp.State.RemoveResource(ctx)
+			return
+		}
 		tflog.Debug(ctx, common.ERR_METHOD_END+err.Error()+" [resource_scheduler.go -> Read]["+id+"]")
 		resp.Diagnostics.AddError("Read Error", "Error fetching scheduler job configs : "+err.Error())
 		return
 	}
 	getParamsFromResponse(ctx, response, &state, &resp.Diagnostics)
-	if diags.HasError() {
+	if resp.Diagnostics.HasError() {
 		return
 	}
 	state.Name = types.StringValue(gjson.Get(response, "name").String())
@@ -510,6 +516,8 @@ func (r *resourceScheduler) Update(ctx context.Context, req resource.UpdateReque
 		payload.RunAt = plan.RunAt.ValueString()
 	}
 
+	payload.Disabled = plan.Disabled.ValueBool()
+
 	switch plan.Operation.ValueString() {
 	case "database_backup":
 		dbBackupParams := getDatabaseOperationBackupParams(plan)
@@ -518,16 +526,20 @@ func (r *resourceScheduler) Update(ctx context.Context, req resource.UpdateReque
 		}
 	case "cckm_key_rotation":
 		payload.CCKMRotationParams = getCckmKeyRotationOperationParams(ctx, plan, &state, &resp.Diagnostics)
-		if diags.HasError() {
+		if resp.Diagnostics.HasError() {
 			return
 		}
-		payload.CCKMRotationParams.CloudName = ""
+		if payload.CCKMRotationParams != nil {
+			payload.CCKMRotationParams.CloudName = ""
+		}
 	case "cckm_synchronization":
 		payload.CCKMSynchronizationParams = getCckmSyncParams(ctx, plan, &resp.Diagnostics)
-		if diags.HasError() {
+		if resp.Diagnostics.HasError() {
 			return
 		}
-		payload.CCKMSynchronizationParams.CloudName = ""
+		if payload.CCKMSynchronizationParams != nil {
+			payload.CCKMSynchronizationParams.CloudName = ""
+		}
 	}
 
 	if plan.StartDate.ValueString() != "" && plan.StartDate.ValueString() != types.StringNull().ValueString() {
@@ -577,7 +589,7 @@ func (r *resourceScheduler) Update(ctx context.Context, req resource.UpdateReque
 	}
 
 	getParamsFromResponse(ctx, response, &plan, &resp.Diagnostics)
-	if diags.HasError() {
+	if resp.Diagnostics.HasError() {
 		return
 	}
 

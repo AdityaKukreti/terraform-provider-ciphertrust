@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/url"
 	"strconv"
+	"strings"
 
 	"github.com/ThalesGroup/terraform-provider-ciphertrust/internal/provider/cckm/oci/models"
 	"github.com/ThalesGroup/terraform-provider-ciphertrust/internal/provider/cckm/utils"
@@ -237,10 +238,11 @@ func (r *resourceCCKMOCIByokKey) Schema(_ context.Context, _ resource.SchemaRequ
 			"schedule_for_deletion_days": schema.Int64Attribute{
 				Optional:    true,
 				Computed:    true,
-				Description: "(Updatable) Waiting period after the key is destroyed before the key is deleted. Only relevant when the resource is destroyed. Default is " + strconv.Itoa(scheduleForDeletionDays) + ".",
+				Description: "(Updatable) Waiting period in days after the key is destroyed before the key is deleted from OCI. Only relevant when the resource is destroyed. Must be between 7 and 30. Default is " + strconv.Itoa(scheduleForDeletionDays) + ".",
 				Default:     int64default.StaticInt64(scheduleForDeletionDays),
 				Validators: []validator.Int64{
 					int64validator.AtLeast(scheduleForDeletionDays),
+					int64validator.AtMost(30),
 				},
 			},
 			"source_key_id": schema.StringAttribute{
@@ -310,10 +312,13 @@ func (r *resourceCCKMOCIByokKey) Schema(_ context.Context, _ resource.SchemaRequ
 	}
 }
 
+// Create uploads an existing CipherTrust Manager key to OCI as a BYOK key. If the upload succeeds, subsequent
+// failures (state wait, auto-rotation enablement, key disable, refresh) are reported as warnings only  -  the
+// resource is created and its ID is committed to state before any of those post-upload steps run.
 func (r *resourceCCKMOCIByokKey) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
 	id := uuid.New().String()
-	tflog.Trace(ctx, common.MSG_METHOD_START+"[resource_oci_byok_key.go -> Create]["+id+"]")
-	defer tflog.Trace(ctx, common.MSG_METHOD_END+"[resource_oci_byok_key.go -> Create]["+id+"]")
+	tflog.Debug(ctx, common.MSG_METHOD_START+"[resource_oci_byok_key.go -> Create]["+id+"]")
+	defer tflog.Debug(ctx, common.MSG_METHOD_END+"[resource_oci_byok_key.go -> Create]["+id+"]")
 
 	var plan models.BYOKKeyTFSDK
 	resp.Diagnostics.Append(req.Plan.Get(ctx, &plan)...)
@@ -349,7 +354,7 @@ func (r *resourceCCKMOCIByokKey) Create(ctx context.Context, req resource.Create
 		return
 	}
 
-	response, err := r.client.PostDataV2(ctx, id, common.URL_OCI+"/upload-key", payloadJSON)
+	response, err := ociPostDataV2WithRetry(ctx, r.client, id, common.URL_OCI+"/upload-key", payloadJSON)
 	if err != nil {
 		msg := "Error uploading key to OCI."
 		details := utils.ApiError(msg, map[string]interface{}{"error": err.Error(), "name": payload.Name})
@@ -357,7 +362,7 @@ func (r *resourceCCKMOCIByokKey) Create(ctx context.Context, req resource.Create
 		resp.Diagnostics.AddError(details, "")
 		return
 	}
-	tflog.Trace(ctx, "[resource_resource_oci_byok_key.go -> Create][response:"+response)
+	tflog.Debug(ctx, "[resource_oci_byok_key.go -> Create][response:"+response+"]")
 	keyID := gjson.Get(response, "id").String()
 	keyState := gjson.Get(response, "oci_params.lifecycle_state").String()
 	plan.ID = types.StringValue(keyID)
@@ -392,7 +397,7 @@ func (r *resourceCCKMOCIByokKey) Create(ctx context.Context, req resource.Create
 		}
 	}
 
-	refreshResponse, err := r.client.PostNoData(ctx, id, common.URL_OCI+"/keys/"+keyID+"/refresh")
+	refreshResponse, err := ociPostNoDataWithRetry(ctx, r.client, id, common.URL_OCI+"/keys/"+keyID+"/refresh")
 	if err != nil {
 		msg := "Error refreshing OCI key."
 		details := utils.ApiError(msg, map[string]interface{}{"error": err.Error(), "key_id": keyID})
@@ -400,7 +405,7 @@ func (r *resourceCCKMOCIByokKey) Create(ctx context.Context, req resource.Create
 		tflog.Error(ctx, details)
 	} else {
 		response = refreshResponse
-		tflog.Trace(ctx, "[resource_resource_oci_byok_key.go -> Create][response:"+response)
+		tflog.Debug(ctx, "[resource_oci_byok_key.go -> Create][response:"+response+"]")
 	}
 
 	var setStateDiags diag.Diagnostics
@@ -411,10 +416,12 @@ func (r *resourceCCKMOCIByokKey) Create(ctx context.Context, req resource.Create
 	resp.Diagnostics.Append(resp.State.Set(ctx, plan)...)
 }
 
+// Read refreshes the resource state from the CipherTrust Manager API. If the key is not found (HTTP 404),
+// the resource is silently removed from state and a warning is emitted.
 func (r *resourceCCKMOCIByokKey) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
 	id := uuid.New().String()
-	tflog.Trace(ctx, common.MSG_METHOD_START+"[resource_oci_byok_key.go -> Read]["+id+"]")
-	defer tflog.Trace(ctx, common.MSG_METHOD_END+"[resource_oci_byok_key.go -> Read]["+id+"]")
+	tflog.Debug(ctx, common.MSG_METHOD_START+"[resource_oci_byok_key.go -> Read]["+id+"]")
+	defer tflog.Debug(ctx, common.MSG_METHOD_END+"[resource_oci_byok_key.go -> Read]["+id+"]")
 
 	var state models.BYOKKeyTFSDK
 	resp.Diagnostics.Append(req.State.Get(ctx, &state)...)
@@ -425,13 +432,20 @@ func (r *resourceCCKMOCIByokKey) Read(ctx context.Context, req resource.ReadRequ
 
 	response, err := r.client.GetById(ctx, id, keyID, common.URL_OCI+"/keys")
 	if err != nil {
-		msg := "Error reading OCI key."
+		if strings.Contains(err.Error(), notFoundError) {
+			msg := "OCI BYOK key was not found, it will be removed from state."
+			tflog.Warn(ctx, msg)
+			resp.Diagnostics.AddWarning(msg, fmt.Sprintf("key_id: %s", keyID))
+			resp.State.RemoveResource(ctx)
+			return
+		}
+		msg := "Error reading OCI BYOK key."
 		details := utils.ApiError(msg, map[string]interface{}{"error": err.Error(), "key_id": keyID})
 		tflog.Error(ctx, details)
 		resp.Diagnostics.AddError(details, "")
 		return
 	}
-	tflog.Trace(ctx, "[resource_resource_oci_byok_key.go -> Read][response:"+response)
+	tflog.Debug(ctx, "[resource_oci_byok_key.go -> Read][response:"+response+"]")
 	setByokKeyState(ctx, id, r.client, response, &state, &resp.Diagnostics)
 	if resp.Diagnostics.HasError() {
 		return
@@ -439,17 +453,22 @@ func (r *resourceCCKMOCIByokKey) Read(ctx context.Context, req resource.ReadRequ
 	resp.Diagnostics.Append(resp.State.Set(ctx, state)...)
 }
 
+// ImportState imports an existing OCI BYOK key into Terraform state using its CipherTrust Manager resource ID.
 func (r *resourceCCKMOCIByokKey) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
 	id := uuid.New().String()
-	tflog.Trace(ctx, common.MSG_METHOD_START+"[resource_oci_byok_key.go -> ImportState]["+id+"]")
-	defer tflog.Trace(ctx, common.MSG_METHOD_END+"[resource_oci_byok_key.go -> ImportState]["+id+"]")
+	tflog.Debug(ctx, common.MSG_METHOD_START+"[resource_oci_byok_key.go -> ImportState]["+id+"]")
+	defer tflog.Debug(ctx, common.MSG_METHOD_END+"[resource_oci_byok_key.go -> ImportState]["+id+"]")
 	resource.ImportStatePassthroughID(ctx, path.Root("id"), req, resp)
 }
 
+// Update applies changes to a BYOK key. Updatable attributes are: name, oci_key_params.compartment_id,
+// oci_key_params.freeform_tags, oci_key_params.defined_tags, enable_key, and enable_auto_rotation.
+// Attributes source_key_id, source_key_tier, vault, and oci_key_params.protection_mode are not updatable
+// and require destroy + recreate.
 func (r *resourceCCKMOCIByokKey) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
 	id := uuid.New().String()
-	tflog.Trace(ctx, common.MSG_METHOD_START+"[resource_oci_byok_key.go -> Update]["+id+"]")
-	defer tflog.Trace(ctx, common.MSG_METHOD_END+"[resource_oci_byok_key.go -> Update]["+id+"]")
+	tflog.Debug(ctx, common.MSG_METHOD_START+"[resource_oci_byok_key.go -> Update]["+id+"]")
+	defer tflog.Debug(ctx, common.MSG_METHOD_END+"[resource_oci_byok_key.go -> Update]["+id+"]")
 
 	var plan models.BYOKKeyTFSDK
 	resp.Diagnostics.Append(req.Plan.Get(ctx, &plan)...)
@@ -477,7 +496,7 @@ func (r *resourceCCKMOCIByokKey) Update(ctx context.Context, req resource.Update
 		resp.Diagnostics.AddError(details, "")
 		return
 	}
-	tflog.Trace(ctx, "[resource_oci_byok_key.go -> Update][response:"+response)
+	tflog.Debug(ctx, "[resource_oci_byok_key.go -> Update][response:"+response+"]")
 	setByokKeyState(ctx, id, r.client, response, &plan, &resp.Diagnostics)
 	if resp.Diagnostics.HasError() {
 		return
@@ -485,10 +504,13 @@ func (r *resourceCCKMOCIByokKey) Update(ctx context.Context, req resource.Update
 	resp.Diagnostics.Append(resp.State.Set(ctx, plan)...)
 }
 
+// Delete schedules the OCI BYOK key for deletion via deleteKey.
+// The key is not immediately removed from OCI; it enters a pending-deletion state for the number of
+// days specified by schedule_for_deletion_days (7-30) before being permanently deleted.
 func (r *resourceCCKMOCIByokKey) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
 	id := uuid.New().String()
-	tflog.Trace(ctx, common.MSG_METHOD_START+"[resource_oci_byok_key.go -> Delete]["+id+"]")
-	defer tflog.Trace(ctx, common.MSG_METHOD_END+"[resource_oci_byok_key.go -> Delete]["+id+"]")
+	tflog.Debug(ctx, common.MSG_METHOD_START+"[resource_oci_byok_key.go -> Delete]["+id+"]")
+	defer tflog.Debug(ctx, common.MSG_METHOD_END+"[resource_oci_byok_key.go -> Delete]["+id+"]")
 	var state models.BYOKKeyTFSDK
 	resp.Diagnostics.Append(req.State.Get(ctx, &state)...)
 	if resp.Diagnostics.HasError() {
@@ -503,6 +525,10 @@ func (r *resourceCCKMOCIByokKey) Delete(ctx context.Context, req resource.Delete
 	}
 }
 
+// setByokKeyState calls setKeyState for all common key fields, then additionally sets oci_key_params.curve_id
+// and reconstructs source_key_id and source_key_tier by listing key versions. The first version (sorted ascending
+// by createdAt) is used because the API response does not return these upload-time fields directly. If the version
+// list call fails, a warning is emitted and the previous state values are preserved.
 func setByokKeyState(ctx context.Context, id string, client *common.Client, response string, state *models.BYOKKeyTFSDK, diags *diag.Diagnostics) {
 	setKeyState(ctx, id, client, response, &state.KeyTFSDK, diags)
 	if diags.HasError() {

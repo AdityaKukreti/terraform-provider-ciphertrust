@@ -42,13 +42,13 @@ func TestCckmOCIAcl(t *testing.T) {
 		data "ciphertrust_get_oci_vaults" "vaults" {
 			limit = 1
 			connection_id = ciphertrust_oci_connection.connection.name
-			compartment_id = data.ciphertrust_get_oci_compartments.compartments.compartments.0.id
+			compartment_id = tolist(data.ciphertrust_get_oci_compartments.compartments.compartments)[0].id
 			region = data.ciphertrust_get_oci_regions.regions.oci_regions.0
 		}
 		 resource "ciphertrust_oci_vault" "vault" {
 		   region = data.ciphertrust_get_oci_regions.regions.oci_regions.0
 		   connection_id = ciphertrust_oci_connection.connection.name
-		   vault_id = data.ciphertrust_get_oci_vaults.vaults.vaults.0.vault_id
+		   vault_id = tolist(data.ciphertrust_get_oci_vaults.vaults.vaults)[0].vault_id
 		}`
 
 	createACLsConfig := `
@@ -119,10 +119,10 @@ func TestCckmOCIAcl(t *testing.T) {
 
 	dataSourceConfig := `
 		data "ciphertrust_oci_vault_list" "vault_ds" {
-		filters = {
-			name = ciphertrust_oci_vault.vault.name
-		}
-	}`
+			filters = {
+				name = ciphertrust_oci_vault.vault.name
+			}
+		}`
 
 	connectionName := "tf-" + uuid.New().String()[:8]
 	createVaultConfigStr := fmt.Sprintf(createVaultConfig, ociKeyFile, connectionName,
@@ -140,12 +140,19 @@ func TestCckmOCIAcl(t *testing.T) {
 	vaultDatasourceName := "data.ciphertrust_oci_vault_list.vault_ds"
 
 	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { cleanupCckmOCIVaults() },
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
 		Steps: []resource.TestStep{
 			{
 				Config: createAclsActionsConfigStr,
 				Check: resource.ComposeTestCheckFunc(
+					resource.TestCheckResourceAttrSet(userACLResourceName, "id"),
+					resource.TestCheckResourceAttrPair(userACLResourceName, "vault_id", vaultResourceName, "id"),
+					resource.TestCheckResourceAttrPair(userACLResourceName, "user_id", "ciphertrust_user.user", "id"),
 					resource.TestCheckResourceAttr(userACLResourceName, "actions.#", "2"),
+					resource.TestCheckResourceAttrSet(groupACLResourceName, "id"),
+					resource.TestCheckResourceAttrPair(groupACLResourceName, "vault_id", vaultResourceName, "id"),
+					resource.TestCheckResourceAttrPair(groupACLResourceName, "group", "ciphertrust_groups.group", "id"),
 					resource.TestCheckResourceAttr(groupACLResourceName, "actions.#", "3"),
 					resource.TestCheckResourceAttr(vaultDatasourceName, "vaults.#", "1"),
 					resource.TestCheckResourceAttr(vaultDatasourceName, "vaults.0.acls.#", "2"),

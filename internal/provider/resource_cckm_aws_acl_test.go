@@ -96,6 +96,7 @@ func TestCckmAWSAcl(t *testing.T) {
 	kmsDatasourceName := "data.ciphertrust_aws_kms_list.kms_ds"
 
 	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { cleanupCckmAwsKMS() },
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
 		Steps: []resource.TestStep{
 			{

@@ -57,7 +57,7 @@ func (d *dataSourceOCIVersions) Metadata(_ context.Context, req datasource.Metad
 
 func (d *dataSourceOCIVersions) Schema(_ context.Context, _ datasource.SchemaRequest, resp *datasource.SchemaResponse) {
 	resp.Schema = schema.Schema{
-		Description: "Use this data source to retrieve a list of CipherTrust Manager key versions.\n\n" +
+		Description: "Use this data source to retrieve a list of OCI key versions.\n\n" +
 			"Give a filter of 'limit=-1' to list more than 10 matches.",
 		Attributes: map[string]schema.Attribute{
 			"key_id": schema.StringAttribute{
@@ -83,7 +83,7 @@ func (d *dataSourceOCIVersions) Schema(_ context.Context, _ datasource.SchemaReq
 						},
 						"created_at": schema.StringAttribute{
 							Computed:    true,
-							Description: "Date/time the application was created",
+							Description: "Date/time the key version was created in CipherTrust Manager.",
 						},
 						"id": schema.StringAttribute{
 							Computed:    true,
@@ -111,7 +111,7 @@ func (d *dataSourceOCIVersions) Schema(_ context.Context, _ datasource.SchemaReq
 						},
 						"updated_at": schema.StringAttribute{
 							Computed:    true,
-							Description: "Date/time the application was updated.",
+							Description: "Date/time the key version was last updated.",
 						},
 						"uri": schema.StringAttribute{
 							Computed:    true,
@@ -171,9 +171,9 @@ func (d *dataSourceOCIVersions) Schema(_ context.Context, _ datasource.SchemaReq
 								},
 							},
 						},
-						"hyok_key_version_params": schema.SingleNestedAttribute{
+						"byok_key_version_params": schema.SingleNestedAttribute{
 							Computed:    true,
-							Description: "The attributes are related to external (hyok) keys.",
+							Description: "The attributes are related to BYOK key versions.",
 							Attributes: map[string]schema.Attribute{
 								"oci_key_id": schema.StringAttribute{
 									Computed:    true,
@@ -200,9 +200,13 @@ func (d *dataSourceOCIVersions) Schema(_ context.Context, _ datasource.SchemaReq
 	}
 }
 
+// Read lists OCI key versions for the given key_id from CipherTrust Manager,
+// optionally filtered by the key:value pairs in the filters attribute,
+// and saves the results to state.
 func (d *dataSourceOCIVersions) Read(ctx context.Context, req datasource.ReadRequest, resp *datasource.ReadResponse) {
 	id := uuid.New().String()
-	tflog.Trace(ctx, common.MSG_METHOD_START+"[data_source_oci_key_versions.go -> Read]["+id+"]")
+	tflog.Debug(ctx, common.MSG_METHOD_START+"[data_source_oci_key_versions.go -> Read]["+id+"]")
+	defer tflog.Debug(ctx, common.MSG_METHOD_END+"[data_source_oci_key_versions.go -> Read]["+id+"]")
 	var state KeyVersionsDataSourceModel
 	resp.Diagnostics.Append(req.Config.Get(ctx, &state)...)
 	if resp.Diagnostics.HasError() {
@@ -221,7 +225,7 @@ func (d *dataSourceOCIVersions) Read(ctx context.Context, req datasource.ReadReq
 	if err != nil {
 		tflog.Debug(ctx, common.ERR_METHOD_END+err.Error()+" [data_source_oci_key_versions.go -> Read]["+id+"]")
 		resp.Diagnostics.AddError(
-			"Unable to read OCI keys from CipherTrust Manager",
+			"Unable to read OCI key versions from CipherTrust Manager",
 			err.Error(),
 		)
 		return
@@ -232,7 +236,7 @@ func (d *dataSourceOCIVersions) Read(ctx context.Context, req datasource.ReadReq
 	if err != nil {
 		tflog.Debug(ctx, common.ERR_METHOD_END+err.Error()+" [data_source_oci_key_versions.go -> Read]["+id+"]")
 		resp.Diagnostics.AddError(
-			"Unable to read OCI keys from CipherTrust Manager",
+			"Unable to read OCI key versions from CipherTrust Manager",
 			err.Error(),
 		)
 		return
@@ -258,7 +262,7 @@ func (d *dataSourceOCIVersions) Read(ctx context.Context, req datasource.ReadReq
 			IsPrimary:                types.BoolValue(version.IsPrimary),
 			KeyID:                    types.StringValue(version.KeyID),
 			LifecycleState:           types.StringValue(version.LifecycleState),
-			Origin:                   types.StringValue(version.LifecycleState),
+			Origin:                   types.StringValue(version.Origin),
 			PublicKey:                types.StringValue(version.PublicKey),
 			ReplicationID:            types.StringValue(version.ReplicationID),
 			RestoredFromKeyVersionID: types.StringValue(version.RestoredFromKeyVersionID),
@@ -272,13 +276,13 @@ func (d *dataSourceOCIVersions) Read(ctx context.Context, req datasource.ReadReq
 			return
 		}
 
-		hyokKeyVersionParams := models.DataSourceHYOKKeyVersionParamsTFSDK{
+		byokKeyVersionParams := models.DataSourceBYOKKeyVersionParamsTFSDK{
 			OCIKeyID:       types.StringValue(version.OCIKeyID),
 			PartitionID:    types.StringValue(version.PartitionID),
 			PartitionLabel: types.StringValue(version.PartitionLabel),
 			State:          types.StringValue(version.State),
 		}
-		setHYOKKeyVersionParams(ctx, &hyokKeyVersionParams, &keyVersionTFSDK.HYOKKeyVersionParams, &resp.Diagnostics)
+		setBYOKKeyVersionParams(ctx, &byokKeyVersionParams, &keyVersionTFSDK.BYOKKeyVersionParams, &resp.Diagnostics)
 		if resp.Diagnostics.HasError() {
 			return
 		}
@@ -287,5 +291,4 @@ func (d *dataSourceOCIVersions) Read(ctx context.Context, req datasource.ReadReq
 	state.Matched = types.Int64Value(gjson.Get(response, "total").Int())
 
 	resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
-	tflog.Trace(ctx, common.MSG_METHOD_END+"[data_source_oci_key_versions.go -> Read]["+id+"]")
 }

@@ -381,8 +381,8 @@ func (r *resourceAWSXKSKey) Schema(_ context.Context, _ resource.SchemaRequest, 
 						},
 						"key_source": schema.StringAttribute{
 							Required:    true,
-							Description: "Key source from where the key will be uploaded. Currently, the only option is 'local'.",
-							Validators:  []validator.String{stringvalidator.OneOf([]string{"local"}...)},
+							Description: "Key source from where the key will be uploaded. Options are 'ciphertrust' and 'local'. Both use CipherTrust Manager as the key source.",
+							Validators:  []validator.String{stringvalidator.OneOf([]string{"ciphertrust", "local"}...)},
 						},
 						"disable_encrypt": schema.BoolAttribute{
 							Optional:    true,
@@ -429,10 +429,18 @@ func (r *resourceAWSXKSKey) Schema(_ context.Context, _ resource.SchemaRequest, 
 	}
 }
 
+// Create creates a new AWS XKS key in CipherTrust Manager and sets Terraform state.
+// After the key is successfully created, the following post-creation operations are attempted but only
+// produce warnings (not errors) on failure, ensuring the key is always saved to state:
+//   - Adding additional aliases beyond the first  -  only applied when the key is linked (linked_state = true);
+//     unlinked keys do not support alias management via AWS
+//   - Registering the key with a CipherTrust Manager scheduled rotation job (enable_rotation block)
+//   - Disabling the key if enable_key = false  -  only applied when the key is linked
+//   - Refreshing final state from the API after all post-creation operations
 func (r *resourceAWSXKSKey) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
 	id := uuid.New().String()
-	tflog.Trace(ctx, common.MSG_METHOD_START+"[resource_aws_xks_key.go -> Create]["+id+"]")
-	defer tflog.Trace(ctx, common.MSG_METHOD_END+"[resource_aws_xks_key.go -> Create]["+id+"]")
+	tflog.Debug(ctx, common.MSG_METHOD_START+"[resource_aws_xks_key.go -> Create]["+id+"]")
+	defer tflog.Debug(ctx, common.MSG_METHOD_END+"[resource_aws_xks_key.go -> Create]["+id+"]")
 	var (
 		plan     AWSXKSKeyTFSDK
 		response string
@@ -491,7 +499,7 @@ func (r *resourceAWSXKSKey) Create(ctx context.Context, req resource.CreateReque
 		resp.Diagnostics.AddError(details, "")
 		return
 	}
-	tflog.Trace(ctx, "[resource_aws_xks.go -> Create][response:"+response)
+	tflog.Debug(ctx, "[resource_aws_xks_key.go -> Create][response:"+response+"]")
 	plan.ID = types.StringValue(gjson.Get(response, "id").String())
 	plan.KeyID = plan.ID
 
@@ -528,7 +536,7 @@ func (r *resourceAWSXKSKey) Create(ctx context.Context, req resource.CreateReque
 		resp.Diagnostics.AddWarning(details, "")
 	} else {
 		response = getResponse
-		tflog.Trace(ctx, "[resource_aws_key.go -> Create][response:"+response)
+		tflog.Debug(ctx, "[resource_aws_xks_key.go -> Create][get response:"+response+"]")
 	}
 
 	var diags diag.Diagnostics
@@ -539,10 +547,14 @@ func (r *resourceAWSXKSKey) Create(ctx context.Context, req resource.CreateReque
 	resp.Diagnostics.Append(resp.State.Set(ctx, plan)...)
 }
 
+// Read refreshes Terraform state for an AWS XKS key by reading its current data from CipherTrust Manager.
+// If the key is no longer found (404 / "Resource not found"), it is silently removed from Terraform state
+// rather than returning an error, allowing Terraform to plan its recreation.
+// For unlinked keys, the description attribute is preserved from prior state rather than overwritten.
 func (r *resourceAWSXKSKey) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
 	id := uuid.New().String()
-	tflog.Trace(ctx, common.MSG_METHOD_START+"[resource_aws_xks_key.go -> Read]["+id+"]")
-	defer tflog.Trace(ctx, common.MSG_METHOD_END+"[resource_aws_xks_key.go -> Read]["+id+"]")
+	tflog.Debug(ctx, common.MSG_METHOD_START+"[resource_aws_xks_key.go -> Read]["+id+"]")
+	defer tflog.Debug(ctx, common.MSG_METHOD_END+"[resource_aws_xks_key.go -> Read]["+id+"]")
 	var state AWSXKSKeyTFSDK
 	resp.Diagnostics.Append(req.State.Get(ctx, &state)...)
 	if resp.Diagnostics.HasError() {
@@ -551,13 +563,20 @@ func (r *resourceAWSXKSKey) Read(ctx context.Context, req resource.ReadRequest, 
 	keyID := state.ID.ValueString()
 	response, err := r.client.GetById(ctx, id, keyID, common.URL_AWS_KEY)
 	if err != nil {
+		if strings.Contains(err.Error(), "Resource not found") {
+			msg := "AWS XKS key was not found, it will be removed from state."
+			details := utils.ApiError(msg, map[string]interface{}{"key_id": keyID})
+			tflog.Warn(ctx, details)
+			resp.State.RemoveResource(ctx)
+			return
+		}
 		msg := "Error reading AWS XKS key."
 		details := utils.ApiError(msg, map[string]interface{}{"error": err.Error(), "key_id": keyID})
 		tflog.Error(ctx, details)
 		resp.Diagnostics.AddError(details, "")
 		return
 	}
-	tflog.Trace(ctx, "[resource_aws_xks_key.go -> Read][response:"+response)
+	tflog.Debug(ctx, "[resource_aws_xks_key.go -> Read][response:"+response+"]")
 	description := state.Description
 	r.setXKSKeyState(ctx, response, &state, &resp.Diagnostics)
 	if resp.Diagnostics.HasError() {
@@ -572,17 +591,33 @@ func (r *resourceAWSXKSKey) Read(ctx context.Context, req resource.ReadRequest, 
 	}
 }
 
+// ImportState imports an existing AWS XKS key into Terraform state using its resource ID.
 func (r *resourceAWSXKSKey) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
 	id := uuid.New().String()
-	tflog.Trace(ctx, common.MSG_METHOD_START+"[resource_aws_xks_key.go -> ImportState]["+id+"]")
-	defer tflog.Trace(ctx, common.MSG_METHOD_END+"[resource_aws_xks_key.go -> ImportState]["+id+"]")
+	tflog.Debug(ctx, common.MSG_METHOD_START+"[resource_aws_xks_key.go -> ImportState]["+id+"]")
+	defer tflog.Debug(ctx, common.MSG_METHOD_END+"[resource_aws_xks_key.go -> ImportState]["+id+"]")
 	resource.ImportStatePassthroughID(ctx, path.Root("id"), req, resp)
 }
 
+// Update applies plan changes to an AWS XKS key. The key's linked state determines which attributes
+// are actually sent to AWS. Specifically:
+//
+//	When linked (linked_state = true):
+//	  - local_hosted_params.blocked: block or unblock the key
+//	  - local_hosted_params.linked: link the key (transitioning back to unlinked is not supported)
+//	  - description, key_policy, enable_rotation (via updateAwsKeyCommon)
+//	  - alias
+//	  - tags
+//	  - enable_key (enable or disable the key in AWS)
+//
+//	When unlinked (linked_state = false):
+//	  - enable_rotation only (a CM-side operation that does not require AWS linked state)
+//	  - All other plan changes  -  description, key_policy, alias, tags, enable_key  -  are silently skipped
+//	  - description is preserved from the prior state value rather than overwritten
 func (r *resourceAWSXKSKey) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
 	id := uuid.New().String()
-	tflog.Trace(ctx, common.MSG_METHOD_START+"[resource_aws_xks_key.go -> Update]["+id+"]")
-	defer tflog.Trace(ctx, common.MSG_METHOD_END+"[resource_aws_xks_key.go -> Update]["+id+"]")
+	tflog.Debug(ctx, common.MSG_METHOD_START+"[resource_aws_xks_key.go -> Update]["+id+"]")
+	defer tflog.Debug(ctx, common.MSG_METHOD_END+"[resource_aws_xks_key.go -> Update]["+id+"]")
 	var (
 		plan  AWSXKSKeyTFSDK
 		state AWSXKSKeyTFSDK
@@ -668,6 +703,13 @@ func (r *resourceAWSXKSKey) Update(ctx context.Context, req resource.UpdateReque
 				return
 			}
 		}
+	} else if !plan.EnableRotation.IsUnknown() {
+		// For unlinked XKS keys, handle enable_rotation changes.
+		// This is a CM-side operation that does not require AWS linked state.
+		enableDisableKeyRotation(ctx, id, r.client, &plan.AWSKeyCommonTFSDK, &state.AWSKeyCommonTFSDK, &resp.Diagnostics)
+		if resp.Diagnostics.HasError() {
+			return
+		}
 	}
 	response, err = r.client.GetById(ctx, id, keyID, common.URL_AWS_KEY)
 	if err != nil {
@@ -697,13 +739,19 @@ func (r *resourceAWSXKSKey) Update(ctx context.Context, req resource.UpdateReque
 	if resp.Diagnostics.HasError() {
 		return
 	}
-	tflog.Trace(ctx, "[resource_aws_xks_key.go -> Update][response:"+response)
+	tflog.Debug(ctx, "[resource_aws_xks_key.go -> Update][response:"+response+"]")
 }
 
+// Delete schedules a linked AWS XKS key for deletion via the schedule-deletion API, or directly deletes
+// an unlinked key from CipherTrust Manager. In either case:
+//   - If the key is already in PendingDeletion state, a warning is returned and the key is removed from state.
+//   - If the key is not found (404 / "Resource not found"), a warning is returned and the key is removed from state.
+//
+// Only a hard API error from the delete call itself produces a Terraform error.
 func (r *resourceAWSXKSKey) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
 	id := uuid.New().String()
-	tflog.Trace(ctx, common.MSG_METHOD_START+"[resource_aws_xks_key.go -> Delete]["+id+"]")
-	defer tflog.Trace(ctx, common.MSG_METHOD_END+"[resource_aws_xks_key.go -> Delete]["+id+"]")
+	tflog.Debug(ctx, common.MSG_METHOD_START+"[resource_aws_xks_key.go -> Delete]["+id+"]")
+	defer tflog.Debug(ctx, common.MSG_METHOD_END+"[resource_aws_xks_key.go -> Delete]["+id+"]")
 	var state AWSXKSKeyTFSDK
 	resp.Diagnostics.Append(req.State.Get(ctx, &state)...)
 	if resp.Diagnostics.HasError() {
@@ -712,10 +760,18 @@ func (r *resourceAWSXKSKey) Delete(ctx context.Context, req resource.DeleteReque
 	keyID := state.KeyID.ValueString()
 	response, err := r.client.GetById(ctx, id, keyID, common.URL_AWS_KEY)
 	if err != nil {
+		if strings.Contains(err.Error(), "Resource not found") {
+			msg := "AWS XKS key was not found, it will be removed from state."
+			details := utils.ApiError(msg, map[string]interface{}{"key_id": keyID})
+			tflog.Warn(ctx, details)
+			resp.Diagnostics.AddWarning(details, "")
+			return
+		}
 		msg := "Error reading AWS key."
 		details := utils.ApiError(msg, map[string]interface{}{"error": err.Error(), "key_id": keyID})
-		tflog.Warn(ctx, details)
-		resp.Diagnostics.AddWarning(details, "")
+		tflog.Error(ctx, details)
+		resp.Diagnostics.AddError(details, "")
+		return
 	}
 	if gjson.Get(response, "linked_state").Bool() {
 		keyState := gjson.Get(response, "aws_param.KeyState").String()
@@ -769,18 +825,25 @@ func (r *resourceAWSXKSKey) Delete(ctx context.Context, req resource.DeleteReque
 			}
 		}
 	}
-	tflog.Trace(ctx, "[resource_aws_xks_key.go -> Delete][response:"+response)
+	tflog.Debug(ctx, "[resource_aws_xks_key.go -> Delete][response:"+response+"]")
 }
 
+// setXKSKeyState populates the Terraform state for an AWS XKS key from an API response JSON string.
 func (r *resourceAWSXKSKey) setXKSKeyState(ctx context.Context, response string, state *AWSXKSKeyTFSDK, diags *diag.Diagnostics) {
 	state.AWSXKSKeyID = types.StringValue(gjson.Get(response, "aws_param.XksKeyConfiguration.Id").String())
 	setCommonKeyStoreKeyState(ctx, response, &state.AWSKeyStoreKeyCommonTFSDK, diags)
 }
 
+// setCommonKeyStoreKeyState populates the common key store key fields shared by the XKS and CloudHSM key
+// resources. For linked keys (linked_state = true), all AWS-facing attributes are populated via
+// setCommonKeyStateEx, including aliases, tags, description, policy, and policy-template tag.
+// For unlinked keys, those attributes are left as their current state values (aliases and tags retain
+// their prior values; policy_template_tag is set to null). Used by resourceAWSXKSKey (via setXKSKeyState,
+// Create/Read/Update) and resourceAWSCloudHSMKey (Create/Read/Update).
 func setCommonKeyStoreKeyState(ctx context.Context, response string, state *AWSKeyStoreKeyCommonTFSDK, diags *diag.Diagnostics) {
 	setCommonKeyState(ctx, response, &state.AWSKeyCommonTFSDK, diags)
 	state.Blocked = types.BoolValue(gjson.Get(response, "blocked").Bool())
-	state.AWSCustomKeyStoreID = types.StringValue(gjson.Get(response, "aws_params.CustomKeyStoreId").String())
+	state.AWSCustomKeyStoreID = types.StringValue(gjson.Get(response, "aws_param.CustomKeyStoreId").String())
 	state.CustomKeyStoreID = types.StringValue(gjson.Get(response, "custom_key_store_id").String())
 	state.KeySourceContainerID = types.StringValue(gjson.Get(response, "key_source_container_id").String())
 	state.KeySourceContainerName = types.StringValue(gjson.Get(response, "key_source_container_name").String())
@@ -813,6 +876,7 @@ func setCommonKeyStoreKeyState(ctx context.Context, response string, state *AWSK
 	state.Region = types.StringValue(gjson.Get(response, "region").String())
 }
 
+// blockUnblockXKSKey blocks or unblocks an AWS XKS key if the planned blocked state differs from current state.
 func (r *resourceAWSXKSKey) blockUnblockXKSKey(ctx context.Context, id string, plan *AWSXKSKeyTFSDK, keyJSON string, localHostedParamsJSON *XKSKeyLocalHostedInputParamsJSON, diags *diag.Diagnostics) {
 	keyID := plan.ID.ValueString()
 	planBlocked := localHostedParamsJSON.Blocked
@@ -838,6 +902,7 @@ func (r *resourceAWSXKSKey) blockUnblockXKSKey(ctx context.Context, id string, p
 	}
 }
 
+// linkUnlinkXKSKey links an AWS XKS key with AWS if the planned linked state differs from current; unlink is not supported.
 func (r *resourceAWSXKSKey) linkUnlinkXKSKey(ctx context.Context, id string, plan *AWSXKSKeyTFSDK, keyJSON string, localHostedParamsJSON *XKSKeyLocalHostedInputParamsJSON, diags *diag.Diagnostics) {
 	keyID := gjson.Get(keyJSON, "id").String()
 	planLinked := localHostedParamsJSON.LinkedState
@@ -877,6 +942,7 @@ func (r *resourceAWSXKSKey) linkUnlinkXKSKey(ctx context.Context, id string, pla
 	}
 }
 
+// getLocalHostedParams extracts the local_hosted_params block from the XKS key plan into a JSON payload struct.
 func (r *resourceAWSXKSKey) getLocalHostedParams(ctx context.Context, plan *AWSXKSKeyTFSDK, diags *diag.Diagnostics) *XKSKeyLocalHostedInputParamsJSON {
 	var localHostedInputParams XKSKeyLocalHostedInputParamsJSON
 	if !plan.LocalHostParams.IsNull() && len(plan.LocalHostParams.Elements()) != 0 {
@@ -896,6 +962,9 @@ func (r *resourceAWSXKSKey) getLocalHostedParams(ctx context.Context, plan *AWSX
 	return &localHostedInputParams
 }
 
+// getKeyStoreCommonAWSParams builds the AWS parameter payload (alias, description, tags, policy) shared
+// by both the XKS and CloudHSM key resource create and link operations. Used by resourceAWSXKSKey (Create,
+// linkUnlinkXKSKey) and resourceAWSCloudHSMKey (Create).
 func getKeyStoreCommonAWSParams(ctx context.Context, plan *AWSKeyStoreKeyCommonTFSDK, diags *diag.Diagnostics) *XKSKeyCommonAWSParamsJSON {
 	var awsParams XKSKeyCommonAWSParamsJSON
 	if plan.Description.ValueString() != "" {

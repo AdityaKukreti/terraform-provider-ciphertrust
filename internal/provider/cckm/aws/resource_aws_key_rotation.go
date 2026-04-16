@@ -3,6 +3,7 @@ package cckm
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/ThalesGroup/terraform-provider-ciphertrust/internal/provider/cckm/utils"
@@ -67,7 +68,10 @@ func (r *resourceAWSKeyRotation) Schema(_ context.Context, _ resource.SchemaRequ
 			},
 			"key_id": schema.StringAttribute{
 				Required:    true,
-				Description: "A CipherTrust Manager AWS key resource ID.",
+				Description: "A CipherTrust Manager AWS key resource ID. Changing this value forces a new rotation on the new key (this resource will be destroyed and recreated).",
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.RequiresReplace(),
+				},
 			},
 			"status": schema.StringAttribute{
 				Computed:    true,
@@ -77,10 +81,11 @@ func (r *resourceAWSKeyRotation) Schema(_ context.Context, _ resource.SchemaRequ
 	}
 }
 
+// Create sends a key material rotation request to AWS and records the operation in Terraform state.
 func (r *resourceAWSKeyRotation) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
 	id := uuid.New().String()
-	tflog.Trace(ctx, common.MSG_METHOD_START+"[resource_aws_key_rotation.go -> Create]["+id+"]")
-	defer tflog.Trace(ctx, common.MSG_METHOD_END+"[resource_aws_key_rotation.go -> Create]["+id+"]")
+	tflog.Debug(ctx, common.MSG_METHOD_START+"[resource_aws_key_rotation.go -> Create]["+id+"]")
+	defer tflog.Debug(ctx, common.MSG_METHOD_END+"[resource_aws_key_rotation.go -> Create]["+id+"]")
 	var (
 		plan     AWSKeyRotationTFSDK
 		response string
@@ -90,8 +95,7 @@ func (r *resourceAWSKeyRotation) Create(ctx context.Context, req resource.Create
 		return
 	}
 
-	keyID := plan.KeyID.ValueString()
-	response = r.rotateKeyMaterial(ctx, keyID, &plan, &resp.Diagnostics)
+	response = r.rotateKeyMaterial(ctx, id, &plan, &resp.Diagnostics)
 	if resp.Diagnostics.HasError() {
 		return
 	}
@@ -102,13 +106,16 @@ func (r *resourceAWSKeyRotation) Create(ctx context.Context, req resource.Create
 	now := time.Now().UTC().Format("2006-01-02 15:04:05 MST")
 	plan.Status = types.StringValue("A key material rotation request was sent to AWS on " + now + ".")
 	resp.Diagnostics.Append(resp.State.Set(ctx, plan)...)
-	tflog.Trace(ctx, "[resource_aws_key_rotation.go -> Create][response:"+response)
+	tflog.Debug(ctx, "[resource_aws_key_rotation.go -> Create][response:"+response)
 }
 
+// Read verifies the referenced AWS key still exists in CipherTrust Manager. If the underlying AWS key is
+// no longer found (HTTP 404 / "status: 404"), the rotation resource is silently removed from Terraform state
+// rather than returning an error, allowing Terraform to plan its recreation.
 func (r *resourceAWSKeyRotation) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
 	id := uuid.New().String()
-	tflog.Trace(ctx, common.MSG_METHOD_START+"[resource_aws_key_rotation.go -> Read]["+id+"]")
-	defer tflog.Trace(ctx, common.MSG_METHOD_END+"[resource_aws_key_rotation.go -> Read]["+id+"]")
+	tflog.Debug(ctx, common.MSG_METHOD_START+"[resource_aws_key_rotation.go -> Read]["+id+"]")
+	defer tflog.Debug(ctx, common.MSG_METHOD_END+"[resource_aws_key_rotation.go -> Read]["+id+"]")
 	var state AWSKeyRotationTFSDK
 	resp.Diagnostics.Append(req.State.Get(ctx, &state)...)
 	if resp.Diagnostics.HasError() {
@@ -117,6 +124,13 @@ func (r *resourceAWSKeyRotation) Read(ctx context.Context, req resource.ReadRequ
 	keyID := state.KeyID.ValueString()
 	response, err := r.client.GetById(ctx, id, keyID, common.URL_AWS_KEY)
 	if err != nil {
+		if strings.Contains(err.Error(), "status: 404") {
+			msg := "AWS key no longer exists, removing rotation resource from state."
+			details := utils.ApiError(msg, map[string]interface{}{"key_id": keyID})
+			tflog.Warn(ctx, details)
+			resp.State.RemoveResource(ctx)
+			return
+		}
 		msg := "Error reading AWS key."
 		details := utils.ApiError(msg, map[string]interface{}{"error": err.Error(), "key_id": keyID})
 		tflog.Error(ctx, details)
@@ -127,17 +141,20 @@ func (r *resourceAWSKeyRotation) Read(ctx context.Context, req resource.ReadRequ
 	if resp.Diagnostics.HasError() {
 		return
 	}
-	tflog.Trace(ctx, "[resource_aws_key_rotation.go -> Read][response:"+response)
+	tflog.Debug(ctx, "[resource_aws_key_rotation.go -> Read][response:"+response)
 }
 
+// Update is a no-op; rotations are immutable once submitted and require replace.
 func (r *resourceAWSKeyRotation) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
 }
 
+// Delete is a no-op; rotation records are removed from state only and do not affect the AWS key.
 func (r *resourceAWSKeyRotation) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
 }
 
+// rotateKeyMaterial calls the CipherTrust Manager rotate-material API for the specified AWS key.
 func (r *resourceAWSKeyRotation) rotateKeyMaterial(ctx context.Context, id string, plan *AWSKeyRotationTFSDK, diags *diag.Diagnostics) string {
-	tflog.Trace(ctx, "[resource_aws_key_rotation.go -> rotateKeyMaterial]["+id+"]")
+	tflog.Debug(ctx, "[resource_aws_key_rotation.go -> rotateKeyMaterial]["+id+"]")
 	keyID := plan.KeyID.ValueString()
 	response, err := r.client.PostDataV2(ctx, id, common.URL_AWS_KEY+"/"+keyID+"/rotate-material", nil)
 	if err != nil {
@@ -147,6 +164,6 @@ func (r *resourceAWSKeyRotation) rotateKeyMaterial(ctx context.Context, id strin
 		diags.AddError(details, "")
 		return ""
 	}
-	tflog.Trace(ctx, "[resource_aws_key_rotation.go -> rotateKeyMaterial][response:"+response)
+	tflog.Debug(ctx, "[resource_aws_key_rotation.go -> rotateKeyMaterial][response:"+response)
 	return response
 }

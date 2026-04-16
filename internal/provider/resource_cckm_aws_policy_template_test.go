@@ -141,6 +141,7 @@ func TestCckmAWSPolicyTemplate(t *testing.T) {
 	updateConfigStrEx4 := fmt.Sprintf(updateConfigEx4, templateNameEx4)
 
 	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { cleanupCckmAwsKMS() },
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
 		Steps: []resource.TestStep{
 			{
@@ -148,24 +149,24 @@ func TestCckmAWSPolicyTemplate(t *testing.T) {
 				Check: resource.ComposeTestCheckFunc(
 					resource.TestCheckResourceAttrSet(resourceNameEx1, "id"),
 					resource.TestCheckResourceAttrSet(resourceNameEx1, "policy"),
-					resource.TestCheckResourceAttr(resourceNameEx1, "key_users.%", "0"),
-					resource.TestCheckResourceAttr(resourceNameEx1, "key_users_roles.%", "0"),
-					resource.TestCheckResourceAttr(resourceNameEx1, "key_admins.%", "0"),
-					resource.TestCheckResourceAttr(resourceNameEx1, "key_admins_roles.%", "0"),
+					resource.TestCheckResourceAttr(resourceNameEx1, "key_users.#", "0"),
+					resource.TestCheckResourceAttr(resourceNameEx1, "key_users_roles.#", "0"),
+					resource.TestCheckResourceAttr(resourceNameEx1, "key_admins.#", "0"),
+					resource.TestCheckResourceAttr(resourceNameEx1, "key_admins_roles.#", "0"),
 
 					resource.TestCheckResourceAttrSet(resourceNameEx2, "id"),
 					resource.TestCheckResourceAttrSet(resourceNameEx2, "policy"),
-					resource.TestCheckResourceAttr(resourceNameEx2, "key_users.%", "0"),
-					resource.TestCheckResourceAttr(resourceNameEx2, "key_users_roles.%", "0"),
-					resource.TestCheckResourceAttr(resourceNameEx2, "key_admins.%", "0"),
-					resource.TestCheckResourceAttr(resourceNameEx2, "key_admins_roles.%", "0"),
+					resource.TestCheckResourceAttr(resourceNameEx2, "key_users.#", "0"),
+					resource.TestCheckResourceAttr(resourceNameEx2, "key_users_roles.#", "0"),
+					resource.TestCheckResourceAttr(resourceNameEx2, "key_admins.#", "0"),
+					resource.TestCheckResourceAttr(resourceNameEx2, "key_admins_roles.#", "0"),
 
 					resource.TestCheckResourceAttrSet(resourceNameEx3, "id"),
 					resource.TestCheckResourceAttrSet(resourceNameEx3, "policy"),
-					resource.TestCheckResourceAttr(resourceNameEx3, "key_users.%", "0"),
-					resource.TestCheckResourceAttr(resourceNameEx3, "key_users_roles.%", "0"),
-					resource.TestCheckResourceAttr(resourceNameEx3, "key_admins.%", "0"),
-					resource.TestCheckResourceAttr(resourceNameEx3, "key_admins_roles.%", "0"),
+					resource.TestCheckResourceAttr(resourceNameEx3, "key_users.#", "0"),
+					resource.TestCheckResourceAttr(resourceNameEx3, "key_users_roles.#", "0"),
+					resource.TestCheckResourceAttr(resourceNameEx3, "key_admins.#", "0"),
+					resource.TestCheckResourceAttr(resourceNameEx3, "key_admins_roles.#", "0"),
 
 					resource.TestCheckResourceAttrSet(resourceNameEx4, "id"),
 					resource.TestCheckResourceAttrSet(resourceNameEx4, "policy"),
@@ -189,10 +190,10 @@ func TestCckmAWSPolicyTemplate(t *testing.T) {
 
 					resource.TestCheckResourceAttrSet(resourceNameEx4, "id"),
 					resource.TestCheckResourceAttrSet(resourceNameEx4, "policy"),
-					resource.TestCheckResourceAttr(resourceNameEx4, "key_users.%", "0"),
-					resource.TestCheckResourceAttr(resourceNameEx4, "key_users_roles.%", "0"),
-					resource.TestCheckResourceAttr(resourceNameEx4, "key_admins.%", "0"),
-					resource.TestCheckResourceAttr(resourceNameEx4, "key_admins_roles.%", "0"),
+					resource.TestCheckResourceAttr(resourceNameEx4, "key_users.#", "0"),
+					resource.TestCheckResourceAttr(resourceNameEx4, "key_users_roles.#", "0"),
+					resource.TestCheckResourceAttr(resourceNameEx4, "key_admins.#", "0"),
+					resource.TestCheckResourceAttr(resourceNameEx4, "key_admins_roles.#", "0"),
 
 					testVerifyResourceDeleted(resourceNameEx2),
 					testVerifyResourceDeleted(resourceNameEx3),
@@ -203,24 +204,24 @@ func TestCckmAWSPolicyTemplate(t *testing.T) {
 				Check: resource.ComposeTestCheckFunc(
 					resource.TestCheckResourceAttrSet(resourceNameEx1, "id"),
 					resource.TestCheckResourceAttrSet(resourceNameEx1, "policy"),
-					resource.TestCheckResourceAttr(resourceNameEx1, "key_users.%", "0"),
-					resource.TestCheckResourceAttr(resourceNameEx1, "key_users_roles.%", "0"),
-					resource.TestCheckResourceAttr(resourceNameEx1, "key_admins.%", "0"),
-					resource.TestCheckResourceAttr(resourceNameEx1, "key_admins_roles.%", "0"),
+					resource.TestCheckResourceAttr(resourceNameEx1, "key_users.#", "0"),
+					resource.TestCheckResourceAttr(resourceNameEx1, "key_users_roles.#", "0"),
+					resource.TestCheckResourceAttr(resourceNameEx1, "key_admins.#", "0"),
+					resource.TestCheckResourceAttr(resourceNameEx1, "key_admins_roles.#", "0"),
 
 					resource.TestCheckResourceAttrSet(resourceNameEx2, "id"),
 					resource.TestCheckResourceAttrSet(resourceNameEx2, "policy"),
-					resource.TestCheckResourceAttr(resourceNameEx2, "key_users.%", "0"),
-					resource.TestCheckResourceAttr(resourceNameEx2, "key_users_roles.%", "0"),
-					resource.TestCheckResourceAttr(resourceNameEx2, "key_admins.%", "0"),
-					resource.TestCheckResourceAttr(resourceNameEx2, "key_admins_roles.%", "0"),
+					resource.TestCheckResourceAttr(resourceNameEx2, "key_users.#", "0"),
+					resource.TestCheckResourceAttr(resourceNameEx2, "key_users_roles.#", "0"),
+					resource.TestCheckResourceAttr(resourceNameEx2, "key_admins.#", "0"),
+					resource.TestCheckResourceAttr(resourceNameEx2, "key_admins_roles.#", "0"),
 
 					resource.TestCheckResourceAttrSet(resourceNameEx3, "id"),
 					resource.TestCheckResourceAttrSet(resourceNameEx3, "policy"),
-					resource.TestCheckResourceAttr(resourceNameEx3, "key_users.%", "0"),
-					resource.TestCheckResourceAttr(resourceNameEx3, "key_users_roles.%", "0"),
-					resource.TestCheckResourceAttr(resourceNameEx3, "key_admins.%", "0"),
-					resource.TestCheckResourceAttr(resourceNameEx3, "key_admins_roles.%", "0"),
+					resource.TestCheckResourceAttr(resourceNameEx3, "key_users.#", "0"),
+					resource.TestCheckResourceAttr(resourceNameEx3, "key_users_roles.#", "0"),
+					resource.TestCheckResourceAttr(resourceNameEx3, "key_admins.#", "0"),
+					resource.TestCheckResourceAttr(resourceNameEx3, "key_admins_roles.#", "0"),
 
 					resource.TestCheckResourceAttrSet(resourceNameEx4, "id"),
 					resource.TestCheckResourceAttrSet(resourceNameEx4, "policy"),

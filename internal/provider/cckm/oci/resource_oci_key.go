@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strconv"
+	"strings"
 
 	"github.com/ThalesGroup/terraform-provider-ciphertrust/internal/provider/cckm/oci/models"
 	"github.com/ThalesGroup/terraform-provider-ciphertrust/internal/provider/cckm/utils"
@@ -225,10 +226,11 @@ func (r *resourceCCKMOCIKey) Schema(_ context.Context, _ resource.SchemaRequest,
 			"schedule_for_deletion_days": schema.Int64Attribute{
 				Optional:    true,
 				Computed:    true,
-				Description: "(Updatable) Waiting period after the key is destroyed before the key is deleted. Only relevant when the resource is destroyed. Default is " + strconv.Itoa(scheduleForDeletionDays) + ".",
+				Description: "(Updatable) Waiting period after the key is destroyed before the key is deleted. Only relevant when the resource is destroyed. Default is " + strconv.Itoa(scheduleForDeletionDays) + ". Must be between 7 and 30.",
 				Default:     int64default.StaticInt64(scheduleForDeletionDays),
 				Validators: []validator.Int64{
 					int64validator.AtLeast(scheduleForDeletionDays),
+					int64validator.AtMost(30),
 				},
 			},
 			"tenancy": schema.StringAttribute{
@@ -287,10 +289,18 @@ func (r *resourceCCKMOCIKey) Schema(_ context.Context, _ resource.SchemaRequest,
 	}
 }
 
+// Create creates a native OCI key in CipherTrust Manager.
+// After the key is successfully created in CM, subsequent operations (waitForKeyStateChange,
+// enableSchedulerRotation, disableKey, refresh) are downgraded to warnings so the created
+// key is always stored in state. Warnings are emitted when:
+//   - the key's lifecycle state does not settle within the configured oci_operation_timeout
+//   - enable_auto_rotation fails to be applied post-creation
+//   - enable_key = false and the disable call fails
+//   - the post-creation refresh call fails (state is set from the original create response)
 func (r *resourceCCKMOCIKey) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
 	id := uuid.New().String()
-	tflog.Trace(ctx, common.MSG_METHOD_START+"[resource_oci_key.go -> Create]["+id+"]")
-	defer tflog.Trace(ctx, common.MSG_METHOD_END+"[resource_oci_key.go -> Create]["+id+"]")
+	tflog.Debug(ctx, common.MSG_METHOD_START+"[resource_oci_key.go -> Create]["+id+"]")
+	defer tflog.Debug(ctx, common.MSG_METHOD_END+"[resource_oci_key.go -> Create]["+id+"]")
 
 	var plan models.KeyTFSDK
 	resp.Diagnostics.Append(req.Plan.Get(ctx, &plan)...)
@@ -327,7 +337,7 @@ func (r *resourceCCKMOCIKey) Create(ctx context.Context, req resource.CreateRequ
 		return
 	}
 
-	response, err := r.client.PostDataV2(ctx, id, common.URL_OCI+"/keys", payloadJSON)
+	response, err := ociPostDataV2WithRetry(ctx, r.client, id, common.URL_OCI+"/keys", payloadJSON)
 	if err != nil {
 		msg := "Error creating OCI key."
 		details := utils.ApiError(msg, map[string]interface{}{"error": err.Error(), "name": payload.Name})
@@ -335,7 +345,7 @@ func (r *resourceCCKMOCIKey) Create(ctx context.Context, req resource.CreateRequ
 		resp.Diagnostics.AddError(details, "")
 		return
 	}
-	tflog.Trace(ctx, "[resource_resource_oci_key.go -> Create][response:"+response)
+	tflog.Debug(ctx, "[resource_oci_key.go -> Create][response:"+response+"]")
 	keyID := gjson.Get(response, "id").String()
 	keyState := gjson.Get(response, "oci_params.lifecycle_state").String()
 	plan.ID = types.StringValue(keyID)
@@ -370,7 +380,7 @@ func (r *resourceCCKMOCIKey) Create(ctx context.Context, req resource.CreateRequ
 		}
 	}
 
-	refreshResponse, err := r.client.PostNoData(ctx, id, common.URL_OCI+"/keys/"+keyID+"/refresh")
+	refreshResponse, err := ociPostNoDataWithRetry(ctx, r.client, id, common.URL_OCI+"/keys/"+keyID+"/refresh")
 	if err != nil {
 		msg := "Error refreshing OCI key."
 		details := utils.ApiError(msg, map[string]interface{}{"error": err.Error(), "key_id": keyID})
@@ -378,7 +388,7 @@ func (r *resourceCCKMOCIKey) Create(ctx context.Context, req resource.CreateRequ
 		tflog.Error(ctx, details)
 	} else {
 		response = refreshResponse
-		tflog.Trace(ctx, "[resource_resource_oci_key.go -> Create][response:"+response)
+		tflog.Debug(ctx, "[resource_oci_key.go -> Create][response:"+response+"]")
 	}
 
 	var diags diag.Diagnostics
@@ -389,10 +399,12 @@ func (r *resourceCCKMOCIKey) Create(ctx context.Context, req resource.CreateRequ
 	resp.Diagnostics.Append(resp.State.Set(ctx, plan)...)
 }
 
+// Read refreshes the OCI key state from CipherTrust Manager.
+// Returns a warning and removes the resource from state if the key is not found (404).
 func (r *resourceCCKMOCIKey) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
 	id := uuid.New().String()
-	tflog.Trace(ctx, common.MSG_METHOD_START+"[resource_oci_key.go -> Read]["+id+"]")
-	defer tflog.Trace(ctx, common.MSG_METHOD_END+"[resource_oci_key.go -> Read]["+id+"]")
+	tflog.Debug(ctx, common.MSG_METHOD_START+"[resource_oci_key.go -> Read]["+id+"]")
+	defer tflog.Debug(ctx, common.MSG_METHOD_END+"[resource_oci_key.go -> Read]["+id+"]")
 
 	var state models.KeyTFSDK
 	resp.Diagnostics.Append(req.State.Get(ctx, &state)...)
@@ -403,13 +415,21 @@ func (r *resourceCCKMOCIKey) Read(ctx context.Context, req resource.ReadRequest,
 
 	response, err := r.client.GetById(ctx, id, keyID, common.URL_OCI+"/keys")
 	if err != nil {
+		if strings.Contains(err.Error(), notFoundError) {
+			msg := "OCI key was not found, it will be removed from state."
+			details := utils.ApiError(msg, map[string]interface{}{"key_id": keyID})
+			tflog.Warn(ctx, details)
+			resp.Diagnostics.AddWarning(details, "")
+			resp.State.RemoveResource(ctx)
+			return
+		}
 		msg := "Error reading OCI key."
 		details := utils.ApiError(msg, map[string]interface{}{"error": err.Error(), "key_id": keyID})
 		tflog.Error(ctx, details)
 		resp.Diagnostics.AddError(details, "")
 		return
 	}
-	tflog.Trace(ctx, "[resource_resource_oci_key.go -> Read][response:"+response)
+	tflog.Debug(ctx, "[resource_oci_key.go -> Read][response:"+response+"]")
 	setKeyState(ctx, id, r.client, response, &state, &resp.Diagnostics)
 	if resp.Diagnostics.HasError() {
 		return
@@ -419,15 +439,18 @@ func (r *resourceCCKMOCIKey) Read(ctx context.Context, req resource.ReadRequest,
 
 func (r *resourceCCKMOCIKey) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
 	id := uuid.New().String()
-	tflog.Trace(ctx, common.MSG_METHOD_START+"[resource_oci_key.go -> ImportState]["+id+"]")
-	defer tflog.Trace(ctx, common.MSG_METHOD_END+"[resource_oci_key.go -> ImportState]["+id+"]")
+	tflog.Debug(ctx, common.MSG_METHOD_START+"[resource_oci_key.go -> ImportState]["+id+"]")
+	defer tflog.Debug(ctx, common.MSG_METHOD_END+"[resource_oci_key.go -> ImportState]["+id+"]")
 	resource.ImportStatePassthroughID(ctx, path.Root("id"), req, resp)
 }
 
+// Update modifies the OCI key via updateKey (oci_key_common.go).
+// Attributes not updated: algorithm, length, protection_mode, curve_id (immutable in OCI).
+// Compartment changes are applied via a separate change-compartment endpoint.
 func (r *resourceCCKMOCIKey) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
 	id := uuid.New().String()
-	tflog.Trace(ctx, common.MSG_METHOD_START+"[resource_oci_key.go -> Update]["+id+"]")
-	defer tflog.Trace(ctx, common.MSG_METHOD_END+"[resource_oci_key.go -> Update]["+id+"]")
+	tflog.Debug(ctx, common.MSG_METHOD_START+"[resource_oci_key.go -> Update]["+id+"]")
+	defer tflog.Debug(ctx, common.MSG_METHOD_END+"[resource_oci_key.go -> Update]["+id+"]")
 
 	var plan models.KeyTFSDK
 	resp.Diagnostics.Append(req.Plan.Get(ctx, &plan)...)
@@ -455,7 +478,7 @@ func (r *resourceCCKMOCIKey) Update(ctx context.Context, req resource.UpdateRequ
 		resp.Diagnostics.AddError(details, "")
 		return
 	}
-	tflog.Trace(ctx, "[resource_oci_key.go -> Update][response:"+response)
+	tflog.Debug(ctx, "[resource_oci_key.go -> Update][response:"+response+"]")
 	setKeyState(ctx, id, r.client, response, &plan, &resp.Diagnostics)
 	if resp.Diagnostics.HasError() {
 		return
@@ -463,10 +486,13 @@ func (r *resourceCCKMOCIKey) Update(ctx context.Context, req resource.UpdateRequ
 	resp.Diagnostics.Append(resp.State.Set(ctx, plan)...)
 }
 
+// Delete schedules the OCI key for deletion via deleteKey (oci_key_common.go).
+// Returns a warning (not error) if the key is already pending deletion or not found (404),
+// allowing Terraform to remove the resource from state cleanly.
 func (r *resourceCCKMOCIKey) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
 	id := uuid.New().String()
-	tflog.Trace(ctx, common.MSG_METHOD_START+"[resource_oci_key.go -> Delete]["+id+"]")
-	defer tflog.Trace(ctx, common.MSG_METHOD_END+"[resource_oci_key.go -> Delete]["+id+"]")
+	tflog.Debug(ctx, common.MSG_METHOD_START+"[resource_oci_key.go -> Delete]["+id+"]")
+	defer tflog.Debug(ctx, common.MSG_METHOD_END+"[resource_oci_key.go -> Delete]["+id+"]")
 	var state models.KeyTFSDK
 	resp.Diagnostics.Append(req.State.Get(ctx, &state)...)
 	if resp.Diagnostics.HasError() {
@@ -479,18 +505,4 @@ func (r *resourceCCKMOCIKey) Delete(ctx context.Context, req resource.DeleteRequ
 	if resp.Diagnostics.HasError() {
 		return
 	}
-}
-
-func setKeyState(ctx context.Context, id string, client *common.Client, response string, state *models.KeyTFSDK, diags *diag.Diagnostics) {
-	setCommonKeyState(ctx, id, client, response, &state.KeyCommonTFSDK, diags)
-	if diags.HasError() {
-		return
-	}
-	state.VaultID = types.StringValue(gjson.Get(response, "vault_id").String())
-	if state.KeyParams.LifecycleState.ValueString() == "ENABLED" {
-		state.EnableKey = types.BoolValue(true)
-	} else {
-		state.EnableKey = types.BoolValue(false)
-	}
-	state.Vault = types.StringValue(gjson.Get(response, "cckm_vault_id").String())
 }

@@ -28,7 +28,7 @@ resource "ciphertrust_aws_key_rotation" "rotate" {
 
 ### Required
 
-- `key_id` (String) A CipherTrust Manager AWS key resource ID.
+- `key_id` (String) A CipherTrust Manager AWS key resource ID. Changing this value forces a new rotation on the new key (this resource will be destroyed and recreated).
 
 ### Read-Only
 

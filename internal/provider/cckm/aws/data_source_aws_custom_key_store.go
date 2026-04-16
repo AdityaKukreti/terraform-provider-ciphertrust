@@ -189,7 +189,7 @@ func (d *datasourceAWSCustomKeyStoreDataSource) Schema(ctx context.Context, _ da
 						},
 						"mtls_enabled": schema.BoolAttribute{
 							Computed:    true,
-							Description: "Set it to true to enable tls client-side certificate verification — where cipher trust manager authenticates the AWS KMS client . Default value is false.",
+							Description: "Set it to true to enable tls client-side certificate verification  -  where cipher trust manager authenticates the AWS KMS client . Default value is false.",
 						},
 						"partition_id": schema.StringAttribute{
 							Computed:    true,
@@ -218,10 +218,11 @@ func (d *datasourceAWSCustomKeyStoreDataSource) Schema(ctx context.Context, _ da
 	}
 }
 
+// Read retrieves an AWS custom key store by its ID and populates Terraform state.
 func (d *datasourceAWSCustomKeyStoreDataSource) Read(ctx context.Context, req datasource.ReadRequest, resp *datasource.ReadResponse) {
 	id := uuid.New().String()
-	tflog.Trace(ctx, common.MSG_METHOD_START+"[data_source_aws_custom_key_store.go -> Read]["+id+"]")
-	defer tflog.Trace(ctx, common.MSG_METHOD_END+"[data_source_aws_custom_key_store.go -> Read]["+id+"]")
+	tflog.Debug(ctx, common.MSG_METHOD_START+"[data_source_aws_custom_key_store.go -> Read]["+id+"]")
+	defer tflog.Debug(ctx, common.MSG_METHOD_END+"[data_source_aws_custom_key_store.go -> Read]["+id+"]")
 	var state AWSCustomKeyStoreCommonTFSDK
 	resp.Diagnostics.Append(req.Config.Get(ctx, &state)...)
 	if resp.Diagnostics.HasError() {
@@ -252,6 +253,7 @@ func (d *datasourceAWSCustomKeyStoreDataSource) Read(ctx context.Context, req da
 	}
 }
 
+// setCustomKeyStoreState populates the Terraform data source state for an AWS custom key store from an API response JSON string.
 func (d *datasourceAWSCustomKeyStoreDataSource) setCustomKeyStoreState(ctx context.Context, response string, plan *AWSCustomKeyStoreCommonTFSDK, diags *diag.Diagnostics) {
 	plan.CloudName = types.StringValue(gjson.Get(response, "cloud_name").String())
 	plan.CredentialVersion = types.StringValue(gjson.Get(response, "credential_version").String())
@@ -315,6 +317,12 @@ func (d *datasourceAWSCustomKeyStoreDataSource) setCustomKeyStoreState(ctx conte
 	plan.AWSParams = listValue
 	if diags.HasError() {
 		return
+	}
+
+	if awsParamJSONResponse.ConnectionState == "CONNECTED" {
+		plan.ConnectDisconnectKeystore = types.StringValue("CONNECT_KEYSTORE")
+	} else {
+		plan.ConnectDisconnectKeystore = types.StringValue("DISCONNECT_KEYSTORE")
 	}
 
 	keyStoreID := gjson.Get(response, "id").String()

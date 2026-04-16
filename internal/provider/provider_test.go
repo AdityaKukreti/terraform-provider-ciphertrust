@@ -3,14 +3,18 @@ package provider
 import (
 	"context"
 	"fmt"
+	"os"
+	"sort"
+	"strconv"
+	"strings"
+
 	"github.com/ThalesGroup/terraform-provider-ciphertrust/internal/provider/common"
 	"github.com/google/uuid"
 	"github.com/hashicorp/terraform-plugin-framework/providerserver"
 	"github.com/hashicorp/terraform-plugin-go/tfprotov6"
+	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
+	"github.com/hashicorp/terraform-plugin-testing/terraform"
 	"github.com/tidwall/gjson"
-	"os"
-	"strconv"
-	"strings"
 )
 
 const (
@@ -30,13 +34,24 @@ var (
 	}
 )
 
+// cipherTrustVersion caches the result of getCipherTrustVersion so that the API
+// is called at most once per test run. A value of 0 means not yet fetched.
 var cipherTrustVersion int
 
+// devCMVersionValue is a sentinel returned by getCipherTrustVersion when the
+// server reports version "Development", or when the CIPHERTRUST_* environment
+// variables needed to reach the test target are not set.
 const devCMVersionValue = 9999
 
-// getCipherTrustVersion will return the major and minor versions converted to an int
-// For example 2.24.0-beta7+51895 returns 224. 2.21.2 returns 221.
-// Development builds will return 9999 as we don't know.
+// getCipherTrustVersion returns an integer encoding of the CipherTrust Manager
+// version at the test target, used by tests that conditionally check behaviour
+// introduced in a specific release. The encoding concatenates the major and minor
+// version digits: e.g. 2.24.0-beta7+51895 -> 224, 2.21.2 -> 221.
+//
+// The result is cached after the first successful call so that multiple tests in
+// the same run do not repeat the API round-trip.
+//
+// Returns 0 if the version cannot be determined due to a connection or parse error.
 func getCipherTrustVersion() int {
 	if cipherTrustVersion != 0 {
 		fmt.Printf("Test System Version: %d\n", cipherTrustVersion)
@@ -52,7 +67,7 @@ func getCipherTrustVersion() int {
 	password := os.Getenv("CIPHERTRUST_PASSWORD")
 	domain := "root"
 	if address == "" || username == "" || password == "" {
-		fmt.Printf("CIPHERTRUST_ADDRESS, CIPHERTRUST_USERNAME and CIPHERTRUST_PASSWORD enviornment variables must be set to get the system version, returning %d\n", devCMVersionValue)
+		fmt.Printf("CIPHERTRUST_ADDRESS, CIPHERTRUST_USERNAME and CIPHERTRUST_PASSWORD environment variables must be set to get the system version, returning %d\n", devCMVersionValue)
 		return devCMVersionValue
 	}
 	client, err = common.NewClient(context.Background(), uuid.NewString(), &address, &domain, &domain, &username, &password, true, 180)
@@ -88,4 +103,136 @@ func getCipherTrustVersion() int {
 	}
 	fmt.Printf("Test System Version: %d\n", cipherTrustVersion)
 	return cipherTrustVersion
+}
+
+// testCheckAttributeContains verifies that a single string attribute on a resource
+// either contains or does not contain all of the provided substrings, depending on
+// the value of the contains flag.
+// For example, to assert that an IAM policy JSON string includes two ARNs:
+//
+//	testCheckAttributeContains(keyResource, "policy", []string{"arn:aws:...:user/alice", "arn:aws:...:role/admin"}, true)
+func testCheckAttributeContains(resourceName string, attributeName string, stringsToFind []string, contains bool) resource.TestCheckFunc {
+	return func(s *terraform.State) error {
+		for rn, rs := range s.RootModule().Resources {
+			if rn != resourceName {
+				continue
+			}
+			if rs.Primary.ID == "" {
+				return fmt.Errorf("error: %s resource ID is not set", resourceName)
+			}
+			keys := make([]string, 0, len(rs.Primary.Attributes))
+			for k := range rs.Primary.Attributes {
+				keys = append(keys, k)
+			}
+			sort.Strings(keys)
+			found := false
+			for _, k := range keys {
+				if k == attributeName {
+					found = true
+					for _, str := range stringsToFind {
+						if contains {
+							if !strings.Contains(rs.Primary.Attributes[k], str) {
+								return fmt.Errorf("error: %s.%s does not contain %s", resourceName, attributeName, str)
+							}
+						} else {
+							if strings.Contains(rs.Primary.Attributes[k], str) {
+								return fmt.Errorf("error: %s.%s does contain %s", resourceName, attributeName, str)
+							}
+						}
+					}
+				}
+			}
+			if !found {
+				return fmt.Errorf("error: did not find %s.%s", resourceName, attributeName)
+			}
+			return nil
+		}
+		return fmt.Errorf("error: did not find resource %s so can't list attributes", resourceName)
+	}
+}
+
+// testCheckListContainsName verifies that at least one element in a list
+// attribute of a datasource has a specific value for the given sub-attribute.
+// For example, to verify that the "scheduler" list contains a scheduler whose
+// "name" equals "my-scheduler":
+//
+//	testCheckListContainsName("data.ciphertrust_scheduler_list.ds", "scheduler", "name", "my-scheduler")
+func testCheckListContainsName(resourceName string, listAttr string, subAttr string, expectedValue string) resource.TestCheckFunc {
+	return func(s *terraform.State) error {
+		rs, ok := s.RootModule().Resources[resourceName]
+		if !ok {
+			return fmt.Errorf("error: did not find resource %s", resourceName)
+		}
+		if rs.Primary.ID == "" {
+			return fmt.Errorf("error: %s resource ID is not set", resourceName)
+		}
+		countStr, ok := rs.Primary.Attributes[listAttr+".#"]
+		if !ok {
+			return fmt.Errorf("error: %s.%s.# not found in state", resourceName, listAttr)
+		}
+		count := 0
+		fmt.Sscanf(countStr, "%d", &count)
+		for i := 0; i < count; i++ {
+			key := fmt.Sprintf("%s.%d.%s", listAttr, i, subAttr)
+			if rs.Primary.Attributes[key] == expectedValue {
+				return nil
+			}
+		}
+		return fmt.Errorf("error: %s list in %s does not contain an entry with %s = %q", listAttr, resourceName, subAttr, expectedValue)
+	}
+}
+
+// testVerifyResourceDeleted asserts that resourceName is no longer present in the
+// Terraform state, confirming it was destroyed. There is no built-in equivalent
+// in the terraform-plugin-testing library - TestCheckNoResourceAttr only checks
+// that a specific attribute is absent, not that the resource itself is gone.
+func testVerifyResourceDeleted(resourceName string) resource.TestCheckFunc {
+	return func(s *terraform.State) error {
+		if _, ok := s.RootModule().Resources[resourceName]; ok {
+			return fmt.Errorf("error: resource %s still exists", resourceName)
+		}
+		return nil
+	}
+}
+
+// testAccListResourceAttributes is a debugging helper that prints every attribute
+// for a resource to stdout. It is not called by any test but is kept here because
+// it is very useful when writing or diagnosing new tests.
+// NOTE: calls to this function must not be left in committed source code.
+func testAccListResourceAttributes(resourceName string) resource.TestCheckFunc {
+	return func(s *terraform.State) error {
+		fmt.Printf("************ %s attributes\n", resourceName)
+		for rn, rs := range s.RootModule().Resources {
+			if rn != resourceName {
+				continue
+			}
+			if rs.Primary.ID == "" {
+				return fmt.Errorf("error: %s resource ID is not set", resourceName)
+			}
+			keys := make([]string, 0, len(rs.Primary.Attributes))
+			for k := range rs.Primary.Attributes {
+				keys = append(keys, k)
+			}
+			sort.Strings(keys)
+			for _, k := range keys {
+				fmt.Printf("k:%s v:%v\n", k, rs.Primary.Attributes[k])
+			}
+			fmt.Printf("**************** end %s attributes\n", resourceName)
+			return nil
+		}
+		return fmt.Errorf("error: did not find resource %s so can't list attributes", resourceName)
+	}
+}
+
+// testAccListResources is a debugging helper that prints the name and type of every
+// resource in the current Terraform state. It is not called by any test but is kept
+// here because it is very useful when writing or diagnosing new tests.
+// NOTE: calls to this function must not be left in committed source code.
+func testAccListResources() resource.TestCheckFunc {
+	return func(s *terraform.State) error {
+		for rn, rs := range s.RootModule().Resources {
+			fmt.Printf("rn: %s rt: %s\n", rn, rs.Type)
+		}
+		return nil
+	}
 }

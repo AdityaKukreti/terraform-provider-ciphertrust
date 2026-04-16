@@ -359,7 +359,6 @@ type CommonAWSParamsJSON struct {
 	Alias                          string               `json:"Alias"`
 	BypassPolicyLockoutSafetyCheck bool                 `json:"BypassPolicyLockoutSafetyCheck"`
 	CustomerMasterKeySpec          string               `json:"CustomerMasterKeySpec"`
-	MasterKeySpec                  string               `json:"MasterKeySpec"`
 	Description                    string               `json:"Description"`
 	KeyUsage                       string               `json:"KeyUsage"`
 	MultiRegion                    bool                 `json:"MultiRegion"`
@@ -410,7 +409,7 @@ type AWSKeyImportKeyPayloadJSON struct {
 }
 
 type AWSKeyImportMaterialJSON struct {
-	ImportType             string  `json:"import_type"`
+	ImportType             *string `json:"import_type,omitempty"`
 	KeyMaterialDescription *string `json:"key_material_description"`
 	KeyMaterialID          *string `json:"key_material_id"`
 	SourceKeyID            string  `json:"source_key_identifier"`
@@ -531,7 +530,7 @@ type KeyPolicyTemplateUpdatePayloadJSON struct {
 }
 
 type EnableAutoRotationPayloadJSON struct {
-	RotationPeriodInDays *int64 `json:"rotation_period_in_days"`
+	RotationPeriodInDays *int64 `json:"rotation_period_in_days,omitempty"`
 }
 
 type UpdatePrimaryRegionPayloadJSON struct {
@@ -698,6 +697,7 @@ type KeyRotationJSON struct {
 	KeyMaterialOrigin       string `json:"key_material_origin"`
 	KeySource               string `json:"key_source"`
 	KeySourceContainerID    string `json:"key_source_container_id"`
+	KeySourceContainerName  string `json:"key_source_container_name,omitempty"`
 	KmsID                   string `json:"kms_id"`
 	SourceKeyID             string `json:"source_key_identifier"`
 	SourceKeyName           string `json:"source_key_name"`

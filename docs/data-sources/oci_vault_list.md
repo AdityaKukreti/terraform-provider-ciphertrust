@@ -3,13 +3,13 @@
 page_title: "ciphertrust_oci_vault_list Data Source - terraform-provider-ciphertrust"
 subcategory: ""
 description: |-
-  Use this data source to retrieve a list of CipherTrust Manager vaults.
+  Use this data source to retrieve a list of OCI vaults managed by CipherTrust Manager.
   Give a filter of 'limit=-1' to list more than 10 matches.
 ---
 
 # ciphertrust_oci_vault_list (Data Source)
 
-Use this data source to retrieve a list of CipherTrust Manager vaults.
+Use this data source to retrieve a list of OCI vaults managed by CipherTrust Manager.
 
 Give a filter of 'limit=-1' to list more than 10 matches.
 
@@ -49,7 +49,7 @@ Read-Only:
 - `compartment_id` (String) The compartment's OCID.
 - `compartment_name` (String) Compartment name.
 - `connection_id` (String) CipherTrust Manager OCI connection ID or connection name.
-- `created_at` (String) Date/time the application was created
+- `created_at` (String) Date/time the vault was created in CipherTrust Manager.
 - `defined_tags` (Attributes Set) The defined tags of the vault. (see [below for nested schema](#nestedatt--vaults--defined_tags))
 - `freeform_tags` (Map of String) The freeform tags of the vault.
 - `id` (String) The vault's CipherTrust Manager resource ID.
@@ -57,13 +57,13 @@ Read-Only:
 - `lifecycle_state` (String) The vault's current lifecycle state.
 - `management_endpoint` (String) The vault's management endpoint.
 - `name` (String) The vault's name.
-- `refreshed_at` (String) Date/time the application was refreshed.
+- `refreshed_at` (String) Date/time the vault was last refreshed.
 - `region` (String) The vault's region.
 - `replication_id` (String) The replication ID associated with a vault operation.
 - `restored_from_vault_id` (String) OCID of the vault this vault was restored from.
 - `tenancy` (String) The tenancy name.
 - `time_created` (String) The time the vault was created.
-- `updated_at` (String) Date/time the application was updated.
+- `updated_at` (String) Date/time the vault was last updated.
 - `uri` (String) CipherTrust Manager's unique identifier for the resource.
 - `vault_id` (String) The vault's OCID.
 - `vault_type` (String) The vault's type.

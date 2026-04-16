@@ -83,7 +83,7 @@ Read-Only:
 - `health_check_key_id` (String) ID of an existing LUNA key (if source key tier is 'hsm-luna') or CipherTrust key (if source key tier is 'local') to use for health check of the custom key store. Crypto operation would be performed using this key before creating a custom key store. Required field for custom key store of type EXTERNAL_KEY_STORE.
 - `linked_state` (Boolean)
 - `max_credentials` (Number) Max number of credentials that can be associated with custom key store (min value 2. max value 20). Required field for a custom key store of type EXTERNAL_KEY_STORE.
-- `mtls_enabled` (Boolean) Set it to true to enable tls client-side certificate verification — where cipher trust manager authenticates the AWS KMS client . Default value is false.
+- `mtls_enabled` (Boolean) Set it to true to enable tls client-side certificate verification  -  where cipher trust manager authenticates the AWS KMS client . Default value is false.
 - `partition_id` (String) ID of Luna HSM partition. Required field, if custom key store is of type EXTERNAL_KEY_STORE and source key tier is 'hsm-luna'.
 - `partition_label` (String)
 - `source_container_id` (String)

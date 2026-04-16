@@ -60,6 +60,12 @@ func TestCckmAWSDataSourceXksKey(t *testing.T) {
 		}`
 	createConfigStr := awsConnectionResource + createKeyStoreConfigStr + createXKSKeyConfig
 
+	// Only by_id is exercisable for an unlinked key. The remaining filters are commented out:
+	//   by_alias               - alias not applied/returned for unlinked keys; Read resets alias to empty set.
+	//   by_aws_key_id          - aws_key_id is empty for unlinked keys (no AWS-side key exists until linked).
+	//   by_ciphertrust_key_id  - key_id IS set for unlinked keys; this filter COULD be un-commented.
+	//   by_key_id_and_region   - requires aws_key_id (empty for unlinked).
+	//   by_key_id_region_and_alias - requires both aws_key_id (empty) and alias (empty) for unlinked keys.
 	datasourceConfig := `
 		data "ciphertrust_aws_xks_key" "by_id" {
 			id = ciphertrust_aws_xks_key.xks_key.id
@@ -87,22 +93,35 @@ func TestCckmAWSDataSourceXksKey(t *testing.T) {
 
 	keyResource := "ciphertrust_aws_xks_key.xks_key"
 	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { cleanupCckmAwsKMS() },
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
 		Steps: []resource.TestStep{
 			{
 				Config: createConfigStr,
 				Check: resource.ComposeTestCheckFunc(
 					resource.TestCheckResourceAttrSet(keyResource, "id"),
+					resource.TestCheckResourceAttrSet(keyResource, "key_id"),
+					resource.TestCheckResourceAttrSet(keyResource, "kms_id"),
+					resource.TestCheckResourceAttrSet(keyResource, "custom_key_store_id"),
 					resource.TestCheckResourceAttr(keyResource, "blocked", "false"),
 					resource.TestCheckResourceAttr(keyResource, "linked", "false"),
+					// key_source, labels, tags are safe to verify for unlinked keys
+					resource.TestCheckResourceAttr(keyResource, "key_source", "local"),
+					resource.TestCheckResourceAttr(keyResource, "labels.%", "0"),
+					resource.TestCheckResourceAttr(keyResource, "tags.%", "0"),
 				),
 			},
 			{
 				Config: dataSourceConfigStr,
 				Check: resource.ComposeTestCheckFunc(
-					// Only this will work with an unlinked key
+					// by_id is the only filter that works for unlinked keys
 					resource.TestCheckResourceAttrPair(keyResource, "key_id", "data.ciphertrust_aws_xks_key.by_id", "key_id"),
-					//resource.TestCheckResourceAttrPair(keyResource, "key_id", "data.ciphertrust_aws_xks_key.by_alias_ex1", "key_id"),
+					resource.TestCheckResourceAttrPair(keyResource, "blocked", "data.ciphertrust_aws_xks_key.by_id", "blocked"),
+					resource.TestCheckResourceAttrPair(keyResource, "linked", "data.ciphertrust_aws_xks_key.by_id", "linked"),
+					resource.TestCheckResourceAttrPair(keyResource, "kms_id", "data.ciphertrust_aws_xks_key.by_id", "kms_id"),
+					resource.TestCheckResourceAttr("data.ciphertrust_aws_xks_key.by_id", "labels.%", "0"),
+					resource.TestCheckResourceAttr("data.ciphertrust_aws_xks_key.by_id", "tags.%", "0"),
+					//resource.TestCheckResourceAttrPair(keyResource, "key_id", "data.ciphertrust_aws_xks_key.by_alias", "key_id"),
 					//resource.TestCheckResourceAttrPair(keyResource, "key_id", "data.ciphertrust_aws_xks_key.by_aws_key_id", "key_id"),
 					//resource.TestCheckResourceAttrPair(keyResource, "key_id", "data.ciphertrust_aws_xks_key.by_ciphertrust_key_id", "key_id"),
 					//resource.TestCheckResourceAttrPair(keyResource, "key_id", "data.ciphertrust_aws_xks_key.by_key_id_and_region", "key_id"),

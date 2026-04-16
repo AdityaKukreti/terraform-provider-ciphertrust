@@ -14,14 +14,6 @@ func TestCckmAWSCustomKeyStoreUnlinked(t *testing.T) {
 	if !ok {
 		t.Skip()
 	}
-	awsKeyUsers := getAwsUsers()
-	if len(awsKeyUsers) != 2 {
-		t.Skip("AWS_KEY_USERS is not exported or doesn't contain 2 roles")
-	}
-	awsKeyRoles := getAwsRoles()
-	if len(awsKeyRoles) != 2 {
-		t.Skip("AWS_KEY_ROLES is not exported or doesn't contain 2 users")
-	}
 	schedulerConfig := `
 		resource "ciphertrust_scheduler" "credential_rotation" {
 			cckm_xks_credential_rotation_params = {
@@ -120,6 +112,7 @@ func TestCckmAWSCustomKeyStoreUnlinked(t *testing.T) {
 
 	keyStoreResourceName := "ciphertrust_aws_custom_keystore.unlinked_xks_custom_keystore"
 	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { cleanupCckmAwsKMS() },
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
 		Steps: []resource.TestStep{
 			{
@@ -131,7 +124,13 @@ func TestCckmAWSCustomKeyStoreUnlinked(t *testing.T) {
 					resource.TestCheckResourceAttr(keyStoreResourceName, "aws_param.0.xks_proxy_uri_endpoint", proxyURIEndpoint),
 					resource.TestCheckResourceAttr(keyStoreResourceName, "aws_param.0.key_store_password", "thequickbrownfox"),
 					resource.TestCheckResourceAttr(keyStoreResourceName, "aws_param.0.xks_proxy_connectivity", "VPC_ENDPOINT_SERVICE"),
-					// Credential rotation can't be enabled for unlinked key stores
+					// The key store is created disconnected; connecting requires a live AWS endpoint and
+					// cannot be exercised in automated tests.
+					resource.TestCheckResourceAttr(keyStoreResourceName, "connect_disconnect_keystore", "DISCONNECT_KEYSTORE"),
+					resource.TestCheckResourceAttr(keyStoreResourceName, "local_hosted_params.0.mtls_enabled", "true"),
+					// enable_credential_rotation is silently skipped for unlinked key stores (linked_state = false);
+					// the block is accepted in config but the API call is gated on linked_state.
+					// Labels are unrelated and checked separately below.
 					resource.TestCheckResourceAttr(keyStoreResourceName, "labels.%", "0"),
 				),
 			},
@@ -140,8 +139,11 @@ func TestCckmAWSCustomKeyStoreUnlinked(t *testing.T) {
 				ImportState:       true,
 				ImportStateVerify: true,
 				ImportStateVerifyIgnore: []string{
-					"aws_param.0.key_store_password",
-					"enable_credential_rotation",
+					"aws_param.0.key_store_password", // write-only; not returned by the API
+					"enable_credential_rotation",     // not surfaced in GET response; cannot round-trip
+					// kms: the plan may supply a name or ID, but import always returns the ID from the
+					// API response. setCustomKeyStoreState only overwrites plan.KMS when it is empty,
+					// so the value after import may differ from the planned value causing a spurious diff.
 					"kms",
 				},
 			},
@@ -154,6 +156,8 @@ func TestCckmAWSCustomKeyStoreUnlinked(t *testing.T) {
 					resource.TestCheckResourceAttr(keyStoreResourceName, "aws_param.0.xks_proxy_uri_endpoint", newProxyURIEndpoint),
 					resource.TestCheckResourceAttr(keyStoreResourceName, "aws_param.0.key_store_password", "jumpedoversomething"),
 					resource.TestCheckResourceAttr(keyStoreResourceName, "aws_param.0.xks_proxy_connectivity", "PUBLIC_ENDPOINT"),
+					resource.TestCheckResourceAttr(keyStoreResourceName, "local_hosted_params.0.mtls_enabled", "false"),
+					resource.TestCheckResourceAttrSet(keyStoreResourceName, "local_hosted_params.0.health_check_key_id"),
 				),
 			},
 			{
@@ -165,6 +169,82 @@ func TestCckmAWSCustomKeyStoreUnlinked(t *testing.T) {
 					resource.TestCheckResourceAttr(keyStoreResourceName, "aws_param.0.xks_proxy_uri_endpoint", proxyURIEndpoint),
 					resource.TestCheckResourceAttr(keyStoreResourceName, "aws_param.0.key_store_password", "thequickbrownfox"),
 					resource.TestCheckResourceAttr(keyStoreResourceName, "aws_param.0.xks_proxy_connectivity", "VPC_ENDPOINT_SERVICE"),
+				),
+			},
+		},
+	})
+}
+
+// TestCckmAWSCustomKeyStoreEmptyAwsParams verifies that a custom key store can be
+// created without an aws_param block
+func TestCckmAWSCustomKeyStoreEmptyAwsParams(t *testing.T) {
+	t.Skip("To be done later")
+	awsConnectionResource, ok := initCckmAwsTest()
+	if !ok {
+		t.Skip()
+	}
+	keyStoreConfig := `
+		resource "ciphertrust_cm_key" "cm_aes_key" {
+			name         = "%s"
+			algorithm    = "AES"
+			usage_mask   = 60
+			unexportable = true
+			undeletable  = true
+			remove_from_state_on_destroy = true
+		}
+		resource "ciphertrust_aws_custom_keystore" "unlinked_xks_custom_keystore" {
+			name    = "%s"
+			region  = ciphertrust_aws_kms.kms.regions[0]
+			kms     = ciphertrust_aws_kms.kms.id
+			linked_state = false
+			connect_disconnect_keystore = "DISCONNECT_KEYSTORE"
+			enable_success_audit_event = %t
+			local_hosted_params {
+				blocked = false
+				health_check_key_id = ciphertrust_cm_key.cm_aes_key.id
+				max_credentials = 8
+				source_key_tier = "local"
+				mtls_enabled = true
+			}
+		}`
+
+	cmKeyName := "tf-cm-key-" + uuid.New().String()[:8]
+	keyStoreName := "tf-custom-key-store" + uuid.New().String()[:8]
+	createKeyStoreConfigStr := fmt.Sprintf(keyStoreConfig, cmKeyName, keyStoreName, false)
+	updateKeyStoreConfigStr := fmt.Sprintf(keyStoreConfig, cmKeyName, keyStoreName, true)
+
+	keyStoreResourceName := "ciphertrust_aws_custom_keystore.unlinked_xks_custom_keystore"
+	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { cleanupCckmAwsKMS() },
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		Steps: []resource.TestStep{
+			{
+				Config: awsConnectionResource + createKeyStoreConfigStr,
+				Check: resource.ComposeTestCheckFunc(
+					resource.TestCheckResourceAttrSet(keyStoreResourceName, "id"),
+					resource.TestCheckResourceAttr(keyStoreResourceName, "name", keyStoreName),
+					resource.TestCheckResourceAttr(keyStoreResourceName, "enable_success_audit_event", "false"),
+					resource.TestCheckResourceAttr(keyStoreResourceName, "connect_disconnect_keystore", "DISCONNECT_KEYSTORE"),
+					resource.TestCheckResourceAttr(keyStoreResourceName, "local_hosted_params.0.mtls_enabled", "true"),
+					resource.TestCheckResourceAttr(keyStoreResourceName, "aws_param.#", "0"),
+					resource.TestCheckResourceAttr(keyStoreResourceName, "aws_param_output.custom_key_store_type", "EXTERNAL_KEY_STORE"),
+					resource.TestCheckResourceAttr(keyStoreResourceName, "aws_param_output.custom_key_store_name", keyStoreName),
+					resource.TestCheckResourceAttrSet(keyStoreResourceName, "aws_param_output.connection_state"),
+					resource.TestCheckResourceAttrSet(keyStoreResourceName, "aws_param_output.xks_proxy_connectivity"),
+					resource.TestCheckResourceAttrSet(keyStoreResourceName, "aws_param_output.xks_proxy_uri_path"),
+				),
+			},
+			{
+				Config: awsConnectionResource + updateKeyStoreConfigStr,
+				Check: resource.ComposeTestCheckFunc(
+					resource.TestCheckResourceAttrSet(keyStoreResourceName, "id"),
+					resource.TestCheckResourceAttr(keyStoreResourceName, "name", keyStoreName),
+					resource.TestCheckResourceAttr(keyStoreResourceName, "enable_success_audit_event", "true"),
+					resource.TestCheckResourceAttr(keyStoreResourceName, "aws_param.#", "0"),
+					resource.TestCheckResourceAttr(keyStoreResourceName, "aws_param_output.custom_key_store_type", "EXTERNAL_KEY_STORE"),
+					resource.TestCheckResourceAttr(keyStoreResourceName, "aws_param_output.custom_key_store_name", keyStoreName),
+					resource.TestCheckResourceAttrSet(keyStoreResourceName, "aws_param_output.connection_state"),
+					resource.TestCheckResourceAttrSet(keyStoreResourceName, "aws_param_output.xks_proxy_uri_path"),
 				),
 			},
 		},

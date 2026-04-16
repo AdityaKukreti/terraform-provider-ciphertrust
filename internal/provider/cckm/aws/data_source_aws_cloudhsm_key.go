@@ -123,6 +123,7 @@ func (d *dataSourceAWSCloudHSMKey) Schema(_ context.Context, _ datasource.Schema
 			},
 			"aws_key_id": schema.StringAttribute{
 				Computed:    true,
+				Optional:    true,
 				Description: "AWS key ID.",
 			},
 			"cloud_name": schema.StringAttribute{
@@ -273,10 +274,11 @@ func (d *dataSourceAWSCloudHSMKey) Schema(_ context.Context, _ datasource.Schema
 	}
 }
 
+// Read looks up an AWS CloudHSM key by filter criteria and populates Terraform state.
 func (d *dataSourceAWSCloudHSMKey) Read(ctx context.Context, req datasource.ReadRequest, resp *datasource.ReadResponse) {
 	id := uuid.New().String()
-	tflog.Trace(ctx, common.MSG_METHOD_START+"[data_source_aws_key.go -> Read]")
-	defer tflog.Trace(ctx, common.MSG_METHOD_START+"[data_source_aws_key.go -> Read]")
+	tflog.Debug(ctx, common.MSG_METHOD_START+"[data_source_aws_cloudhsm_key.go -> Read]["+id+"]")
+	defer tflog.Debug(ctx, common.MSG_METHOD_END+"[data_source_aws_cloudhsm_key.go -> Read]["+id+"]")
 	var state AWSCloudHSMKeyDataSourceTFSDK
 	diags := req.Config.Get(ctx, &state)
 	if diags.HasError() {
@@ -309,14 +311,12 @@ func (d *dataSourceAWSCloudHSMKey) Read(ctx context.Context, req datasource.Read
 		filters.Add("keyid", kidParts[1])
 	} else {
 		if !state.Alias.IsNull() && !state.Alias.IsUnknown() && len(state.Alias.Elements()) != 0 {
-			if len(state.Alias.Elements()) != 0 {
-				aliases := make([]string, 0, len(state.Alias.Elements()))
-				resp.Diagnostics.Append(state.Alias.ElementsAs(ctx, &aliases, false)...)
-				if resp.Diagnostics.HasError() {
-					return
-				}
-				filters.Add("alias", aliases[0])
+			aliases := make([]string, 0, len(state.Alias.Elements()))
+			resp.Diagnostics.Append(state.Alias.ElementsAs(ctx, &aliases, false)...)
+			if resp.Diagnostics.HasError() {
+				return
 			}
+			filters.Add("alias", aliases[0])
 		}
 		if state.AWSKeyID.ValueString() != "" {
 			filters.Add("keyid", state.AWSKeyID.ValueString())
@@ -338,6 +338,7 @@ func (d *dataSourceAWSCloudHSMKey) Read(ctx context.Context, req datasource.Read
 	resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
 }
 
+// setCloudHSMKeyState populates the Terraform data source state for an AWS CloudHSM key from an API response JSON string.
 func (d *dataSourceAWSCloudHSMKey) setCloudHSMKeyState(ctx context.Context, response string, plan *AWSCloudHSMKeyDataSourceTFSDK, diags *diag.Diagnostics) {
 	setCustomKeyStoreKeyCommonState(ctx, response, &plan.AWSKeyStoreKeyDataSourceCommonTFSDK, diags)
 }

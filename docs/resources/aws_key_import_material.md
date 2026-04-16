@@ -21,7 +21,7 @@ resource "ciphertrust_cm_key" "new_key_material" {
 
 # Import new material to the AWS key
 resource "ciphertrust_aws_key_import_material" "import_new_material" {
-  key_id     = "aws-key-id"
+  key_id = "aws-key-id"
   import_key_material {
     import_type           = "NEW_KEY_MATERIAL"
     source_key_identifier = ciphertrust_cm_key.new_key_material.id

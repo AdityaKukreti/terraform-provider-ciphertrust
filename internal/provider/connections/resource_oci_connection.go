@@ -23,8 +23,9 @@ import (
 )
 
 var (
-	_ resource.Resource              = &resourceCCKMOCIConnection{}
-	_ resource.ResourceWithConfigure = &resourceCCKMOCIConnection{}
+	_ resource.Resource                = &resourceCCKMOCIConnection{}
+	_ resource.ResourceWithConfigure   = &resourceCCKMOCIConnection{}
+	_ resource.ResourceWithImportState = &resourceCCKMOCIConnection{}
 )
 
 func NewResourceCCKMOCIConnection() resource.Resource {
@@ -147,10 +148,12 @@ func (r *resourceCCKMOCIConnection) Schema(_ context.Context, _ resource.SchemaR
 	}
 }
 
+// Create creates a new OCI connection resource on CipherTrust Manager.
 func (r *resourceCCKMOCIConnection) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
 
 	id := uuid.New().String()
-	tflog.Trace(ctx, common.MSG_METHOD_START+"[resource_oci_connection.go -> Create]["+id+"]")
+	tflog.Debug(ctx, common.MSG_METHOD_START+"[resource_oci_connection.go -> Create]["+id+"]")
+	defer tflog.Debug(ctx, common.MSG_METHOD_END+"[resource_oci_connection.go -> Create]["+id+"]")
 
 	var plan OCIConnectionTFSDK
 	resp.Diagnostics.Append(req.Plan.Get(ctx, &plan)...)
@@ -203,7 +206,7 @@ func (r *resourceCCKMOCIConnection) Create(ctx context.Context, req resource.Cre
 	if err != nil {
 		tflog.Error(ctx, common.ERR_METHOD_END+err.Error()+" [resource_oci_connection.go -> Create]["+id+"]")
 		resp.Diagnostics.AddError(
-			"Invalid data input: Azure connection Creation",
+			"Invalid data input: OCI connection Creation",
 			err.Error(),
 		)
 		return
@@ -228,11 +231,11 @@ func (r *resourceCCKMOCIConnection) Create(ctx context.Context, req resource.Cre
 	plan.ID = types.StringValue(gjson.Get(response, "id").String())
 
 	// The connection has been created, no errors returned after this
-	tflog.Trace(ctx, "[resource_oci_connection.go -> Create Output]["+response+"]")
+	tflog.Debug(ctx, "[resource_oci_connection.go -> Create Output]["+response+"]")
 
 	var testConnectionDiags diag.Diagnostics
 	r.testConnection(ctx, id, plan.ID.ValueString(), &testConnectionDiags)
-	if resp.Diagnostics.HasError() {
+	if testConnectionDiags.HasError() {
 		for _, d := range testConnectionDiags {
 			resp.Diagnostics.AddWarning(d.Summary(), d.Detail())
 		}
@@ -254,14 +257,15 @@ func (r *resourceCCKMOCIConnection) Create(ctx context.Context, req resource.Cre
 		}
 	}
 
-	tflog.Trace(ctx, common.MSG_METHOD_END+"[resource_oci_connection.go -> Create]["+id+"]")
 	resp.Diagnostics.Append(resp.State.Set(ctx, plan)...)
 }
 
+// Read refreshes the OCI connection resource state from CipherTrust Manager.
 func (r *resourceCCKMOCIConnection) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
 
 	id := uuid.New().String()
-	tflog.Trace(ctx, common.MSG_METHOD_START+"[resource_oci_connection.go -> Read]["+id+"]")
+	tflog.Debug(ctx, common.MSG_METHOD_START+"[resource_oci_connection.go -> Read]["+id+"]")
+	defer tflog.Debug(ctx, common.MSG_METHOD_END+"[resource_oci_connection.go -> Read]["+id+"]")
 
 	var state OCIConnectionTFSDK
 	diags := req.State.Get(ctx, &state)
@@ -272,27 +276,33 @@ func (r *resourceCCKMOCIConnection) Read(ctx context.Context, req resource.ReadR
 
 	response, err := r.client.GetById(ctx, id, state.ID.ValueString(), common.URL_OCI_CONNECTION)
 	if err != nil {
+		if strings.Contains(err.Error(), "status: 404") {
+			tflog.Debug(ctx, "[resource_oci_connection.go -> Read] connection not found, removing from state ["+id+"]")
+			resp.State.RemoveResource(ctx)
+			return
+		}
 		tflog.Error(ctx, common.ERR_METHOD_END+err.Error()+" [resource_oci_connection.go -> Read]["+id+"]")
 		resp.Diagnostics.AddError(
 			"Error reading OCI Connection on CipherTrust Manager: ",
-			"Could not read oci connection id : ,"+state.ID.ValueString()+"unexpected error: "+err.Error(),
+			"Could not read oci connection id : ,"+state.ID.ValueString()+" unexpected error: "+err.Error(),
 		)
 		return
 	}
 
 	r.getOciParamsFromResponse(ctx, response, &resp.Diagnostics, &state)
-	if diags.HasError() {
+	if resp.Diagnostics.HasError() {
 		return
 	}
 	diags = resp.State.Set(ctx, &state)
 	resp.Diagnostics.Append(diags...)
-	tflog.Trace(ctx, common.MSG_METHOD_END+"[resource_oci_connection.go -> Read]["+id+"]")
 }
 
+// Update modifies an existing OCI connection resource on CipherTrust Manager.
 func (r *resourceCCKMOCIConnection) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
 
 	id := uuid.New().String()
-	tflog.Trace(ctx, common.MSG_METHOD_START+"[resource_azure_connection.go -> Read]["+id+"]")
+	tflog.Debug(ctx, common.MSG_METHOD_START+"[resource_oci_connection.go -> Update]["+id+"]")
+	defer tflog.Debug(ctx, common.MSG_METHOD_END+"[resource_oci_connection.go -> Update]["+id+"]")
 
 	var plan OCIConnectionTFSDK
 	resp.Diagnostics.Append(req.Plan.Get(ctx, &plan)...)
@@ -406,7 +416,7 @@ func (r *resourceCCKMOCIConnection) Update(ctx context.Context, req resource.Upd
 	}
 
 	if plan.UserOcid.ValueString() != gjson.Get(response, "user_ocid").String() {
-		payload.TenancyOCID = plan.TenancyOcid.ValueString()
+		payload.UserOCID = plan.UserOcid.ValueString()
 	}
 
 	payloadJSON, err := json.Marshal(payload)
@@ -430,7 +440,7 @@ func (r *resourceCCKMOCIConnection) Update(ctx context.Context, req resource.Upd
 		return
 	}
 
-	tflog.Trace(ctx, fmt.Sprintf("Response: %s", response))
+	tflog.Debug(ctx, fmt.Sprintf("[resource_oci_connection.go -> Update] response: %s", response))
 	response, err = r.client.GetById(ctx, id, state.ID.ValueString(), common.URL_OCI_CONNECTION)
 	if err != nil {
 		tflog.Error(ctx, common.ERR_METHOD_END+err.Error()+" [resource_oci_connection.go -> Read]["+id+"]")
@@ -449,9 +459,13 @@ func (r *resourceCCKMOCIConnection) Update(ctx context.Context, req resource.Upd
 	resp.Diagnostics.Append(resp.State.Set(ctx, plan)...)
 }
 
+// Delete removes an OCI connection resource from CipherTrust Manager.
 func (r *resourceCCKMOCIConnection) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
+	id := uuid.New().String()
+	tflog.Debug(ctx, common.MSG_METHOD_START+"[resource_oci_connection.go -> Delete]["+id+"]")
+	defer tflog.Debug(ctx, common.MSG_METHOD_END+"[resource_oci_connection.go -> Delete]["+id+"]")
+
 	var state OCIConnectionTFSDK
-	tflog.Trace(ctx, common.MSG_METHOD_START+"[resource_oci_connection.go -> Delete]["+state.ID.ValueString()+"]")
 	resp.Diagnostics.Append(req.State.Get(ctx, &state)...)
 	if resp.Diagnostics.HasError() {
 		return
@@ -459,16 +473,40 @@ func (r *resourceCCKMOCIConnection) Delete(ctx context.Context, req resource.Del
 	url := fmt.Sprintf("%s/%s/%s", r.client.CipherTrustURL, common.URL_OCI_CONNECTION, state.ID.ValueString())
 	output, err := r.client.DeleteByID(ctx, "DELETE", state.ID.ValueString(), url, nil)
 	if err != nil {
-		tflog.Trace(ctx, common.MSG_METHOD_END+"[resource_oci_connection.go -> Delete]["+state.ID.ValueString()+"]["+output+"]")
+		tflog.Debug(ctx, common.ERR_METHOD_END+err.Error()+" [resource_oci_connection.go -> Delete]["+id+"]["+output+"]")
 		resp.Diagnostics.AddError(
 			"Error Deleting CipherTrust OCI Connection",
 			"Could not delete oci connection, unexpected error: "+err.Error(),
 		)
 		return
 	}
-	tflog.Trace(ctx, common.MSG_METHOD_END+"[resource_oci_connection.go -> Delete]["+state.ID.ValueString()+"]["+output+"]")
 }
 
+// ImportState imports an existing OCI connection resource into Terraform state using the connection ID.
+func (r *resourceCCKMOCIConnection) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
+	id := uuid.New().String()
+	tflog.Debug(ctx, common.MSG_METHOD_START+"[resource_oci_connection.go -> ImportState]["+id+"]")
+	defer tflog.Debug(ctx, common.MSG_METHOD_END+"[resource_oci_connection.go -> ImportState]["+id+"]")
+
+	response, err := r.client.GetById(ctx, id, req.ID, common.URL_OCI_CONNECTION)
+	if err != nil {
+		tflog.Error(ctx, common.ERR_METHOD_END+err.Error()+" [resource_oci_connection.go -> ImportState]["+id+"]")
+		resp.Diagnostics.AddError(
+			"Error importing OCI Connection from CipherTrust Manager: ",
+			"Could not read oci connection id: "+req.ID+", unexpected error: "+err.Error(),
+		)
+		return
+	}
+
+	var state OCIConnectionTFSDK
+	r.getOciParamsFromResponse(ctx, response, &resp.Diagnostics, &state)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
+}
+
+// getOciParamsFromResponse populates the TFSDK model from a CM API response JSON string.
 func (r *resourceCCKMOCIConnection) getOciParamsFromResponse(ctx context.Context, response string, diags *diag.Diagnostics, data *OCIConnectionTFSDK) {
 	// Common parameters for all connections
 	data.ID = types.StringValue(gjson.Get(response, "id").String())
@@ -482,14 +520,30 @@ func (r *resourceCCKMOCIConnection) getOciParamsFromResponse(ctx context.Context
 	data.LastConnectionOK = types.BoolValue(gjson.Get(response, "last_connection_ok").Bool())
 	data.LastConnectionError = types.StringValue(gjson.Get(response, "last_connection_error").String())
 	data.LastConnectionAt = types.StringValue(gjson.Get(response, "last_connection_at").String())
+	// Connection identity fields returned by CM on every read.
+	data.Name = types.StringValue(gjson.Get(response, "name").String())
+	// description is Optional-only; only update from response when the API returns a value,
+	// otherwise the plan/state null is preserved (avoids null→"" inconsistency on apply).
+	if desc := gjson.Get(response, "description"); desc.Exists() && desc.String() != "" {
+		data.Description = types.StringValue(desc.String())
+	}
+	data.Fingerprint = types.StringValue(gjson.Get(response, "fingerprint").String())
+	data.Region = types.StringValue(gjson.Get(response, "region").String())
+	data.TenancyOcid = types.StringValue(gjson.Get(response, "tenancy_ocid").String())
+	data.UserOcid = types.StringValue(gjson.Get(response, "user_ocid").String())
+	// meta: always assign a typed value to avoid DynamicPseudoType zero-value conversion error.
 	if len(gjson.Get(response, "meta").String()) > 0 {
 		data.Meta = common.ParseMap(response, diags, "meta")
+	} else {
+		data.Meta = types.MapNull(types.StringType)
 	}
 	if len(gjson.Get(response, "products").String()) > 0 {
 		data.Products = common.ParseArray(response, "products")
 	}
 }
 
+// readKeyFileData resolves the key_file attribute: if it is a filesystem path, the file is read
+// and its contents returned; otherwise the raw value is returned as-is (inline PEM data).
 func readKeyFileData(ctx context.Context, inputParam string, diags *diag.Diagnostics) string {
 	inputParam = strings.TrimSpace(inputParam)
 	_, err := os.Stat(inputParam)
@@ -509,6 +563,8 @@ func readKeyFileData(ctx context.Context, inputParam string, diags *diag.Diagnos
 	return inputParam
 }
 
+// testConnectionParameters sends the connection payload to the CM test endpoint before creating the
+// connection, failing fast if the credentials are invalid.
 func (r *resourceCCKMOCIConnection) testConnectionParameters(ctx context.Context, id string, payloadJSON []byte, diags *diag.Diagnostics) {
 	response, err := r.client.PostDataV2(ctx, id, common.URL_OCI_CONNECTION_TEST, payloadJSON)
 	if err != nil {
@@ -527,6 +583,8 @@ func (r *resourceCCKMOCIConnection) testConnectionParameters(ctx context.Context
 	}
 }
 
+// testConnection exercises the test endpoint on an already-created connection and adds a warning if
+// the connection is not healthy (non-fatal - the connection resource is still saved to state).
 func (r *resourceCCKMOCIConnection) testConnection(ctx context.Context, id string, connectionID string, diags *diag.Diagnostics) {
 	response, err := r.client.PostNoData(ctx, id, common.URL_OCI_CONNECTION+"/"+connectionID+"/test")
 	if err != nil {

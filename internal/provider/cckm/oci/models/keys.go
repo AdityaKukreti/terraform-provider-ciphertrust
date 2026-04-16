@@ -65,19 +65,6 @@ type BYOKKeyTFSDK struct {
 	KeyTFSDK
 }
 
-type HYOKKeyTFSDK struct {
-	KeyCommonTFSDK
-	UploadKeyCommonTFSDK
-	Blocked       types.Bool   `tfsdk:"blocked"`
-	CCKMVaultID   types.String `tfsdk:"cckm_vault_id"`
-	CCKMVaultName types.String `tfsdk:"cckm_vault_name"`
-	KeyLength     types.String `tfsdk:"key_length"`
-	LinkedState   types.Bool   `tfsdk:"linked_state"`
-	Policy        types.String `tfsdk:"policy"`
-	PolicyFile    types.String `tfsdk:"policy_file"`
-	State         types.String `tfsdk:"state"`
-}
-
 type KeyVersionSummaryTFSDK struct {
 	CCKMVersionID types.String `tfsdk:"cckm_version_id"`
 	CreatedAt     types.String `tfsdk:"created_at"`
@@ -151,12 +138,6 @@ type PatchKeyCommonPayload struct {
 	DefinedTags  map[string]map[string]string `json:"defined_tags"`
 }
 
-type UpdateHYOKKeyRequest struct {
-	PatchKeyCommonPayload
-	Name   *string          `json:"name"`
-	Policy *json.RawMessage `json:"policy"`
-}
-
 type DataSourceKeyJSON struct {
 	Account                     string            `json:"account"`
 	AutoRotate                  bool              `json:"auto_rotate"`
@@ -174,7 +155,7 @@ type DataSourceKeyJSON struct {
 	URI                         string            `json:"uri"`
 	VaultID                     string            `json:"vault_id"`
 	DataSourceKeyParamsJSON     `json:"oci_params"`
-	DataSourceHYOKKeyParamsJSON `json:"hyok_key_params"`
+	DataSourceBYOKKeyParamsJSON `json:"hyok_key_params"`
 }
 
 type DataSourceKeyTFSDK struct {
@@ -194,7 +175,7 @@ type DataSourceKeyTFSDK struct {
 	URI               types.String                 `tfsdk:"uri"`
 	VaultID           types.String                 `tfsdk:"vault_id"`
 	KeyParams         KeyParamsTFSDK               `tfsdk:"oci_key_params"`
-	HYOKKeyParams     DataSourceHYOKKeyParamsTFSDK `tfsdk:"external_key_params"`
+	BYOKKeyParams     DataSourceBYOKKeyParamsTFSDK `tfsdk:"external_key_params"`
 	KeyVersionSummary types.List                   `tfsdk:"version_summary"`
 }
 
@@ -218,7 +199,7 @@ type DataSourceKeyParamsJSON struct {
 	VaultName         string                       `json:"vault_name"`
 }
 
-type DataSourceHYOKKeyParamsJSON struct {
+type DataSourceBYOKKeyParamsJSON struct {
 	Blocked     bool   `json:"blocked"`
 	LinkedState bool   `json:"linked_state"`
 	Name        string `json:"name"`
@@ -226,7 +207,7 @@ type DataSourceHYOKKeyParamsJSON struct {
 	State       string `json:"state"`
 }
 
-type DataSourceHYOKKeyParamsTFSDK struct {
+type DataSourceBYOKKeyParamsTFSDK struct {
 	Name        types.String `tfsdk:"name"`
 	LinkedState types.Bool   `tfsdk:"linked_state"`
 	Blocked     types.Bool   `tfsdk:"blocked"`

@@ -45,7 +45,7 @@ resource "ciphertrust_aws_kms" "kms" {
 
 - `assume_role_arn` (String) Amazon Resource Name (ARN) of the role to be assumed.
 - `assume_role_external_id` (String) External ID for the role to be assumed. This parameter can be specified only with 'assume_role_arn'.
-- `validate` (Boolean) Validate that the AWS account is already managed by a connection.
+- `validate` (Boolean) Accepted for compatibility but not currently forwarded to the API. Validate that the AWS account is already managed by a connection.
 
 ### Read-Only
 

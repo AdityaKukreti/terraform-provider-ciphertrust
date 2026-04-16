@@ -293,10 +293,11 @@ func (d *dataSourceAWSKey) Schema(_ context.Context, _ datasource.SchemaRequest,
 	}
 }
 
+// Read looks up an AWS key by filter criteria (ID, alias, ARN, or AWS key ID) and populates Terraform state.
 func (d *dataSourceAWSKey) Read(ctx context.Context, req datasource.ReadRequest, resp *datasource.ReadResponse) {
 	id := uuid.New().String()
-	tflog.Trace(ctx, common.MSG_METHOD_START+"[data_source_aws_key.go -> Read]")
-	defer tflog.Trace(ctx, common.MSG_METHOD_START+"[data_source_aws_key.go -> Read]")
+	tflog.Debug(ctx, common.MSG_METHOD_START+"[data_source_aws_key.go -> Read]["+id+"]")
+	defer tflog.Debug(ctx, common.MSG_METHOD_END+"[data_source_aws_key.go -> Read]["+id+"]")
 	var state AWSKeyDataSourceTFSDK
 	diags := req.Config.Get(ctx, &state)
 	if diags.HasError() {
@@ -364,10 +365,12 @@ func (d *dataSourceAWSKey) Read(ctx context.Context, req datasource.ReadRequest,
 	}
 	kid := gjson.Get(response, "aws_param.KeyID").String()
 	region := gjson.Get(response, "region").String()
+	state.Region = types.StringValue(region)
 	state.ID = types.StringValue(encodeAWSKeyTerraformResourceID(region, kid))
 	resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
 }
 
+// listAwsKeys lists AWS keys matching the given filters and returns the single matching key JSON, or an error if not exactly one is found.
 func listAwsKeys(ctx context.Context, id string, client *common.Client, filters url.Values, diags *diag.Diagnostics) string {
 	response, err := client.ListWithFilters(ctx, id, common.URL_AWS_KEY, filters)
 	if err != nil {
@@ -391,11 +394,12 @@ func listAwsKeys(ctx context.Context, id string, client *common.Client, filters 
 	resources := gjson.Get(response, "resources").Array()
 	var keyJSON string
 	for _, keyResourceJSON := range resources {
-		keyJSON = keyResourceJSON.String()
+		keyJSON = keyResourceJSON.Raw
 	}
 	return keyJSON
 }
 
+// setKeyDataSourceState populates the full Terraform data source state for an AWS key from an API response JSON string.
 func (d *dataSourceAWSKey) setKeyDataSourceState(ctx context.Context, response string, state *AWSKeyDataSourceTFSDK, diags *diag.Diagnostics) {
 	setCommonKeyDataSourceState(ctx, response, &state.AWSKeyDataSourceCommonTFSDK, diags)
 	setAliases(response, &state.Alias, diags)
@@ -414,6 +418,7 @@ func (d *dataSourceAWSKey) setKeyDataSourceState(ctx context.Context, response s
 	state.ReplicaPolicy = types.StringValue(gjson.Get(response, "replica_policy").String())
 }
 
+// setCommonKeyDataSourceState populates the common key fields shared across AWS key data sources from an API response JSON string.
 func setCommonKeyDataSourceState(ctx context.Context, response string, state *AWSKeyDataSourceCommonTFSDK, diags *diag.Diagnostics) {
 	state.KeyID = types.StringValue(gjson.Get(response, "id").String())
 	state.ARN = types.StringValue(gjson.Get(response, "aws_param.Arn").String())
@@ -422,9 +427,6 @@ func setCommonKeyDataSourceState(ctx context.Context, response string, state *AW
 	state.CloudName = types.StringValue(gjson.Get(response, "cloud_name").String())
 	state.CreatedAt = types.StringValue(gjson.Get(response, "createdAt").String())
 	state.CustomerMasterKeySpec = types.StringValue(gjson.Get(response, "aws_param.CustomerMasterKeySpec").String())
-	if state.CustomerMasterKeySpec.ValueString() == "" {
-		state.CustomerMasterKeySpec = types.StringValue(gjson.Get(response, "aws_param.MasterKeySpec").String())
-	}
 	state.DeletionDate = types.StringValue(gjson.Get(response, "deletion_date").String())
 	state.Enabled = types.BoolValue(gjson.Get(response, "aws_param.Enabled").Bool())
 	state.EncryptionAlgorithms = utils.StringSliceJSONToListValue(gjson.Get(response, "aws_param.EncryptionAlgorithms").Array(), diags)
@@ -451,7 +453,7 @@ func setCommonKeyDataSourceState(ctx context.Context, response string, state *AW
 	}
 	setPolicyTemplateTag(ctx, response, &state.PolicyTemplateTag, diags)
 	state.RotatedAt = types.StringValue(gjson.Get(response, "rotated_at").String())
-	state.RotatedFrom = types.StringValue(gjson.Get(response, "rotated_to").String())
+	state.RotatedFrom = types.StringValue(gjson.Get(response, "rotated_from").String())
 	state.RotationStatus = types.StringValue(gjson.Get(response, "rotation_status").String())
 	state.RotatedTo = types.StringValue(gjson.Get(response, "rotated_to").String())
 	state.SyncedAt = types.StringValue(gjson.Get(response, "synced_at").String())

@@ -150,13 +150,14 @@ resource "ciphertrust_aws_custom_keystore" "imported_external_custom_keystore" {
 - `connect_disconnect_keystore` (String) (Updatable) Indicates whether to connect or disconnect the custom key store.
 - `enable_credential_rotation` (Block List) (Updatable) Enable the custom key store for scheduled credential rotation job. (see [below for nested schema](#nestedblock--enable_credential_rotation))
 - `enable_success_audit_event` (Boolean) (Updatable) Enable or disable audit recording of successful operations within an external key store. Default value is false. Recommended value is false as enabling it can affect performance.
-- `linked_state` (Boolean) (Updatable) Indicates whether the custom key store is linked with AWS. Applicable to a custom key store of type EXTERNAL_KEY_STORE. Default value is false. When false, creating a custom key store in the CCKM does not trigger the AWS KMS to create a new key store. Also, the new custom key store will not synchronize with any key stores within the AWS KMS until the new key store is linked.
+- `linked_state` (Boolean) (Updatable) Indicates whether the custom key store is linked with AWS. Applicable to a custom key store of type EXTERNAL_KEY_STORE. Default value is false. When false, creating a custom key store in the CCKM does not trigger the AWS KMS to create a new key store. Once linked, it's not possible to unlink a key store. Also, the new custom key store will not synchronize with any key stores within the AWS KMS until the new key store is linked.
 - `local_hosted_params` (Block List) Parameters related to AWS interaction with a custom key store. (see [below for nested schema](#nestedblock--local_hosted_params))
 - `timeouts` (Block, Optional) (see [below for nested schema](#nestedblock--timeouts))
 
 ### Read-Only
 
 - `access_key_id` (String)
+- `aws_param_output` (Attributes) AWS parameters returned by the API for this custom key store. Always populated from the API response. (see [below for nested schema](#nestedatt--aws_param_output))
 - `cloud_name` (String)
 - `created_at` (String)
 - `credential_version` (String)
@@ -207,7 +208,7 @@ Optional:
 - `blocked` (Boolean) (Updatable) This field indicates whether the custom key store is in a blocked or unblocked state. Default value is false, which indicates the key store is in an unblocked state. Applicable to a custom key store of type EXTERNAL_KEY_STORE.
 - `health_check_key_id` (String) (Updatable) ID of an existing LUNA key (if source key tier is 'hsm-luna') or CipherTrust Manager key (if source key tier is 'local') to use for health check of the custom key store. Crypto operation would be performed using this key before creating a custom key store. **Required** field for custom key store of type EXTERNAL_KEY_STORE.
 - `max_credentials` (Number) Max number of credentials that can be associated with custom key store (min value 2. max value 20). **Required** field for a custom key store of type EXTERNAL_KEY_STORE.
-- `mtls_enabled` (Boolean) (Updatable) Set it to true to enable tls client-side certificate verification — where CipherTrust manager authenticates the AWS KMS client. +Default value is false.
+- `mtls_enabled` (Boolean) (Updatable) Set it to true to enable tls client-side certificate verification  -  where CipherTrust manager authenticates the AWS KMS client. +Default value is false.
 - `partition_id` (String) ID of Luna HSM partition. **Required** field, if custom key store is of type EXTERNAL_KEY_STORE and source key tier is 'hsm-luna'.
 - `source_key_tier` (String) This field indicates whether to use Luna HSM (luna-hsm) or Ciphertrust Manager (local) as source for cryptographic keys in this key store. Default value is luna-hsm. The only value supported by the service is 'local'.
 
@@ -229,3 +230,20 @@ Optional:
 - `delete` (String) A string that can be [parsed as a duration](https://pkg.go.dev/time#ParseDuration) consisting of numbers and unit suffixes, such as "30s" or "2h45m". Valid time units are "s" (seconds), "m" (minutes), "h" (hours). Setting a timeout for a Delete operation is only applicable if changes are saved into state before the destroy operation occurs.
 - `read` (String) A string that can be [parsed as a duration](https://pkg.go.dev/time#ParseDuration) consisting of numbers and unit suffixes, such as "30s" or "2h45m". Valid time units are "s" (seconds), "m" (minutes), "h" (hours). Read operations occur during any refresh or planning operation when refresh is enabled.
 - `update` (String) A string that can be [parsed as a duration](https://pkg.go.dev/time#ParseDuration) consisting of numbers and unit suffixes, such as "30s" or "2h45m". Valid time units are "s" (seconds), "m" (minutes), "h" (hours).
+
+
+<a id="nestedatt--aws_param_output"></a>
+### Nested Schema for `aws_param_output`
+
+Read-Only:
+
+- `cloud_hsm_cluster_id` (String) ID of a CloudHSM cluster for a custom key store.
+- `connection_state` (String) Connection state of the custom key store with AWS.
+- `custom_key_store_id` (String) ID of the custom key store in AWS KMS.
+- `custom_key_store_name` (String) Name of the custom key store in AWS KMS.
+- `custom_key_store_type` (String) Type of the custom key store (AWS_CLOUDHSM or EXTERNAL_KEY_STORE).
+- `trust_anchor_certificate` (String) CA certificate or self-signed certificate for CloudHSM cluster initialization.
+- `xks_proxy_connectivity` (String) Indicates how AWS KMS communicates with CipherTrust Manager.
+- `xks_proxy_uri_endpoint` (String) Protocol and DNS hostname to which KMS sends XKS API requests.
+- `xks_proxy_uri_path` (String) URI path of the XKS proxy endpoint.
+- `xks_proxy_vpc_endpoint_service_name` (String) VPC endpoint service name used by the custom key store.

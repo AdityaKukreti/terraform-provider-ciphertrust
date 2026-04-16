@@ -63,7 +63,10 @@ func (r *resourceCCKMAWSKMS) Schema(_ context.Context, _ resource.SchemaRequest,
 			},
 			"account_id": schema.StringAttribute{
 				Required:    true,
-				Description: "ID of the AWS account.",
+				Description: "ID of the AWS account. Changing this value forces the KMS registration to be destroyed and recreated.",
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.RequiresReplace(),
+				},
 			},
 			"acls": schema.SetNestedAttribute{
 				Computed:    true,
@@ -127,7 +130,10 @@ func (r *resourceCCKMAWSKMS) Schema(_ context.Context, _ resource.SchemaRequest,
 			},
 			"name": schema.StringAttribute{
 				Required:    true,
-				Description: "Unique name for the KMS.",
+				Description: "Unique name for the KMS. Changing this value forces the KMS registration to be destroyed and recreated.",
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.RequiresReplace(),
+				},
 			},
 			"regions": schema.ListAttribute{
 				Required:    true,
@@ -150,10 +156,11 @@ func (r *resourceCCKMAWSKMS) Schema(_ context.Context, _ resource.SchemaRequest,
 	}
 }
 
+// Create registers a new AWS KMS connection in CipherTrust Manager and sets Terraform state.
 func (r *resourceCCKMAWSKMS) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
 	id := uuid.New().String()
-	tflog.Trace(ctx, common.MSG_METHOD_START+"[resource_aws_kms.go -> Create]["+id+"]")
-	defer tflog.Trace(ctx, common.MSG_METHOD_END+"[resource_aws_kms.go -> Create]["+id+"]")
+	tflog.Debug(ctx, common.MSG_METHOD_START+"[resource_aws_kms.go -> Create]["+id+"]")
+	defer tflog.Debug(ctx, common.MSG_METHOD_END+"[resource_aws_kms.go -> Create]["+id+"]")
 	var (
 		plan    KMSModelTFSDK
 		payload KMSModelJSON
@@ -204,10 +211,11 @@ func (r *resourceCCKMAWSKMS) Create(ctx context.Context, req resource.CreateRequ
 	resp.Diagnostics.Append(resp.State.Set(ctx, plan)...)
 }
 
+// Read refreshes the Terraform state for an AWS KMS by fetching the latest data from CipherTrust Manager.
 func (r *resourceCCKMAWSKMS) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
 	id := uuid.New().String()
-	tflog.Trace(ctx, common.MSG_METHOD_START+"[resource_aws_kms.go -> Read]["+id+"]")
-	defer tflog.Trace(ctx, common.MSG_METHOD_END+"[resource_aws_kms.go -> Read]["+id+"]")
+	tflog.Debug(ctx, common.MSG_METHOD_START+"[resource_aws_kms.go -> Read]["+id+"]")
+	defer tflog.Debug(ctx, common.MSG_METHOD_END+"[resource_aws_kms.go -> Read]["+id+"]")
 	var state KMSModelTFSDK
 	resp.Diagnostics.Append(req.State.Get(ctx, &state)...)
 	if resp.Diagnostics.HasError() {
@@ -222,7 +230,7 @@ func (r *resourceCCKMAWSKMS) Read(ctx context.Context, req resource.ReadRequest,
 		resp.Diagnostics.AddError(details, "")
 		return
 	}
-	tflog.Trace(ctx, "[resource_aws_kms.go -> Read][response:"+response)
+	tflog.Debug(ctx, "[resource_aws_kms.go -> Read][response:"+response)
 	r.setKmsState(ctx, response, &state, &resp.Diagnostics)
 	if resp.Diagnostics.HasError() {
 		return
@@ -230,17 +238,19 @@ func (r *resourceCCKMAWSKMS) Read(ctx context.Context, req resource.ReadRequest,
 	resp.Diagnostics.Append(resp.State.Set(ctx, state)...)
 }
 
+// ImportState imports an existing AWS KMS into Terraform state using its resource ID.
 func (r *resourceCCKMAWSKMS) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
 	id := uuid.New().String()
-	tflog.Trace(ctx, common.MSG_METHOD_START+"[resource_aws_kms.go -> ImportState]["+id+"]")
-	defer tflog.Trace(ctx, common.MSG_METHOD_END+"[resource_aws_kms.go -> ImportState]["+id+"]")
+	tflog.Debug(ctx, common.MSG_METHOD_START+"[resource_aws_kms.go -> ImportState]["+id+"]")
+	defer tflog.Debug(ctx, common.MSG_METHOD_END+"[resource_aws_kms.go -> ImportState]["+id+"]")
 	resource.ImportStatePassthroughID(ctx, path.Root("id"), req, resp)
 }
 
+// Update applies plan changes (regions, connection, assume-role) to an existing AWS KMS registration.
 func (r *resourceCCKMAWSKMS) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
 	id := uuid.New().String()
-	tflog.Trace(ctx, common.MSG_METHOD_START+"[resource_aws_kms.go -> Update]["+id+"]")
-	defer tflog.Trace(ctx, common.MSG_METHOD_END+"[resource_aws_kms.go -> Update]["+id+"]")
+	tflog.Debug(ctx, common.MSG_METHOD_START+"[resource_aws_kms.go -> Update]["+id+"]")
+	defer tflog.Debug(ctx, common.MSG_METHOD_END+"[resource_aws_kms.go -> Update]["+id+"]")
 	var (
 		plan    KMSModelTFSDK
 		payload KMSModelJSON
@@ -299,17 +309,18 @@ func (r *resourceCCKMAWSKMS) Update(ctx context.Context, req resource.UpdateRequ
 	resp.Diagnostics.Append(resp.State.Set(ctx, plan)...)
 }
 
+// Delete removes an AWS KMS registration from CipherTrust Manager.
 func (r *resourceCCKMAWSKMS) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
 	id := uuid.New().String()
-	tflog.Trace(ctx, common.MSG_METHOD_START+"[resource_aws_kms.go -> Delete]["+id+"]")
-	defer tflog.Trace(ctx, common.MSG_METHOD_END+"[resource_aws_kms.go -> Delete]["+id+"]")
+	tflog.Debug(ctx, common.MSG_METHOD_START+"[resource_aws_kms.go -> Delete]["+id+"]")
+	defer tflog.Debug(ctx, common.MSG_METHOD_END+"[resource_aws_kms.go -> Delete]["+id+"]")
 	var state KMSModelTFSDK
 	resp.Diagnostics.Append(req.State.Get(ctx, &state)...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
 	kmsID := state.ID.ValueString()
-	_, err := r.client.DeleteByURL(ctx, kmsID, common.URL_AWS_KMS+"/"+kmsID)
+	_, err := r.client.DeleteByURL(ctx, id, common.URL_AWS_KMS+"/"+kmsID)
 	if err != nil {
 		msg := "Error deleting AWS KMS."
 		details := utils.ApiError(msg, map[string]interface{}{"error": err.Error(), "kms_id": kmsID})
@@ -319,6 +330,7 @@ func (r *resourceCCKMAWSKMS) Delete(ctx context.Context, req resource.DeleteRequ
 	}
 }
 
+// setKmsState populates the Terraform state for an AWS KMS from an API response JSON string.
 func (r *resourceCCKMAWSKMS) setKmsState(ctx context.Context, response string, state *KMSModelTFSDK, diags *diag.Diagnostics) {
 	state.Account = types.StringValue(gjson.Get(response, "account").String())
 	acls.SetAclsStateFromJSON(ctx, gjson.Get(response, "acls"), &state.Acls, diags)

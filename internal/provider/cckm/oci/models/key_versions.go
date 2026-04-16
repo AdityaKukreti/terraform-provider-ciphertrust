@@ -56,14 +56,6 @@ type BYOKKeyVersionTFSDK struct {
 	SourceKeyTier types.String `tfsdk:"source_key_tier"`
 }
 
-type HYOKKeyVersionTFSDK struct {
-	KeyVersionTFSDK
-	OCIKeyID       types.String `tfsdk:"oci_key_id"`
-	PartitionID    types.String `tfsdk:"partition_id"`
-	PartitionLabel types.String `tfsdk:"partition_label"`
-	State          types.String `tfsdk:"state"`
-}
-
 type AddKeyVersionPayloadJSON struct {
 	SourceKeyID   string `json:"source_key_identifier"`
 	SourceKeyTier string `json:"source_key_tier"`
@@ -86,7 +78,7 @@ type DataSourceKeyVersionJSON struct {
 	UpdatedAt                          string            `json:"updatedAt"`
 	URI                                string            `json:"uri"`
 	DataSourceKeyVersionParamsJSON     `json:"oci_key_version_params"`
-	DataSourceHYOKKeyVersionParamsJSON `json:"hyok_key_version_params"`
+	DataSourceBYOKKeyVersionParamsJSON `json:"hyok_key_version_params"`
 }
 
 type DataSourceKeyVersionTFSDK struct {
@@ -100,7 +92,7 @@ type DataSourceKeyVersionTFSDK struct {
 	SourceKeyTier        types.String `tfsdk:"source_key_tier"`
 	UpdatedAt            types.String `tfsdk:"updated_at"`
 	URI                  types.String `tfsdk:"uri"`
-	HYOKKeyVersionParams types.Object `tfsdk:"hyok_key_version_params"`
+	BYOKKeyVersionParams types.Object `tfsdk:"byok_key_version_params"`
 	KeyVersionParams     types.Object `tfsdk:"oci_key_version_params"`
 }
 
@@ -119,21 +111,21 @@ type DataSourceKeyVersionParamsJSON struct {
 	VersionID                string `json:"version_id"`
 }
 
-type DataSourceHYOKKeyVersionParamsJSON struct {
+type DataSourceBYOKKeyVersionParamsJSON struct {
 	OCIKeyID       string `json:"oci_key_id"`
 	PartitionID    string `json:"partition_id"`
 	PartitionLabel string `json:"partition_label"`
 	State          string `json:"state"`
 }
 
-type DataSourceHYOKKeyVersionParamsTFSDK struct {
+type DataSourceBYOKKeyVersionParamsTFSDK struct {
 	OCIKeyID       types.String `tfsdk:"oci_key_id"`
 	PartitionID    types.String `tfsdk:"partition_id"`
 	PartitionLabel types.String `tfsdk:"partition_label"`
 	State          types.String `tfsdk:"state"`
 }
 
-var HYOKKeyVersionParamsTFSDKAttribs = map[string]attr.Type{
+var BYOKKeyVersionParamsTFSDKAttribs = map[string]attr.Type{
 	"oci_key_id":      types.StringType,
 	"partition_id":    types.StringType,
 	"partition_label": types.StringType,
