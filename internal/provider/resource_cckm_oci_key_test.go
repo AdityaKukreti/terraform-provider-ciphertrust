@@ -176,14 +176,10 @@ func TestCckmOCIKeysAndVersionsNative(t *testing.T) {
 				RefreshState: true,
 			},
 			{
-				ResourceName:      keyResource,
-				ImportState:       true,
-				ImportStateVerify: true,
-				ImportStateVerifyIgnore: []string{
-					"version_summary",
-					"oci_key_params.current_key_version",
-					"schedule_for_deletion_days",
-				},
+				ResourceName:            keyResource,
+				ImportState:             true,
+				ImportStateVerify:       true,
+				ImportStateVerifyIgnore: importStateVerifyIgnoreOCIKey,
 			},
 			{
 				ResourceName:      versionResource,

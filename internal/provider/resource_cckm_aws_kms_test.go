@@ -130,6 +130,16 @@ func TestCckmAWSKms(t *testing.T) {
 				),
 			},
 			{
+				// Import the KMS immediately after creation and verify all computed fields
+				// round-trip correctly. updated_at is ignored because the two consecutive
+				// Read calls made by ImportStateVerify may observe different timestamps if
+				// any background process touches the KMS between them.
+				ResourceName:            resourceName,
+				ImportState:             true,
+				ImportStateVerify:       true,
+				ImportStateVerifyIgnore: []string{"updated_at"},
+			},
+			{
 				Config: updateKmsRegionsConfig,
 				Check: resource.ComposeTestCheckFunc(
 					resource.TestCheckResourceAttr(resourceName, "regions.#", "1"),
@@ -141,53 +151,6 @@ func TestCckmAWSKms(t *testing.T) {
 					resource.TestCheckResourceAttr(resourceName, "aws_connection", updatedConnName),
 					resource.TestCheckResourceAttr(resourceName, "regions.#", "1"),
 				),
-			},
-		},
-	})
-}
-
-func TestCckmAWSKmsImport(t *testing.T) {
-	if os.Getenv("AWS_ACCESS_KEY_ID") == "" || os.Getenv("AWS_SECRET_ACCESS_KEY") == "" {
-		t.Skip("AWS credentials not set")
-	}
-	uid := "tf-" + uuid.New().String()[:8]
-
-	createKmsConfig := fmt.Sprintf(`
-		resource "ciphertrust_aws_connection" "aws_connection" {
-			name = "%s"
-		}
-		data "ciphertrust_aws_account_details" "account_details" {
-			aws_connection = ciphertrust_aws_connection.aws_connection.id
-		}
-		resource "ciphertrust_aws_kms" "kms" {
-			account_id     = data.ciphertrust_aws_account_details.account_details.account_id
-			aws_connection = ciphertrust_aws_connection.aws_connection.name
-			name           = "%s"
-			regions = [
-				data.ciphertrust_aws_account_details.account_details.regions[0],
-				data.ciphertrust_aws_account_details.account_details.regions[1],
-				data.ciphertrust_aws_account_details.account_details.regions[2]
-			]
-		}`, uid, uid)
-
-	resourceName := "ciphertrust_aws_kms.kms"
-	resource.Test(t, resource.TestCase{
-		PreCheck:                 func() { cleanupCckmAwsKMS() },
-		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
-		Steps: []resource.TestStep{
-			{
-				Config: createKmsConfig,
-				Check: resource.ComposeTestCheckFunc(
-					resource.TestCheckResourceAttrSet(resourceName, "arn"),
-					resource.TestCheckResourceAttrSet(resourceName, "aws_connection"),
-					resource.TestCheckResourceAttr(resourceName, "name", uid),
-					resource.TestCheckResourceAttrSet(resourceName, "regions.#"),
-				),
-			},
-			{
-				ResourceName:      resourceName,
-				ImportState:       true,
-				ImportStateVerify: true,
 			},
 		},
 	})

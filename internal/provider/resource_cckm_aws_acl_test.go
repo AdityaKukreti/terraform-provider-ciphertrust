@@ -107,6 +107,23 @@ func TestCckmAWSAcl(t *testing.T) {
 				),
 			},
 			{
+				RefreshState: true,
+			},
+			{
+				// "actions" cannot be reconstructed from the API (the KMS returns the
+				// expanded kms_actions set, not the raw user input), so it is ignored.
+				ResourceName:            userACLResourceName,
+				ImportState:             true,
+				ImportStateVerify:       true,
+				ImportStateVerifyIgnore: []string{"actions"},
+			},
+			{
+				ResourceName:            groupACLResourceName,
+				ImportState:             true,
+				ImportStateVerify:       true,
+				ImportStateVerifyIgnore: []string{"actions"},
+			},
+			{
 				Config: addAclActionsConfigStr,
 				Check: resource.ComposeTestCheckFunc(
 					resource.TestCheckResourceAttr(kmsResourceName, "acls.#", "2"),

@@ -16,6 +16,7 @@ import (
 	common "github.com/ThalesGroup/terraform-provider-ciphertrust/internal/provider/common"
 	"github.com/google/uuid"
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
+	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
@@ -27,8 +28,9 @@ import (
 )
 
 var (
-	_ resource.Resource              = &resourceScheduler{}
-	_ resource.ResourceWithConfigure = &resourceScheduler{}
+	_ resource.Resource                = &resourceScheduler{}
+	_ resource.ResourceWithConfigure   = &resourceScheduler{}
+	_ resource.ResourceWithImportState = &resourceScheduler{}
 
 	runAt = `Described using the cron expression format : "* * * * *" These five values indicate when the job should be executed. They are in order of minute, hour, day of month, month, and day of week. Valid values are 0-59 (minutes), 0-23 (hours), 1-31 (day of month), 1-12 or jan-dec (month), and 0-6 or sun-sat (day of week). Names are case insensitive. For use of special characters, consult the Time Specification description at the top of this page.
 
@@ -624,6 +626,35 @@ func (r *resourceScheduler) Delete(ctx context.Context, req resource.DeleteReque
 	}
 	tflog.Trace(ctx, common.MSG_METHOD_END+"[resource_scheduler.go -> Delete]["+state.ID.ValueString()+"]["+output+"]")
 
+}
+
+func (r *resourceScheduler) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
+	id := uuid.New().String()
+	tflog.Debug(ctx, common.MSG_METHOD_START+"[resource_scheduler.go -> ImportState]["+id+"]")
+
+	// Set the resource id so Read() can fetch the full resource.
+	resource.ImportStatePassthroughID(ctx, path.Root("id"), req, resp)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	// Pre-populate operation from the API response so that Read()'s
+	// getParamsFromResponse can select the correct params block.
+	// Without this, state.Operation is empty during import and the switch
+	// falls through, leaving all params blocks unset.
+	response, err := r.client.GetById(ctx, id, req.ID, common.URL_SCHEDULER_JOB_CONFIGS)
+	if err != nil {
+		resp.Diagnostics.AddError(
+			"Import Error",
+			"Error fetching scheduler job config for import: "+err.Error(),
+		)
+		return
+	}
+	resp.Diagnostics.Append(
+		resp.State.SetAttribute(ctx, path.Root("operation"), gjson.Get(response, "operation").String())...,
+	)
+
+	tflog.Debug(ctx, common.MSG_METHOD_END+"[resource_scheduler.go -> ImportState]["+id+"]")
 }
 
 func (r *resourceScheduler) Configure(_ context.Context, req resource.ConfigureRequest, resp *resource.ConfigureResponse) {
