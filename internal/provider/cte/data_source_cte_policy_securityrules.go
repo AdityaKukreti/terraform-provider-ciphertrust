@@ -39,7 +39,7 @@ func (d *dataSourceCTEPolicySecurityRule) Schema(_ context.Context, _ datasource
 	resp.Schema = schema.Schema{
 		Attributes: map[string]schema.Attribute{
 			"policy": schema.StringAttribute{
-				Optional: true,
+				Required: true,
 			},
 			"rules": schema.ListNestedAttribute{
 				Computed: true,
@@ -79,6 +79,9 @@ func (d *dataSourceCTEPolicySecurityRule) Schema(_ context.Context, _ datasource
 						"order_number": schema.Int64Attribute{
 							Computed: true,
 						},
+						"process_signed": schema.StringAttribute{
+							Computed: true,
+						},
 						"exclude_process_set": schema.BoolAttribute{
 							Computed:    true,
 							Description: "Process set to exclude. Supported for Standard, LDT and IDT policies.",
@@ -106,6 +109,9 @@ func (d *dataSourceCTEPolicySecurityRule) Schema(_ context.Context, _ datasource
 						"user_set_id": schema.StringAttribute{
 							Computed:    true,
 							Description: "ID of the user set to link to the policy.",
+						},
+						"generation": schema.StringAttribute{
+							Computed: true,
 						},
 					},
 				},
@@ -165,6 +171,8 @@ func (d *dataSourceCTEPolicySecurityRule) Read(ctx context.Context, req datasour
 		securityRule.Effect = types.StringValue(rule.Effect)
 		securityRule.Action = types.StringValue(rule.Action)
 		securityRule.PartialMatch = types.BoolValue(rule.PartialMatch)
+		securityRule.ProcessSigned = types.StringValue(rule.ProcessSigned)
+		securityRule.Generation = types.StringValue(rule.Generation)
 
 		state.Rules = append(state.Rules, securityRule)
 	}
