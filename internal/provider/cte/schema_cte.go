@@ -36,6 +36,9 @@ type CTEClientsListTFSDK struct {
 	Warnings               types.String `tfsdk:"warnings"`
 	ClientErrors           types.String `tfsdk:"client_errors"`
 	ClientWarnings         types.String `tfsdk:"client_warnings"`
+	FamEnabled             types.Bool   `tfsdk:"fam_enabled"`
+	FamState               types.String `tfsdk:"fam_state"`
+	DPS_Enabled            types.Bool   `tfsdk:"dps_enabled"`
 }
 
 type CTEClientsListJSON struct {
@@ -43,7 +46,7 @@ type CTEClientsListJSON struct {
 	URI                    string `json:"uri"`
 	Account                string `json:"account"`
 	App                    string `json:"application"`
-	DevAccount             string `json:"dev_account"`
+	DevAccount             string `json:"devAccount"`
 	CreatedAt              string `json:"created_at"`
 	UpdatedAt              string `json:"updated_at"`
 	Name                   string `json:"name"`
@@ -70,6 +73,9 @@ type CTEClientsListJSON struct {
 	Warnings               string `json:"warnings"`
 	ClientErrors           string `json:"client_errors"`
 	ClientWarnings         string `json:"client_warnings"`
+	FamEnabled             bool   `json:"fam_enabled"`
+	FamState               string `json:"fam_state"`
+	DPS_Enabled            bool   `json:"dps_enabled"`
 }
 
 type CTEClientTFSDK struct {
@@ -102,7 +108,7 @@ type CTEClientTFSDK struct {
 type CTEClientJSON struct {
 	ID                     string                 `json:"id"`
 	Name                   string                 `json:"name"`
-	ClientLocked           bool                   `json:"client_locked,omitempty"`
+	ClientLocked           bool                   `json:"client_locked"`
 	ClientType             string                 `json:"client_type"`
 	CommunicationEnabled   bool                   `json:"communication_enabled"`
 	Description            string                 `json:"description"`
@@ -110,7 +116,7 @@ type CTEClientJSON struct {
 	PasswordCreationMethod string                 `json:"password_creation_method"`
 	ProfileIdentifier      string                 `json:"profile_identifier"`
 	RegistrationAllowed    bool                   `json:"registration_allowed"`
-	SystemLocked           bool                   `json:"system_locked,omitempty"`
+	SystemLocked           bool                   `json:"system_locked"`
 	ClientMFAEnabled       bool                   `json:"client_mfa_enabled,omitempty"`
 	DelClient              bool                   `json:"del_client"`
 	DisableCapability      string                 `json:"disable_capability"`
@@ -140,10 +146,11 @@ type DataTxRuleJSON struct {
 }
 
 type IDTRuleJSON struct {
-	CurrentKey            string `json:"current_key"`
-	CurrentKeyType        string `json:"current_key_type"`
-	TransformationKey     string `json:"transformation_key"`
-	TransformationKeyType string `json:"transformation_key_type"`
+	ID                    string `json:"id,omitempty"`
+	CurrentKey            string `json:"current_key,omitempty"`
+	CurrentKeyType        string `json:"current_key_type,omitempty"`
+	TransformationKey     string `json:"transformation_key,omitempty"`
+	TransformationKeyType string `json:"transformation_key_type,omitempty"`
 }
 
 type KeyRuleJSON struct {
@@ -193,6 +200,22 @@ type AddSignaturesToRuleJSON struct {
 	SignatureSets []string `json:"signature_set_id_list"`
 }
 
+type CTEPolicyListJSON struct {
+	ID               string                `json:"id"`
+	Name             string                `json:"name"`
+	Description      string                `json:"description"`
+	PolicyType       string                `json:"policy_type"`
+	Metadata         CTEPolicyMetadataJSON `json:"metadata"`
+	NeverDeny        bool                  `json:"never_deny"`
+	URI              string                `json:"uri"`
+	CreatedAt        string                `json:"createdAt"`
+	UpdatedAt        string                `json:"updatedAt"`
+	UpdatedBy        string                `json:"updated_by"`
+	PolicyVersion    int64                 `json:"policy_version"`
+	PolicyKeyVersion int64                 `json:"policy_key_version"`
+	MigratedPolicyId string                `json:"migrated_policy_id"`
+}
+
 type CTEPolicyJSON struct {
 	ID                  string                `json:"id"`
 	Name                string                `json:"name"`
@@ -216,6 +239,7 @@ type DataTransformationRuleTFSDK struct {
 }
 
 type IDTKeyRuleTFSDK struct {
+	ID                    types.String `tfsdk:"id"`
 	CurrentKey            types.String `tfsdk:"current_key"`
 	CurrentKeyType        types.String `tfsdk:"current_key_type"`
 	TransformationKey     types.String `tfsdk:"transformation_key"`
@@ -239,10 +263,10 @@ type TransformationKeyTFSDK struct {
 }
 
 type LDTKeyRuleTFSDK struct {
-	CurrentKey        CurrentKeyTFSDK        `tfsdk:"current_key"`
-	TransformationKey TransformationKeyTFSDK `tfsdk:"transformation_key"`
-	IsExclusionRule   types.Bool             `tfsdk:"is_exclusion_rule"`
-	ResourceSetID     types.String           `tfsdk:"resource_set_id"`
+	CurrentKey        *CurrentKeyTFSDK        `tfsdk:"current_key"`
+	TransformationKey *TransformationKeyTFSDK `tfsdk:"transformation_key"`
+	IsExclusionRule   types.Bool              `tfsdk:"is_exclusion_rule"`
+	ResourceSetID     types.String            `tfsdk:"resource_set_id"`
 }
 
 type CTEPolicyMetadataTFSDK struct {
@@ -263,6 +287,22 @@ type SecurityRuleTFSDK struct {
 
 type SignatureRuleTFSDK struct {
 	SignatureSetID types.String `tfsdk:"signature_set_id"`
+}
+
+type CTEPolicyListTFSDK struct {
+	ID               types.String            `tfsdk:"id"`
+	Name             types.String            `tfsdk:"name"`
+	Description      types.String            `tfsdk:"description"`
+	PolicyType       types.String            `tfsdk:"policy_type"`
+	Metadata         *CTEPolicyMetadataTFSDK `tfsdk:"metadata"`
+	NeverDeny        types.Bool              `tfsdk:"never_deny"`
+	URI              types.String            `tfsdk:"uri"`
+	CreatedAt        types.String            `tfsdk:"created_at"`
+	UpdatedAt        types.String            `tfsdk:"updated_at"`
+	UpdatedBy        types.String            `tfsdk:"updated_by"`
+	PolicyVersion    types.Int64             `tfsdk:"policy_version"`
+	PolicyKeyVersion types.Int64             `tfsdk:"policy_key_version"`
+	MigratedPolicyId types.String            `tfsdk:"migrated_policy_id"`
 }
 
 type CTEPolicyTFSDK struct {
@@ -301,6 +341,7 @@ type CTEPolicyIDTKeyRulesListTFSDK struct {
 	PolicyID          types.String `tfsdk:"policy_id"`
 	CurrentKey        types.String `tfsdk:"current_key"`
 	TransformationKey types.String `tfsdk:"transformation_key"`
+	OrderNumber       types.Int64  `tfsdk:"order_number"`
 }
 
 type CTEPolicyLDTKeyRulesListTFSDK struct {
@@ -341,6 +382,8 @@ type CTEPolicySecurityRulesListTFSDK struct {
 	ProcessSetID       types.String `tfsdk:"process_set_id"`
 	ExcludeProcessSet  types.Bool   `tfsdk:"exclude_process_set"`
 	PartialMatch       types.Bool   `tfsdk:"partial_match"`
+	ProcessSigned      types.String `tfsdk:"process_signed"`
+	Generation         types.String `tfsdk:"generation"`
 }
 
 type CTEPolicySignatureRulesListTFSDK struct {
@@ -374,6 +417,7 @@ type CTEPolicyIDTKeyRulesJSON struct {
 	PolicyID          string `json:"policy_id"`
 	CurrentKey        string `json:"current_key"`
 	TransformationKey string `json:"transformation_key"`
+	OrderNumber       int64  `json:"order_number"`
 }
 
 type CTEPolicyLDTKeyRulesJSON struct {
@@ -391,7 +435,7 @@ type CTEPolicySecurityRulesJSON struct {
 	URI                string `json:"uri"`
 	Account            string `json:"account"`
 	Application        string `json:"application"`
-	DevAccount         string `json:"dev_account"`
+	DevAccount         string `json:"devAccount"`
 	CreatedAt          string `json:"createdAt"`
 	UpdatedAt          string `json:"updatedAt"`
 	PolicyID           string `json:"policy_id"`
@@ -405,6 +449,8 @@ type CTEPolicySecurityRulesJSON struct {
 	ProcessSetID       string `json:"process_set_id"`
 	ExcludeProcessSet  bool   `json:"exclude_process_set"`
 	PartialMatch       bool   `json:"partial_match"`
+	ProcessSigned      string `json:"process_signed"`
+	Generation         string `json:"generation"`
 }
 
 type CTEPolicySignatureRulesJSON struct {
@@ -441,8 +487,8 @@ type KeyRuleUpdateJSON struct {
 
 type LDTRuleUpdateJSON struct {
 	CurrentKey        CurrentKeyJSON        `json:"current_key"`
-	TransformationKey TransformationKeyJSON `json:"transformation_key"`
-	IsExclusionRule   bool                  `json:"is_exclusion_rule,omitempty"`
+	TransformationKey TransformationKeyJSON `json:"transformation_key,omitempty"`
+	IsExclusionRule   bool                  `json:"is_exclusion_rule"`
 	ResourceSetID     string                `json:"resource_set_id,omitempty"`
 	OrderNumber       int64                 `json:"order_number,omitempty"`
 }
@@ -450,10 +496,10 @@ type LDTRuleUpdateJSON struct {
 type SecurityRuleUpdateJSON struct {
 	Action             string `json:"action,omitempty"`
 	Effect             string `json:"effect,omitempty"`
-	ExcludeProcessSet  bool   `json:"exclude_process_set,omitempty"`
-	ExcludeResourceSet bool   `json:"exclude_resource_set,omitempty"`
-	ExcludeUserSet     bool   `json:"exclude_user_set,omitempty"`
-	PartialMatch       bool   `json:"partial_match,omitempty"`
+	ExcludeProcessSet  bool   `json:"exclude_process_set"`
+	ExcludeResourceSet bool   `json:"exclude_resource_set"`
+	ExcludeUserSet     bool   `json:"exclude_user_set"`
+	PartialMatch       bool   `json:"partial_match"`
 	ProcessSetID       string `json:"process_set_id,omitempty"`
 	ResourceSetID      string `json:"resource_set_id,omitempty"`
 	UserSetID          string `json:"user_set_id,omitempty"`
@@ -462,7 +508,6 @@ type SecurityRuleUpdateJSON struct {
 
 type UpdateIDTKeyRulePolicyTFSDK struct {
 	CTEClientPolicyID types.String    `tfsdk:"policy_id"`
-	IDTKeyRuleID      types.String    `tfsdk:"rule_id"`
 	IDTKeyRule        IDTKeyRuleTFSDK `tfsdk:"rule"`
 }
 
@@ -482,7 +527,8 @@ type CTEProcessSetsListTFSDK struct {
 	Account     types.String                 `tfsdk:"account"`
 	CreateAt    types.String                 `tfsdk:"created_at"`
 	UpdatedAt   types.String                 `tfsdk:"updated_at"`
-	Processes   []CTEProcessSetListItemTFSDK `tfsdk:"resources"`
+	Labels      types.Map                    `tfsdk:"labels"`
+	Processes   []CTEProcessSetListItemTFSDK `tfsdk:"processes"`
 }
 
 type CTEProcessSetListItemJSON struct {
@@ -493,7 +539,8 @@ type CTEProcessSetListItemJSON struct {
 	Name        string                   `json:"name"`
 	UpdatedAt   string                   `json:"updatedAt"`
 	Description string                   `json:"description"`
-	Processes   []CTEProcessSetsListJSON `json:"resources"`
+	Labels      map[string]interface{}   `json:"labels"`
+	Processes   []CTEProcessSetsListJSON `json:"processes"`
 }
 
 type CTEProcessSetsListJSON struct {
@@ -505,79 +552,79 @@ type CTEProcessSetsListJSON struct {
 }
 
 type CTEProfilesListTFSDK struct {
-	ID                     types.String `tfsdk:"id"`
-	URI                    types.String `tfsdk:"uri"`
-	Account                types.String `tfsdk:"account"`
-	Application            types.String `tfsdk:"application"`
-	CreatedAt              types.String `tfsdk:"created_at"`
-	UpdatedAt              types.String `tfsdk:"updated_at"`
-	Name                   types.String `tfsdk:"name"`
-	Description            types.String `tfsdk:"description"`
-	LDTQOSCapCPUAllocation types.Bool   `tfsdk:"ldt_qos_cap_cpu_allocation"`
-	LDTQOSCapCPUPercent    types.Int64  `tfsdk:"ldt_qos_cpu_percent"`
-	LDTQOSRekeyOption      types.String `tfsdk:"ldt_qos_rekey_option"`
-	LDTQOSRekeyRate        types.Int64  `tfsdk:"ldt_qos_rekey_rate"`
-	ConciseLogging         types.Bool   `tfsdk:"concise_logging"`
-	ConnectTimeout         types.Int64  `tfsdk:"connect_timeout"`
-	LDTQOSSchedule         types.String `tfsdk:"ldt_qos_schedule"`
-	LDTQOSStatusCheckRate  types.Int64  `tfsdk:"ldt_qos_status_check_rate"`
-	MetadataScanInterval   types.Int64  `tfsdk:"metadata_scan_interval"`
-	MFAExemptUserSetID     types.String `tfsdk:"mfa_exempt_user_set_id"`
-	MFAExemptUserSetName   types.String `tfsdk:"mfa_exempt_user_set_name"`
-	OIDCConnectionID       types.String `tfsdk:"oidc_connection_id"`
-	OIDCConnectionName     types.String `tfsdk:"oidc_connection_name"`
-	RWPOperation           types.String `tfsdk:"rwp_operation"`
-	RWPProcessSet          types.String `tfsdk:"rwp_process_set"`
-	ServerResponseRate     types.Int64  `tfsdk:"server_response_rate"`
-	//QOSSchedules            []tfsdkCTEProfileQOSSchedule           `tfsdk:"qos_schedules"`
-	//ServerSettings          []tfsdkCTEProfileServiceSetting        `tfsdk:"server_settings"`
-	// ManagementServiceLogger tfsdkCTEProfileManagementServiceLogger `tfsdk:"management_service_logger"`
-	// PolicyEvaluationLogger  tfsdkCTEProfileManagementServiceLogger `tfsdk:"policy_evaluation_logger"`
-	// SecurityAdminLogger     tfsdkCTEProfileManagementServiceLogger `tfsdk:"security_admin_logger"`
-	// SystemAdminLogger       tfsdkCTEProfileManagementServiceLogger `tfsdk:"system_admin_logger"`
-	// FileSettings            tfsdkCTEProfileFileSettings            `tfsdk:"file_settings"`
-	// SyslogSettings          tfsdkCTEProfileSyslogSettings          `tfsdk:"syslog_settings"`
-	// UploadSettings          tfsdkCTEProfileUploadSettings          `tfsdk:"upload_settings"`
-	// DuplicateSettings       tfsdkCTEProfileDuplicateSettings       `tfsdk:"duplicate_settings"`
-	// CacheSettings           tfsdkCTEProfileCacheSettings           `tfsdk:"cache_settings"`
+	ID                      types.String                            `tfsdk:"id"`
+	URI                     types.String                            `tfsdk:"uri"`
+	Account                 types.String                            `tfsdk:"account"`
+	Application             types.String                            `tfsdk:"application"`
+	CreatedAt               types.String                            `tfsdk:"created_at"`
+	UpdatedAt               types.String                            `tfsdk:"updated_at"`
+	Name                    types.String                            `tfsdk:"name"`
+	Description             types.String                            `tfsdk:"description"`
+	LDTQOSCapCPUAllocation  types.Bool                              `tfsdk:"ldt_qos_cap_cpu_allocation"`
+	LDTQOSCapCPUPercent     types.Int64                             `tfsdk:"ldt_qos_cpu_percent"`
+	LDTQOSRekeyOption       types.String                            `tfsdk:"ldt_qos_rekey_option"`
+	LDTQOSRekeyRate         types.Int64                             `tfsdk:"ldt_qos_rekey_rate"`
+	ConciseLogging          types.Bool                              `tfsdk:"concise_logging"`
+	ConnectTimeout          types.Int64                             `tfsdk:"connect_timeout"`
+	LDTQOSSchedule          types.String                            `tfsdk:"ldt_qos_schedule"`
+	LDTQOSStatusCheckRate   types.Int64                             `tfsdk:"ldt_qos_status_check_rate"`
+	MetadataScanInterval    types.Int64                             `tfsdk:"metadata_scan_interval"`
+	MFAExemptUserSetID      types.String                            `tfsdk:"mfa_exempt_user_set_id"`
+	MFAExemptUserSetName    types.String                            `tfsdk:"mfa_exempt_user_set_name"`
+	OIDCConnectionID        types.String                            `tfsdk:"oidc_connection_id"`
+	OIDCConnectionName      types.String                            `tfsdk:"oidc_connection_name"`
+	RWPOperation            types.String                            `tfsdk:"rwp_operation"`
+	RWPProcessSet           types.String                            `tfsdk:"rwp_process_set"`
+	ServerResponseRate      types.Int64                             `tfsdk:"server_response_rate"`
+	QOSSchedules            []CTEProfileQOSScheduleTFSDK            `tfsdk:"qos_schedules"`
+	ServerSettings          []CTEProfileServiceSettingTFSDK         `tfsdk:"server_settings"`
+	ManagementServiceLogger *CTEProfileManagementServiceLoggerTFSDK `tfsdk:"management_service_logger"`
+	PolicyEvaluationLogger  *CTEProfileManagementServiceLoggerTFSDK `tfsdk:"policy_evaluation_logger"`
+	SecurityAdminLogger     *CTEProfileManagementServiceLoggerTFSDK `tfsdk:"security_admin_logger"`
+	SystemAdminLogger       *CTEProfileManagementServiceLoggerTFSDK `tfsdk:"system_admin_logger"`
+	FileSettings            *CTEProfileFileSettingsTFSDK            `tfsdk:"file_settings"`
+	SyslogSettings          *CTEProfileSyslogSettingsTFSDK          `tfsdk:"syslog_settings"`
+	UploadSettings          *CTEProfileUploadSettingsTFSDK          `tfsdk:"upload_settings"`
+	DuplicateSettings       *CTEProfileDuplicateSettingsTFSDK       `tfsdk:"duplicate_settings"`
+	CacheSettings           *CTEProfileCacheSettingsTFSDK           `tfsdk:"cache_settings"`
 }
 
 type CTEProfilesListJSON struct {
-	ID                     string `json:"id"`
-	URI                    string `json:"uri"`
-	Account                string `json:"account"`
-	Application            string `json:"application"`
-	CreatedAt              string `json:"created_at"`
-	UpdatedAt              string `json:"updated_at"`
-	Name                   string `json:"name"`
-	Description            string `json:"description"`
-	LDTQOSCapCPUAllocation bool   `json:"ldt_qos_cap_cpu_allocation"`
-	LDTQOSCapCPUPercent    int64  `json:"ldt_qos_cpu_percent"`
-	LDTQOSRekeyOption      string `json:"ldt_qos_rekey_option"`
-	LDTQOSRekeyRate        int64  `json:"ldt_qos_rekey_rate"`
-	ConciseLogging         bool   `json:"concise_logging"`
-	ConnectTimeout         int64  `json:"connect_timeout"`
-	LDTQOSSchedule         string `json:"ldt_qos_schedule"`
-	LDTQOSStatusCheckRate  int64  `json:"ldt_qos_status_check_rate"`
-	MetadataScanInterval   int64  `json:"metadata_scan_interval"`
-	MFAExemptUserSetID     string `json:"mfa_exempt_user_set_id"`
-	MFAExemptUserSetName   string `json:"mfa_exempt_user_set_name"`
-	OIDCConnectionID       string `json:"oidc_connection_id"`
-	OIDCConnectionName     string `json:"oidc_connection_name"`
-	RWPOperation           string `json:"rwp_operation"`
-	RWPProcessSet          string `json:"rwp_process_set"`
-	ServerResponseRate     int64  `json:"server_response_rate"`
-	// QOSSchedules            []jsonCTEProfileQOSSchedule           `json:"qos_schedules"`
-	// ServerSettings          []jsonCTEProfileServiceSetting        `json:"server_settings"`
-	// ManagementServiceLogger jsonCTEProfileManagementServiceLogger `json:"management_service_logger"`
-	// PolicyEvaluationLogger  jsonCTEProfileManagementServiceLogger `json:"policy_evaluation_logger"`
-	// SecurityAdminLogger     jsonCTEProfileManagementServiceLogger `json:"security_admin_logger"`
-	// SystemAdminLogger       jsonCTEProfileManagementServiceLogger `json:"system_admin_logger"`
-	// FileSettings            jsonCTEProfileFileSettings            `json:"file_settings"`
-	// SyslogSettings          jsonCTEProfileSyslogSettings          `json:"syslog_settings"`
-	// UploadSettings          jsonCTEProfileUploadSettings          `json:"upload_settings"`
-	// DuplicateSettings       jsonCTEProfileDuplicateSettings       `json:"duplicate_settings"`
-	// CacheSettings           jsonCTEProfileCacheSettings           `json:"cache_settings"`
+	ID                      string                                 `json:"id"`
+	URI                     string                                 `json:"uri"`
+	Account                 string                                 `json:"account"`
+	Application             string                                 `json:"application"`
+	CreatedAt               string                                 `json:"created_at"`
+	UpdatedAt               string                                 `json:"updated_at"`
+	Name                    string                                 `json:"name"`
+	Description             string                                 `json:"description"`
+	LDTQOSCapCPUAllocation  bool                                   `json:"ldt_qos_cap_cpu_allocation"`
+	LDTQOSCapCPUPercent     int64                                  `json:"ldt_qos_cpu_percent"`
+	LDTQOSRekeyOption       string                                 `json:"ldt_qos_rekey_option"`
+	LDTQOSRekeyRate         int64                                  `json:"ldt_qos_rekey_rate"`
+	ConciseLogging          bool                                   `json:"concise_logging"`
+	ConnectTimeout          int64                                  `json:"connect_timeout"`
+	LDTQOSSchedule          string                                 `json:"ldt_qos_schedule"`
+	LDTQOSStatusCheckRate   int64                                  `json:"ldt_qos_status_check_rate"`
+	MetadataScanInterval    int64                                  `json:"metadata_scan_interval"`
+	MFAExemptUserSetID      string                                 `json:"mfa_exempt_user_set_id"`
+	MFAExemptUserSetName    string                                 `json:"mfa_exempt_user_set_name"`
+	OIDCConnectionID        string                                 `json:"oidc_connection_id"`
+	OIDCConnectionName      string                                 `json:"oidc_connection_name"`
+	RWPOperation            string                                 `json:"rwp_operation"`
+	RWPProcessSet           string                                 `json:"rwp_process_set"`
+	ServerResponseRate      int64                                  `json:"server_response_rate"`
+	QOSSchedules            []CTEProfileQOSScheduleJSON            `json:"qos_schedules"`
+	ServerSettings          []CTEProfileServiceSettingJSON         `json:"server_settings"`
+	ManagementServiceLogger CTEProfileManagementServiceLoggerJSON  `json:"management_service_logger"`
+	PolicyEvaluationLogger  *CTEProfileManagementServiceLoggerJSON `json:"policy_evaluation_logger"`
+	SecurityAdminLogger     *CTEProfileManagementServiceLoggerJSON `json:"security_admin_logger"`
+	SystemAdminLogger       *CTEProfileManagementServiceLoggerJSON `json:"system_admin_logger"`
+	FileSettings            *CTEProfileFileSettingsJSON            `json:"file_settings"`
+	SyslogSettings          *CTEProfileSyslogSettingsJSON          `json:"syslog_settings"`
+	UploadSettings          *CTEProfileUploadSettingsJSON          `json:"upload_settings"`
+	DuplicateSettings       *CTEProfileDuplicateSettingsJSON       `json:"duplicate_settings"`
+	CacheSettings           *CTEProfileCacheSettingsJSON           `json:"cache_settings"`
 }
 
 type CTEResourceSetListItemTFSDK struct {
@@ -597,6 +644,7 @@ type CTEResourceSetsListTFSDK struct {
 	CreateAt    types.String                  `tfsdk:"created_at"`
 	UpdatedAt   types.String                  `tfsdk:"updated_at"`
 	Type        types.String                  `tfsdk:"type"`
+	Labels      types.Map                     `tfsdk:"labels"`
 	Resources   []CTEResourceSetListItemTFSDK `tfsdk:"resources"`
 }
 
@@ -609,6 +657,7 @@ type CTEResourceSetsListJSON struct {
 	UpdatedAt   string                       `json:"updatedAt"`
 	Description string                       `json:"description"`
 	Type        string                       `json:"type"`
+	Labels      map[string]interface{}       `json:"labels"`
 	Resources   []CTEResourceSetListItemJSON `json:"resources"`
 }
 
@@ -636,24 +685,26 @@ type CTESignatureSetsListTFSDK struct {
 	UpdatedBy          types.String   `tfsdk:"updated_by"`
 	DockerImgID        types.String   `tfsdk:"docker_img_id"`
 	DockerContID       types.String   `tfsdk:"docker_cont_id"`
+	Labels             types.Map      `tfsdk:"labels"`
 }
 
 type SignatureSetJSON struct {
-	ID                 string   `json:"id"`
-	URI                string   `json:"uri"`
-	Account            string   `json:"account"`
-	CreatedAt          string   `json:"created_at"`
-	UpdatedAt          string   `json:"updated_at"`
-	Name               string   `json:"name"`
-	Type               string   `json:"type"`
-	Description        string   `json:"description"`
-	ReferenceVersion   int64    `json:"reference_version"`
-	SourceList         []string `json:"source_list"`
-	SigningStatus      string   `json:"signing_status"`
-	PercentageComplete int64    `json:"percentage_complete"`
-	UpdatedBy          string   `json:"updated_by"`
-	DockerImgID        string   `json:"docker_img_id"`
-	DockerContID       string   `json:"docker_cont_id"`
+	ID                 string                 `json:"id"`
+	URI                string                 `json:"uri"`
+	Account            string                 `json:"account"`
+	CreatedAt          string                 `json:"createdAt"`
+	UpdatedAt          string                 `json:"updatedAt"`
+	Name               string                 `json:"name"`
+	Type               string                 `json:"type"`
+	Description        string                 `json:"description"`
+	ReferenceVersion   int64                  `json:"reference_version"`
+	SourceList         []string               `json:"source_list"`
+	SigningStatus      string                 `json:"signing_status"`
+	PercentageComplete int64                  `json:"percentage_complete"`
+	UpdatedBy          string                 `json:"updated_by"`
+	DockerImgID        string                 `json:"docker_img_id"`
+	DockerContID       string                 `json:"docker_cont_id"`
+	Labels             map[string]interface{} `json:"labels"`
 }
 
 type CTEUserSetsListItemTFSDK struct {
@@ -673,6 +724,7 @@ type CTEUserSetsListTFSDK struct {
 	Account     types.String               `tfsdk:"account"`
 	CreateAt    types.String               `tfsdk:"created_at"`
 	UpdatedAt   types.String               `tfsdk:"updated_at"`
+	Labels      types.Map                  `tfsdk:"labels"`
 	Users       []CTEUserSetsListItemTFSDK `tfsdk:"users"`
 }
 
@@ -684,15 +736,16 @@ type CTEUserSetsListJSON struct {
 	Name        string                    `json:"name"`
 	UpdatedAt   string                    `json:"updatedAt"`
 	Description string                    `json:"description"`
+	Labels      map[string]interface{}    `json:"labels"`
 	Users       []CTEUserSetsListItemJSON `json:"users"`
 }
 
 type CTEUserSetsListItemJSON struct {
 	Index    int64  `json:"index"`
-	GID      int64  `json:"gid"`
+	GID      *int64 `json:"gid"`
 	GName    string `json:"gname"`
 	OSDomain string `json:"os_domain"`
-	UID      int64  `json:"uid"`
+	UID      *int64 `json:"uid"`
 	UName    string `json:"uname"`
 }
 
@@ -718,7 +771,14 @@ type CTEClientGuardPointTFSDK struct {
 	ID               types.String                   `tfsdk:"id"`
 	CTEClientID      types.String                   `tfsdk:"client_id"`
 	GuardPaths       []types.String                 `tfsdk:"guard_paths"`
-	GuardPointParams CTEClientGuardPointParamsTFSDK `tfsdk:"guard_point_params" validate:"required"`
+	GuardPointParams CTEClientGuardPointParamsTFSDK `tfsdk:"guard_point_params"`
+}
+
+type CTEClientGroupGuardPointTFSDK struct {
+	ID               types.String                   `tfsdk:"id"`
+	CTEClientGroupID types.String                   `tfsdk:"client_group_id"`
+	GuardPaths       []types.String                 `tfsdk:"guard_paths"`
+	GuardPointParams CTEClientGuardPointParamsTFSDK `tfsdk:"guard_point_params"`
 }
 
 type CTEClientGuardPointParamsJSON struct {
@@ -754,16 +814,127 @@ type UpdateCTEGuardPointTFSDK struct {
 }
 
 type UpdateCTEGuardPointJSON struct {
-	IsDataClassificationEnabled bool   `json:"data_classification_enabled"`
-	IsDataLineageEnabled        bool   `json:"data_lineage_enabled"`
-	IsGuardEnabled              bool   `json:"guard_enabled"`
-	IsMFAEnabled                bool   `json:"mfa_enabled,omitempty"`
-	NWShareCredentialsID        string `json:"network_share_credentials_id,omitempty"`
+	IsGuardEnabled       bool   `json:"guard_enabled"`
+	IsMFAEnabled         bool   `json:"mfa_enabled,omitempty"`
+	NWShareCredentialsID string `json:"network_share_credentials_id,omitempty"`
 }
 
 type CTEClientGuardPointUnguardJSON struct {
 	GuardPointIdList []string `json:"guard_point_id_list" validate:"required"`
 }
+
+type CTEClientGuardPointListTFSDK struct {
+	ID                        types.String `tfsdk:"id"`
+	URI                       types.String `tfsdk:"uri"`
+	Account                   types.String `tfsdk:"account"`
+	Application               types.String `tfsdk:"application"`
+	DevAccount                types.String `tfsdk:"dev_account"`
+	CreatedAt                 types.String `tfsdk:"created_at"`
+	UpdatedAt                 types.String `tfsdk:"updated_at"`
+	ClientID                  types.String `tfsdk:"client_id"`
+	ClientGroupID             types.String `tfsdk:"client_group_id"`
+	ClientName                types.String `tfsdk:"client_name"`
+	ClientGroupName           types.String `tfsdk:"client_group_name"`
+	GuardPointType            types.String `tfsdk:"guard_point_type"`
+	GuardEnabled              types.Bool   `tfsdk:"guard_enabled"`
+	IsAutomountEnabled        types.Bool   `tfsdk:"automount_enabled"`
+	GuardPath                 types.String `tfsdk:"guard_path"`
+	PolicyID                  types.String `tfsdk:"policy_id"`
+	PendingOperation          types.String `tfsdk:"pending_operation"`
+	DiskName                  types.String `tfsdk:"disk_name"`
+	DiskgroupName             types.String `tfsdk:"diskgroup_name"`
+	PreserveSparseRegions     types.Bool   `tfsdk:"preserve_sparse_regions"`
+	DockerImgID               types.String `tfsdk:"docker_img_id"`
+	DockerContID              types.String `tfsdk:"docker_cont_id"`
+	EarlyAccess               types.Bool   `tfsdk:"early_access"`
+	Type                      types.String `tfsdk:"type"`
+	PolicyName                types.String `tfsdk:"policy_name"`
+	NetworkShareCredentialsID types.String `tfsdk:"network_share_credentials_id"`
+	DisabledReason            types.String `tfsdk:"disabled_reason"`
+	GuardPointState           types.String `tfsdk:"guard_point_state"`
+	Attr                      types.Map    `tfsdk:"attr"`
+	IsDeviceIDTCapable        types.Bool   `tfsdk:"is_idt_capable_device"`
+	IsCIFSEnabled             types.Bool   `tfsdk:"cifs_enabled"`
+	IsDeviceESGCapable        types.Bool   `tfsdk:"is_esg_capable_device"`
+	Metadata                  types.String `tfsdk:"metadata"`
+	CSIGuardStatus            types.String `tfsdk:"csi_guard_status"`
+	MFAEnabled                types.Bool   `tfsdk:"mfa_enabled"`
+	NativeDomain              types.String `tfsdk:"native_domain"`
+	GPNetworkPath             types.String `tfsdk:"gp_network_path"`
+	DpsName                   types.String `tfsdk:"dps_name"`
+	DpsID                     types.String `tfsdk:"dps_id"`
+}
+
+type CTEClientGuardPointListJSON struct {
+	ID                        string                 `json:"id"`
+	URI                       string                 `json:"uri"`
+	Account                   string                 `json:"account"`
+	Application               string                 `json:"application"`
+	DevAccount                string                 `json:"dev_account"`
+	CreatedAt                 string                 `json:"created_at"`
+	UpdatedAt                 string                 `json:"updated_at"`
+	ClientID                  string                 `json:"client_id"`
+	ClientGroupID             string                 `json:"client_group_id"`
+	ClientName                string                 `json:"client_name"`
+	ClientGroupName           string                 `json:"client_group_name"`
+	GuardPointType            string                 `json:"guard_point_type"`
+	GuardEnabled              bool                   `json:"guard_enabled"`
+	IsAutomountEnabled        bool                   `json:"automount_enabled"`
+	GuardPath                 string                 `json:"guard_path"`
+	PolicyID                  string                 `json:"policy_id"`
+	PendingOperation          string                 `json:"pending_operation"`
+	DiskName                  string                 `json:"disk_name"`
+	DiskgroupName             string                 `json:"diskgroup_name"`
+	PreserveSparseRegions     bool                   `json:"preserve_sparse_regions"`
+	DockerImgID               string                 `json:"docker_img_id"`
+	DockerContID              string                 `json:"docker_cont_id"`
+	EarlyAccess               bool                   `json:"early_access"`
+	Type                      string                 `json:"type"`
+	PolicyName                string                 `json:"policy_name"`
+	NetworkShareCredentialsID string                 `json:"network_share_credentials_id"`
+	DisabledReason            string                 `json:"disabled_reason"`
+	GuardPointState           string                 `json:"guard_point_state"`
+	Attr                      map[string]interface{} `json:"attr"`
+	IsDeviceIDTCapable        bool                   `json:"is_idt_capable_device"`
+	IsCIFSEnabled             bool                   `json:"cifs_enabled"`
+	IsDeviceESGCapable        bool                   `json:"is_esg_capable_device"`
+	Metadata                  string                 `json:"metadata"`
+	CSIGuardStatus            string                 `json:"csi_guard_status"`
+	MFAEnabled                bool                   `json:"mfa_enabled"`
+	NativeDomain              string                 `json:"native_domain"`
+	GPNetworkPath             string                 `json:"gp_network_path"`
+	DpsName                   string                 `json:"dps_name"`
+	DpsID                     string                 `json:"dps_id"`
+}
+
+type CTEClientGroupListTFSDK struct {
+	ID                     types.String `tfsdk:"id"`
+	URI                    types.String `tfsdk:"uri"`
+	Account                types.String `tfsdk:"account"`
+	Application            types.String `tfsdk:"application"`
+	DevAccount             types.String `tfsdk:"dev_account"`
+	CreatedAt              types.String `tfsdk:"created_at"`
+	Name                   types.String `tfsdk:"name"`
+	UpdatedAt              types.String `tfsdk:"updated_at"`
+	DomainList             types.List   `tfsdk:"domain_list"`
+	AccountList            types.List   `tfsdk:"account_list"`
+	Description            types.String `tfsdk:"description"`
+	EnableDomainSharing    types.Bool   `tfsdk:"enable_domain_sharing"`
+	NativeDomain           types.String `tfsdk:"native_domain"`
+	ClusterType            types.String `tfsdk:"cluster_type"`
+	ClientLocked           types.Bool   `tfsdk:"client_locked"`
+	SystemLocked           types.Bool   `tfsdk:"system_locked"`
+	PasswordCreationMethod types.String `tfsdk:"password_creation_method"`
+	CommunicationEnabled   types.Bool   `tfsdk:"communication_enabled"`
+	AuthBinaries           types.String `tfsdk:"auth_binaries"`
+	Capabilities           types.String `tfsdk:"capabilities"`
+	EnabledCapabilities    types.String `tfsdk:"enabled_capabilities"`
+	ProfileID              types.String `tfsdk:"profile_id"`
+	ProfileName            types.String `tfsdk:"profile_name"`
+	LDTStatus              types.String `tfsdk:"ldt_status"`
+	EnableLDTPassive       types.Bool   `tfsdk:"enable_ldt_passive"`
+}
+
 type CTEClientGroupTFSDK struct {
 	ID                      types.String   `tfsdk:"id"`
 	ClusterType             types.String   `tfsdk:"cluster_type"`
@@ -798,11 +969,11 @@ type CTEClientGroupJSON struct {
 	Password                string   `json:"password,omitempty"`
 	PasswordCreationMethod  string   `json:"password_creation_method,omitempty"`
 	ProfileID               string   `json:"profile_id,omitempty"`
-	ClientLocked            bool     `json:"client_locked,omitempty"`
-	EnableDomainSharing     bool     `json:"enable_domain_sharing,omitempty"`
+	ClientLocked            bool     `json:"client_locked"`
+	EnableDomainSharing     bool     `json:"enable_domain_sharing"`
 	EnabledCapabilities     string   `json:"enabled_capabilities,omitempty"`
 	SharedDomainList        []string `json:"shared_domain_list"`
-	SystemLocked            bool     `json:"system_locked,omitempty"`
+	SystemLocked            bool     `json:"system_locked"`
 	AuthBinaries            string   `json:"auth_binaries,omitempty"`
 	ReSign                  bool     `json:"re_sign,omitempty"`
 	ClientList              []string `json:"client_list"`
@@ -811,6 +982,77 @@ type CTEClientGroupJSON struct {
 	Paused                  bool     `json:"paused"`
 }
 
+type CTEClientGroupListJSON struct {
+	ID                     string `json:"id"`
+	URI                    string `json:"uri"`
+	Account                string `json:"account"`
+	Application            string `json:"application"`
+	DevAccount             string `json:"dev_account"`
+	CreatedAt              string `json:"created_at"`
+	Name                   string `json:"name"`
+	UpdatedAt              string `json:"updated_at"`
+	DomainList             string `json:"domain_list"`
+	AccountList            string `json:"account_list"`
+	Description            string `json:"description"`
+	EnableDomainSharing    bool   `json:"enable_domain_sharing"`
+	NativeDomain           string `json:"native_domain"`
+	ClusterType            string `json:"cluster_type"`
+	ClientLocked           bool   `json:"client_locked"`
+	SystemLocked           bool   `json:"system_locked"`
+	PasswordCreationMethod string `json:"password_creation_method"`
+	CommunicationEnabled   bool   `json:"communication_enabled"`
+	AuthBinaries           string `json:"auth_binaries"`
+	Capabilities           string `json:"capabilities"`
+	EnabledCapabilities    string `json:"enabled_capabilities"`
+	ProfileID              string `json:"profile_id"`
+	ProfileName            string `json:"profile_name"`
+	LDTStatus              string `json:"ldt_status"`
+	EnableLDTPassive       bool   `json:"enable_ldt_passive"`
+}
+
+type CTEClientGroupDesignatedPrimarySetListTFSDK struct {
+	ID                    types.String   `tfsdk:"id"`
+	URI                   types.String   `tfsdk:"uri"`
+	Name                  types.String   `tfsdk:"name"`
+	Account               types.String   `tfsdk:"account"`
+	Application           types.String   `tfsdk:"application"`
+	DevAccount            types.String   `tfsdk:"dev_account"`
+	CreatedAt             types.String   `tfsdk:"created_at"`
+	UpdatedAt             types.String   `tfsdk:"updated_at"`
+	ClientGroupID         types.String   `tfsdk:"client_group_id"`
+	LdtCommGroupServiceID types.String   `tfsdk:"ldt_comm_group_service_id"`
+	PrimaryClientIDList   []types.String `tfsdk:"primary_client_id_list"`
+	PrimaryClientNameList []types.String `tfsdk:"primary_client_name_list"`
+}
+
+type CTEClientGroupDesignatedPrimarySetListJSON struct {
+	ID                    string `json:"id"`
+	URI                   string `json:"uri"`
+	Name                  string `json:"name"`
+	Account               string `json:"account"`
+	Application           string `json:"application"`
+	DevAccount            string `json:"dev_account"`
+	CreatedAt             string `json:"createdAt"`
+	UpdatedAt             string `json:"updatedAt"`
+	ClientGroupID         string `json:"client_group_id"`
+	LdtCommGroupServiceID string `json:"ldt_comm_group_service_id"`
+	PrimaryClientIDList   string `json:"primary_client_id_list"`
+	PrimaryClientNameList string `json:"primary_client_name_list"`
+}
+
+type CTECSIGroupListTFSDK struct {
+	ID                types.String `tfsdk:"id"`
+	Name              types.String `tfsdk:"name"`
+	Description       types.String `tfsdk:"description"`
+	URI               types.String `tfsdk:"uri"`
+	Account           types.String `tfsdk:"account"`
+	CreatedAt         types.String `tfsdk:"created_at"`
+	UpdatedAt         types.String `tfsdk:"updated_at"`
+	K8sNamespace      types.String `tfsdk:"k8s_namespace"`
+	K8sStorageClass   types.String `tfsdk:"k8s_storage_class"`
+	ClientProfileName types.String `tfsdk:"client_profile_name"`
+	ClientProfileID   types.String `tfsdk:"client_profile_id"`
+}
 type CTECSIGroupTFSDK struct {
 	ID            types.String   `tfsdk:"id"`
 	Namespace     types.String   `tfsdk:"kubernetes_namespace"`
@@ -822,7 +1064,7 @@ type CTECSIGroupTFSDK struct {
 	PolicyList    []types.String `tfsdk:"policy_list"`
 	ClientID      types.String   `tfsdk:"client_id"`
 	GuardEnabled  types.Bool     `tfsdk:"guard_enabled"`
-	GPID          types.String   `tfsdk:"gp_id"`
+	GPID          types.List     `tfsdk:"gp_id"`
 	OpType        types.String   `tfsdk:"op_type"`
 }
 
@@ -837,8 +1079,35 @@ type CTECSIGroupJSON struct {
 	PolicyList    []string `json:"policy_list"`
 	ClientID      string   `json:"client_id"`
 	GuardEnabled  bool     `json:"guard_enabled"`
-	GPID          string   `json:"gp_id"`
+	GPID          []string `json:"gp_id"`
 	OpType        string   `json:"op_type"`
+}
+
+type CTECSIGroupListJSON struct {
+	ID                string `json:"id"`
+	Name              string `json:"name"`
+	Description       string `json:"description"`
+	URI               string `json:"uri"`
+	Account           string `json:"account"`
+	CreatedAt         string `json:"createdAt"`
+	UpdatedAt         string `json:"updatedAt"`
+	K8sNamespace      string `json:"k8s_namespace"`
+	K8sStorageClass   string `json:"k8s_storage_class"`
+	ClientProfileName string `json:"client_profile_name"`
+	ClientProfileID   string `json:"client_profile_id"`
+}
+
+type LDTGroupCommSvcListTFSDK struct {
+	ID           types.String `tfsdk:"id"`
+	Name         types.String `tfsdk:"name"`
+	URI          types.String `tfsdk:"uri"`
+	Account      types.String `tfsdk:"account"`
+	CreatedAt    types.String `tfsdk:"created_at"`
+	UpdatedAt    types.String `tfsdk:"updated_at"`
+	Description  types.String `tfsdk:"description"`
+	DevAccount   types.String `tfsdk:"dev_account"`
+	HealthStatus types.String `tfsdk:"health_status"`
+	Application  types.String `tfsdk:"application"`
 }
 
 type LDTGroupCommSvcTFSDK struct {
@@ -853,6 +1122,19 @@ type LDTGroupCommSvcJSON struct {
 	Name        string   `json:"name"`
 	Description string   `json:"description"`
 	ClientList  []string `json:"client_list"`
+}
+
+type LDTGroupCommSvcListJSON struct {
+	ID           string `json:"id"`
+	Name         string `json:"name"`
+	URI          string `json:"uri"`
+	Account      string `json:"account"`
+	CreatedAt    string `json:"createdAt"`
+	UpdatedAt    string `json:"updatedAt"`
+	Description  string `json:"description"`
+	DevAccount   string `json:"devAccount"`
+	HealthStatus string `json:"health_status"`
+	Application  string `json:"application"`
 }
 
 type CTEPolicyAddKeyRuleTFSDK struct {
@@ -1025,7 +1307,7 @@ type CTEProfileDuplicateSettingsJSON struct {
 }
 
 type CTEProfileFileSettingsJSON struct {
-	AllowPurge    bool   `json:"allow_purge,omitempty"`
+	AllowPurge    bool   `json:"allow_purge"`
 	FileThreshold string `json:"file_threshold,omitempty"`
 	MaxFileSize   int64  `json:"max_file_size,omitempty"`
 	MaxOldFiles   int64  `json:"max_old_files,omitempty"`
@@ -1033,18 +1315,18 @@ type CTEProfileFileSettingsJSON struct {
 
 type CTEProfileManagementServiceLoggerJSON struct {
 	Duplicates    string `json:"duplicates,omitempty"`
-	FileEnabled   bool   `json:"file_enabled,omitempty"`
-	SyslogEnabled bool   `json:"syslog_enabled,omitempty"`
+	FileEnabled   bool   `json:"file_enabled"`
+	SyslogEnabled bool   `json:"syslog_enabled"`
 	Threshold     string `json:"threshold,omitempty"`
-	UploadEnabled bool   `json:"upload_enabled,omitempty"`
+	UploadEnabled bool   `json:"upload_enabled"`
 }
 
 type CTEProfileQOSScheduleJSON struct {
-	EndTimeHour   int64  `json:"end_time_hour,omitempty"`
-	EndTimeMin    int64  `json:"end_time_min,omitempty"`
+	EndTimeHour   int64  `json:"end_time_hour"`
+	EndTimeMin    int64  `json:"end_time_minute"`
 	EndWeekday    string `json:"end_weekday,omitempty"`
-	StartTimeHour int64  `json:"start_time_hour,omitempty"`
-	StartTimeMin  int64  `json:"start_time_min,omitempty"`
+	StartTimeHour int64  `json:"start_time_hour"`
+	StartTimeMin  int64  `json:"start_time_minute"`
 	StartWeekday  string `json:"start_weekday,omitempty"`
 }
 
@@ -1064,14 +1346,14 @@ type CTEProfileSyslogSettingServerJSON struct {
 }
 
 type CTEProfileSyslogSettingsJSON struct {
-	Local     bool                                `json:"local,omitempty"`
+	Local     bool                                `json:"local"`
 	Servers   []CTEProfileSyslogSettingServerJSON `json:"servers,omitempty"`
 	Threshold string                              `json:"syslog_threshold,omitempty"`
 }
 
 type CTEProfileUploadSettingsJSON struct {
 	ConnectionTimeout    int64  `json:"connection_timeout,omitempty"`
-	DropIfBusy           bool   `json:"drop_if_busy,omitempty"`
+	DropIfBusy           bool   `json:"drop_if_busy"`
 	JobCompletionTimeout int64  `json:"job_completion_timeout,omitempty"`
 	MaxInterval          int64  `json:"max_interval,omitempty"`
 	MaxMessages          int64  `json:"max_messages,omitempty"`
@@ -1082,13 +1364,13 @@ type CTEProfileUploadSettingsJSON struct {
 type CTEProfileJSON struct {
 	Name                    string                                 `json:"name"`
 	CacheSettings           *CTEProfileCacheSettingsJSON           `json:"cache_settings,omitempty"`
-	ConciseLogging          bool                                   `json:"concise_logging,omitempty"`
+	ConciseLogging          bool                                   `json:"concise_logging"`
 	ConnectTimeout          int64                                  `json:"connect_timeout,omitempty"`
 	Description             string                                 `json:"description,omitempty"`
 	DuplicateSettings       *CTEProfileDuplicateSettingsJSON       `json:"duplicate_settings,omitempty"`
 	FileSettings            *CTEProfileFileSettingsJSON            `json:"file_settings,omitempty"`
 	Labels                  map[string]interface{}                 `json:"labels,omitempty"`
-	LDTQOSCapCPUAllocation  bool                                   `json:"ldt_qos_cap_cpu_allocation,omitempty"`
+	LDTQOSCapCPUAllocation  bool                                   `json:"ldt_qos_cap_cpu_allocation"`
 	LDTQOSCapCPUPercent     int64                                  `json:"ldt_qos_cpu_percent,omitempty"`
 	LDTQOSRekeyOption       string                                 `json:"ldt_qos_rekey_option,omitempty"`
 	LDTQOSRekeyRate         int64                                  `json:"ldt_qos_rekey_rate,omitempty"`
@@ -1223,9 +1505,29 @@ type CTEUserSetTFSDK struct {
 }
 
 type CTEUserJSON struct {
-	GID      int    `json:"gid"`
+	GID      *int   `json:"gid"`
 	GName    string `json:"gname"`
 	OSDomain string `json:"os_domain"`
-	UID      int    `json:"uid"`
+	UID      *int   `json:"uid"`
 	UName    string `json:"uname"`
+}
+
+type CTEClientGroupDesignatedPrimarySetTFSDK struct {
+	ID                    types.String `tfsdk:"id"`
+	ClientGroupID         types.String `tfsdk:"client_group_id"`
+	Name                  types.String `tfsdk:"name"`
+	ClientList            types.String `tfsdk:"client_list"`
+	LDTCommGroupServiceID types.String `tfsdk:"ldt_comm_group_service_id"`
+}
+
+// JSON struct for Create request body (POST)
+type CTEClientGroupDesignatedPrimarySetJSON struct {
+	Name                  string `json:"name"`
+	ClientList            string `json:"client_list"`
+	LDTCommGroupServiceID string `json:"ldt_comm_group_service_id"`
+}
+
+// JSON struct for Update request body (PATCH) — only client_list is updatable
+type CTEClientGroupDesignatedPrimarySetUpdateJSON struct {
+	ClientList string `json:"client_list"`
 }
