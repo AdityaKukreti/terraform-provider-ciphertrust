@@ -155,7 +155,6 @@ func (r *resourceCTEClientGP) Create(ctx context.Context, req resource.CreateReq
 	if resp.Diagnostics.HasError() {
 		return
 	}
-
 	guardpointParamsPlan = plan.GuardPointParams
 	if plan.GuardPointParams.GPType.ValueString() != "" && plan.GuardPointParams.GPType.ValueString() != types.StringNull().ValueString() {
 		guardpointParamsPayload.GPType = plan.GuardPointParams.GPType.ValueString()
@@ -191,7 +190,7 @@ func (r *resourceCTEClientGP) Create(ctx context.Context, req resource.CreateReq
 	if guardpointParamsPlan.IsDeviceIDTCapable.ValueBool() != types.BoolNull().ValueBool() {
 		guardpointParamsPayload.IsDeviceIDTCapable = bool(guardpointParamsPlan.IsDeviceIDTCapable.ValueBool())
 	}
-	if plan.GuardPointParams.IsMFAEnabled.ValueBool() != types.BoolNull().IsNull() {
+	if plan.GuardPointParams.IsMFAEnabled.ValueBool() != types.BoolNull().ValueBool() {
 		guardpointParamsPayload.IsMFAEnabled = plan.GuardPointParams.IsMFAEnabled.ValueBool()
 	}
 	if guardpointParamsPlan.NWShareCredentialsID.ValueString() != "" && guardpointParamsPlan.NWShareCredentialsID.ValueString() != types.StringNull().ValueString() {
@@ -281,15 +280,8 @@ func (r *resourceCTEClientGP) Update(ctx context.Context, req resource.UpdateReq
 	}
 	id_list := strings.Split(state.ID.ValueString(), ",")
 	var id []string
-
 	guardpointParamsPlan = plan.GuardPointParams
 
-	if guardpointParamsPlan.IsDataClassificationEnabled.ValueBool() != types.BoolNull().ValueBool() {
-		payload.IsDataClassificationEnabled = bool(guardpointParamsPlan.IsDataClassificationEnabled.ValueBool())
-	}
-	if guardpointParamsPlan.IsDataLineageEnabled.ValueBool() != types.BoolNull().ValueBool() {
-		payload.IsDataLineageEnabled = bool(guardpointParamsPlan.IsDataLineageEnabled.ValueBool())
-	}
 	if guardpointParamsPlan.IsGuardEnabled.ValueBool() != types.BoolNull().ValueBool() {
 		payload.IsGuardEnabled = guardpointParamsPlan.IsGuardEnabled.ValueBool()
 	}

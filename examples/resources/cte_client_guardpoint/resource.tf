@@ -29,7 +29,7 @@ provider "ciphertrust" {
 }
 
 # Add a resource of type CTE guardpoint to guard paths /test1 and /test2
-resource "ciphertrust_cte_guardpoint" "dir_auto_gp" {
+resource "ciphertrust_cte_client_guardpoint" "dir_auto_gp" {
   # List of GP paths
   guard_paths = ["/test1", "/test2"]
 

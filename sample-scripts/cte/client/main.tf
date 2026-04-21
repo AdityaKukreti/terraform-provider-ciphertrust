@@ -13,9 +13,10 @@ provider "ciphertrust" {
 	password = "ChangeMe101!"
 }
 
+
 # Creating a client with Password_creation method as GENERATE
-resource "ciphertrust_cte_client" "client" {
-  name                     = "test_client"
+resource "ciphertrust_cte_client" "client1" {
+  name                     = "test_client1"
   password_creation_method = "GENERATE"
   description              = "Temp host for testing."
   registration_allowed     = true
@@ -23,13 +24,17 @@ resource "ciphertrust_cte_client" "client" {
   client_type              = "FS"
 }
 
+
 # Creating a client with Password_creation method as MANUAL
-resource "ciphertrust_cte_client" "client" {
-  name                     = "test_client1"
+resource "ciphertrust_cte_client" "client2" {
+  name                     = "test_client2"
   password_creation_method = "MANUAL"
-  password                 = "redacted"
+  password                 = "redactEd@123"
   description              = "Temp host for testing."
   registration_allowed     = true
   communication_enabled    = true
   client_type              = "FS"
+  client_locked = true
+  system_locked = true
+
 }
