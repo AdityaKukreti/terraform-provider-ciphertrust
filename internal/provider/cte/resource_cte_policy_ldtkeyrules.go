@@ -117,28 +117,35 @@ func (r *resourceCTEPolicyLDTKeyRule) Create(ctx context.Context, req resource.C
 	var ldtKeyRules []LDTRuleJSON
 	for _, ldtKeyRule := range plan.LDTKeyRules {
 		var ldtKeyRuleJSON LDTRuleJSON
-		var ldtKeyRuleCurrentKey CurrentKeyJSON
-		var ldtKeyRuleTransformationKey TransformationKeyJSON
 		if ldtKeyRule.ResourceSetID.ValueString() != "" && ldtKeyRule.ResourceSetID.ValueString() != types.StringNull().ValueString() {
 			ldtKeyRuleJSON.ResourceSetID = string(ldtKeyRule.ResourceSetID.ValueString())
 		}
 		if ldtKeyRule.IsExclusionRule.ValueBool() != types.BoolNull().ValueBool() {
 			ldtKeyRuleJSON.IsExclusionRule = bool(ldtKeyRule.IsExclusionRule.ValueBool())
 		}
-		if ldtKeyRule.CurrentKey.KeyID.ValueString() != "" && ldtKeyRule.CurrentKey.KeyID.ValueString() != types.StringNull().ValueString() {
-			ldtKeyRuleCurrentKey.KeyID = string(ldtKeyRule.CurrentKey.KeyID.ValueString())
+
+		if ldtKeyRule.CurrentKey != nil {
+			var ldtKeyRuleCurrentKey CurrentKeyJSON
+			if ldtKeyRule.CurrentKey.KeyID.ValueString() != "" && ldtKeyRule.CurrentKey.KeyID.ValueString() != types.StringNull().ValueString() {
+				ldtKeyRuleCurrentKey.KeyID = string(ldtKeyRule.CurrentKey.KeyID.ValueString())
+			}
+			if ldtKeyRule.CurrentKey.KeyType.ValueString() != "" && ldtKeyRule.CurrentKey.KeyType.ValueString() != types.StringNull().ValueString() {
+				ldtKeyRuleCurrentKey.KeyType = string(ldtKeyRule.CurrentKey.KeyType.ValueString())
+			}
+			ldtKeyRuleJSON.CurrentKey = ldtKeyRuleCurrentKey
 		}
-		if ldtKeyRule.CurrentKey.KeyType.ValueString() != "" && ldtKeyRule.CurrentKey.KeyType.ValueString() != types.StringNull().ValueString() {
-			ldtKeyRuleCurrentKey.KeyType = string(ldtKeyRule.CurrentKey.KeyType.ValueString())
+
+		if ldtKeyRule.TransformationKey != nil {
+			var ldtKeyRuleTransformationKey TransformationKeyJSON
+			if ldtKeyRule.TransformationKey.KeyID.ValueString() != "" && ldtKeyRule.TransformationKey.KeyID.ValueString() != types.StringNull().ValueString() {
+				ldtKeyRuleTransformationKey.KeyID = string(ldtKeyRule.TransformationKey.KeyID.ValueString())
+			}
+			if ldtKeyRule.TransformationKey.KeyType.ValueString() != "" && ldtKeyRule.TransformationKey.KeyType.ValueString() != types.StringNull().ValueString() {
+				ldtKeyRuleTransformationKey.KeyType = string(ldtKeyRule.TransformationKey.KeyType.ValueString())
+			}
+			ldtKeyRuleJSON.TransformationKey = ldtKeyRuleTransformationKey
 		}
-		if ldtKeyRule.TransformationKey.KeyID.ValueString() != "" && ldtKeyRule.TransformationKey.KeyID.ValueString() != types.StringNull().ValueString() {
-			ldtKeyRuleTransformationKey.KeyID = string(ldtKeyRule.TransformationKey.KeyID.ValueString())
-		}
-		if ldtKeyRule.TransformationKey.KeyType.ValueString() != "" && ldtKeyRule.TransformationKey.KeyType.ValueString() != types.StringNull().ValueString() {
-			ldtKeyRuleTransformationKey.KeyType = string(ldtKeyRule.TransformationKey.KeyType.ValueString())
-		}
-		ldtKeyRuleJSON.CurrentKey = ldtKeyRuleCurrentKey
-		ldtKeyRuleJSON.TransformationKey = ldtKeyRuleTransformationKey
+
 		ldtKeyRules = append(ldtKeyRules, ldtKeyRuleJSON)
 	}
 
@@ -223,28 +230,35 @@ func (r *resourceCTEPolicyLDTKeyRule) Update(ctx context.Context, req resource.U
 	var ldtKeyRules []LDTRuleUpdateJSON
 	for _, ldtKeyRule := range plan.LDTKeyRules {
 		var ldtKeyRuleJSON LDTRuleUpdateJSON
-		var ldtKeyRuleCurrentKey CurrentKeyJSON
-		var ldtKeyRuleTransformationKey TransformationKeyJSON
 		if ldtKeyRule.ResourceSetID.ValueString() != state.LDTKeyRules[0].ResourceSetID.ValueString() && ldtKeyRule.ResourceSetID.ValueString() != "" && ldtKeyRule.ResourceSetID.ValueString() != types.StringNull().ValueString() {
 			ldtKeyRuleJSON.ResourceSetID = string(ldtKeyRule.ResourceSetID.ValueString())
 		}
 		if ldtKeyRule.IsExclusionRule.ValueBool() != types.BoolNull().ValueBool() {
 			ldtKeyRuleJSON.IsExclusionRule = bool(ldtKeyRule.IsExclusionRule.ValueBool())
 		}
-		if ldtKeyRule.CurrentKey.KeyID.ValueString() != "" && ldtKeyRule.CurrentKey.KeyID.ValueString() != types.StringNull().ValueString() {
-			ldtKeyRuleCurrentKey.KeyID = string(ldtKeyRule.CurrentKey.KeyID.ValueString())
+
+		if ldtKeyRule.CurrentKey != nil {
+			var ldtKeyRuleCurrentKey CurrentKeyJSON
+			if ldtKeyRule.CurrentKey.KeyID.ValueString() != "" && ldtKeyRule.CurrentKey.KeyID.ValueString() != types.StringNull().ValueString() {
+				ldtKeyRuleCurrentKey.KeyID = string(ldtKeyRule.CurrentKey.KeyID.ValueString())
+			}
+			if ldtKeyRule.CurrentKey.KeyType.ValueString() != "" && ldtKeyRule.CurrentKey.KeyType.ValueString() != types.StringNull().ValueString() {
+				ldtKeyRuleCurrentKey.KeyType = string(ldtKeyRule.CurrentKey.KeyType.ValueString())
+			}
+			ldtKeyRuleJSON.CurrentKey = ldtKeyRuleCurrentKey
 		}
-		if ldtKeyRule.CurrentKey.KeyType.ValueString() != "" && ldtKeyRule.CurrentKey.KeyType.ValueString() != types.StringNull().ValueString() {
-			ldtKeyRuleCurrentKey.KeyType = string(ldtKeyRule.CurrentKey.KeyType.ValueString())
+
+		if ldtKeyRule.TransformationKey != nil {
+			var ldtKeyRuleTransformationKey TransformationKeyJSON
+			if ldtKeyRule.TransformationKey.KeyID.ValueString() != "" && ldtKeyRule.TransformationKey.KeyID.ValueString() != types.StringNull().ValueString() {
+				ldtKeyRuleTransformationKey.KeyID = string(ldtKeyRule.TransformationKey.KeyID.ValueString())
+			}
+			if ldtKeyRule.TransformationKey.KeyType.ValueString() != "" && ldtKeyRule.TransformationKey.KeyType.ValueString() != types.StringNull().ValueString() {
+				ldtKeyRuleTransformationKey.KeyType = string(ldtKeyRule.TransformationKey.KeyType.ValueString())
+			}
+			ldtKeyRuleJSON.TransformationKey = ldtKeyRuleTransformationKey
 		}
-		if ldtKeyRule.TransformationKey.KeyID.ValueString() != "" && ldtKeyRule.TransformationKey.KeyID.ValueString() != types.StringNull().ValueString() {
-			ldtKeyRuleTransformationKey.KeyID = string(ldtKeyRule.TransformationKey.KeyID.ValueString())
-		}
-		if ldtKeyRule.TransformationKey.KeyType.ValueString() != "" && ldtKeyRule.TransformationKey.KeyType.ValueString() != types.StringNull().ValueString() {
-			ldtKeyRuleTransformationKey.KeyType = string(ldtKeyRule.TransformationKey.KeyType.ValueString())
-		}
-		ldtKeyRuleJSON.CurrentKey = ldtKeyRuleCurrentKey
-		ldtKeyRuleJSON.TransformationKey = ldtKeyRuleTransformationKey
+
 		ldtKeyRules = append(ldtKeyRules, ldtKeyRuleJSON)
 	}
 

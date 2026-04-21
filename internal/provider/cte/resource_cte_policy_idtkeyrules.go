@@ -6,6 +6,7 @@ import (
 	"fmt"
 
 	common "github.com/ThalesGroup/terraform-provider-ciphertrust/internal/provider/common"
+	"github.com/google/uuid"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/types"
@@ -37,30 +38,28 @@ func (r *resourceCTEPolicyIDTKeyRule) Schema(_ context.Context, _ resource.Schem
 				Required:    true,
 				Description: "ID of the parent policy in which IDT Key Rule need to be added",
 			},
-			"rule_id": schema.StringAttribute{
-				Required:    true,
-				Description: "ID of the IDT Key Rule created in the parent policy",
-			},
-			"rule": schema.ListNestedAttribute{
+			"rule": schema.SingleNestedAttribute{
 				Optional: true,
-				NestedObject: schema.NestedAttributeObject{
-					Attributes: map[string]schema.Attribute{
-						"current_key": schema.StringAttribute{
-							Optional:    true,
-							Description: "Identifier of the key to link with the rule. Supported fields are name, id, slug, alias, uri, uuid, muid, and key_id. Note: For decryption, where a clear key is to be supplied, use the string \"clear_key\" only. Do not specify any other identifier.",
-						},
-						"current_key_type": schema.StringAttribute{
-							Optional:    true,
-							Description: "Specify the type of the key. Must be one of name, id, slug, alias, uri, uuid, muid or key_id. If not specified, the type of the key is inferred.",
-						},
-						"transformation_key": schema.StringAttribute{
-							Optional:    true,
-							Description: "Identifier of the key to link with the rule. Supported fields are name, id, slug, alias, uri, uuid, muid, and key_id.",
-						},
-						"transformation_key_type": schema.StringAttribute{
-							Optional:    true,
-							Description: "Specify the type of the key. Must be one of name, id, slug, alias, uri, uuid, muid or key_id. If not specified, the type of the key is inferred.",
-						},
+				Attributes: map[string]schema.Attribute{
+					"id": schema.StringAttribute{
+						Required:    true,
+						Description: "Identifier for key rule",
+					},
+					"current_key": schema.StringAttribute{
+						Optional:    true,
+						Description: "Identifier of the key to link with the rule. Supported fields are name, id, slug, alias, uri, uuid, muid, and key_id. Note: For decryption, where a clear key is to be supplied, use the string \"clear_key\" only. Do not specify any other identifier.",
+					},
+					"current_key_type": schema.StringAttribute{
+						Optional:    true,
+						Description: "Specify the type of the key. Must be one of name, id, slug, alias, uri, uuid, muid or key_id. If not specified, the type of the key is inferred.",
+					},
+					"transformation_key": schema.StringAttribute{
+						Optional:    true,
+						Description: "Identifier of the key to link with the rule. Supported fields are name, id, slug, alias, uri, uuid, muid, and key_id.",
+					},
+					"transformation_key_type": schema.StringAttribute{
+						Optional:    true,
+						Description: "Specify the type of the key. Must be one of name, id, slug, alias, uri, uuid, muid or key_id. If not specified, the type of the key is inferred.",
 					},
 				},
 			},
@@ -70,10 +69,89 @@ func (r *resourceCTEPolicyIDTKeyRule) Schema(_ context.Context, _ resource.Schem
 
 // Create creates the resource and sets the initial Terraform state.
 func (r *resourceCTEPolicyIDTKeyRule) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
+
+	var plan UpdateIDTKeyRulePolicyTFSDK
+	var payload IDTRuleJSON
+
+	diags := req.Plan.Get(ctx, &plan)
+	resp.Diagnostics.Append(diags...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	if plan.IDTKeyRule.CurrentKey.ValueString() != "" && plan.IDTKeyRule.CurrentKey.ValueString() != types.StringNull().ValueString() {
+		payload.CurrentKey = string(plan.IDTKeyRule.CurrentKey.ValueString())
+	}
+	if plan.IDTKeyRule.CurrentKeyType.ValueString() != "" && plan.IDTKeyRule.CurrentKeyType.ValueString() != types.StringNull().ValueString() {
+		payload.CurrentKeyType = string(plan.IDTKeyRule.CurrentKeyType.ValueString())
+	}
+	if plan.IDTKeyRule.TransformationKey.ValueString() != "" && plan.IDTKeyRule.TransformationKey.ValueString() != types.StringNull().ValueString() {
+		payload.TransformationKey = string(plan.IDTKeyRule.TransformationKey.ValueString())
+	}
+	if plan.IDTKeyRule.TransformationKeyType.ValueString() != "" && plan.IDTKeyRule.TransformationKeyType.ValueString() != types.StringNull().ValueString() {
+		payload.TransformationKeyType = string(plan.IDTKeyRule.TransformationKeyType.ValueString())
+	}
+
+	payloadJSON, err := json.Marshal(payload)
+	if err != nil {
+		tflog.Debug(ctx, common.ERR_METHOD_END+err.Error()+" [resource_cte_policy_idtkeyrules.go -> Update]["+plan.IDTKeyRule.ID.ValueString()+"]")
+		resp.Diagnostics.AddError(
+			"Invalid data input: CTE Policy IDT Key Rule Update",
+			err.Error(),
+		)
+		return
+	}
+
+	response, err := r.client.UpdateData(
+		ctx,
+		plan.IDTKeyRule.ID.ValueString(),
+		common.URL_CTE_POLICY+"/"+plan.CTEClientPolicyID.ValueString()+"/idtkeyrules",
+		payloadJSON,
+		"id")
+	if err != nil {
+		tflog.Debug(ctx, common.ERR_METHOD_END+err.Error()+" [resource_cte_policy_idtkeyrules.go -> Update]["+plan.IDTKeyRule.ID.ValueString()+"]")
+		resp.Diagnostics.AddError(
+			"Error updating CTE Policy IDT Key Rule on CipherTrust Manager: ",
+			"Could not update CTE Policy IDT Key Rule, unexpected error: "+err.Error(),
+		)
+		return
+	}
+	plan.IDTKeyRule.ID = types.StringValue(response)
+	diags = resp.State.Set(ctx, plan)
+	resp.Diagnostics.Append(diags...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
 }
 
 // Read refreshes the Terraform state with the latest data.
 func (r *resourceCTEPolicyIDTKeyRule) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
+	var state UpdateIDTKeyRulePolicyTFSDK
+
+	id := uuid.New().String()
+
+	diags := req.State.Get(ctx, &state)
+	resp.Diagnostics.Append(diags...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	_, err := r.client.GetById(ctx, id, state.IDTKeyRule.ID.ValueString(), common.URL_CTE_POLICY+"/"+state.CTEClientPolicyID.ValueString()+"/idtkeyrules")
+	if err != nil {
+		tflog.Debug(ctx, common.ERR_METHOD_END+err.Error()+" [resource_cte_policy_idtkeyrules.go -> Read]["+id+"]")
+		resp.Diagnostics.AddError(
+			"Error reading IDT Key Rule on CipherTrust Manager: ",
+			"Could not read IDT Key Rule id : ,"+state.IDTKeyRule.ID.ValueString()+err.Error(),
+		)
+		return
+	}
+
+	tflog.Trace(ctx, common.MSG_METHOD_END+"[resource_cte_policy_idtkeyrules.go -> Read]["+id+"]")
+	resp.Diagnostics.Append(diags...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
 }
 
 // Update updates the resource and sets the updated Terraform state on success.
@@ -102,7 +180,7 @@ func (r *resourceCTEPolicyIDTKeyRule) Update(ctx context.Context, req resource.U
 
 	payloadJSON, err := json.Marshal(payload)
 	if err != nil {
-		tflog.Debug(ctx, common.ERR_METHOD_END+err.Error()+" [resource_cte_policy_idtkeyrules.go -> Update]["+plan.IDTKeyRuleID.ValueString()+"]")
+		tflog.Debug(ctx, common.ERR_METHOD_END+err.Error()+" [resource_cte_policy_idtkeyrules.go -> Update]["+plan.IDTKeyRule.ID.ValueString()+"]")
 		resp.Diagnostics.AddError(
 			"Invalid data input: CTE Policy IDT Key Rule Update",
 			err.Error(),
@@ -112,19 +190,19 @@ func (r *resourceCTEPolicyIDTKeyRule) Update(ctx context.Context, req resource.U
 
 	response, err := r.client.UpdateData(
 		ctx,
-		plan.IDTKeyRuleID.ValueString(),
+		plan.IDTKeyRule.ID.ValueString(),
 		common.URL_CTE_POLICY+"/"+plan.CTEClientPolicyID.ValueString()+"/idtkeyrules",
 		payloadJSON,
 		"id")
 	if err != nil {
-		tflog.Debug(ctx, common.ERR_METHOD_END+err.Error()+" [resource_cte_policy_idtkeyrules.go -> Update]["+plan.IDTKeyRuleID.ValueString()+"]")
+		tflog.Debug(ctx, common.ERR_METHOD_END+err.Error()+" [resource_cte_policy_idtkeyrules.go -> Update]["+plan.IDTKeyRule.ID.ValueString()+"]")
 		resp.Diagnostics.AddError(
 			"Error updating CTE Policy IDT Key Rule on CipherTrust Manager: ",
 			"Could not update CTE Policy IDT Key Rule, unexpected error: "+err.Error(),
 		)
 		return
 	}
-	plan.IDTKeyRuleID = types.StringValue(response)
+	plan.IDTKeyRule.ID = types.StringValue(response)
 	diags = resp.State.Set(ctx, plan)
 	resp.Diagnostics.Append(diags...)
 	if resp.Diagnostics.HasError() {

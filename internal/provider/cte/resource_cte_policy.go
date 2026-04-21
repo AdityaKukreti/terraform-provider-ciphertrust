@@ -89,6 +89,10 @@ func (r *resourceCTEPolicy) Schema(_ context.Context, _ resource.SchemaRequest, 
 				Description: "IDT rules to link with the policy.",
 				NestedObject: schema.NestedAttributeObject{
 					Attributes: map[string]schema.Attribute{
+						"id": schema.StringAttribute{
+							Computed:    true,
+							Description: "Identifier for key rule",
+						},
 						"current_key": schema.StringAttribute{
 							Optional:    true,
 							Description: "Identifier of the key to link with the rule. Supported fields are name, id, slug, alias, uri, uuid, muid, and key_id. Note: For decryption, where a clear key is to be supplied, use the string \"clear_key\" only. Do not specify any other identifier.",
@@ -114,7 +118,7 @@ func (r *resourceCTEPolicy) Schema(_ context.Context, _ resource.SchemaRequest, 
 				NestedObject: schema.NestedAttributeObject{
 					Attributes: map[string]schema.Attribute{
 						"key_id": schema.StringAttribute{
-							Optional:    true,
+							Required:    true,
 							Description: "Identifier of the key to link with the rule. Supported fields are name, id, slug, alias, uri, uuid, muid, and key_id. Note: For decryption, where a clear key is to be supplied, use the string \"clear_key\" only. Do not specify any other identifier.",
 						},
 						"key_type": schema.StringAttribute{
@@ -142,7 +146,7 @@ func (r *resourceCTEPolicy) Schema(_ context.Context, _ resource.SchemaRequest, 
 							Description: "ID of the resource set to link with the rule.",
 						},
 						"current_key": schema.SingleNestedAttribute{
-							Optional:    true,
+							Required:    true,
 							Description: "Properties of the current key.",
 							Attributes: map[string]schema.Attribute{
 								"key_id": schema.StringAttribute{
@@ -199,7 +203,7 @@ func (r *resourceCTEPolicy) Schema(_ context.Context, _ resource.SchemaRequest, 
 							},
 						},
 						"effect": schema.StringAttribute{
-							Optional:    true,
+							Required:    true,
 							Description: "Effects applicable to the rule. Separate multiple effects by commas. The valid values are: permit, deny, audit, applykey",
 						},
 						"exclude_process_set": schema.BoolAttribute{
@@ -239,7 +243,7 @@ func (r *resourceCTEPolicy) Schema(_ context.Context, _ resource.SchemaRequest, 
 				NestedObject: schema.NestedAttributeObject{
 					Attributes: map[string]schema.Attribute{
 						"signature_set_id": schema.StringAttribute{
-							Optional:    true,
+							Required:    true,
 							Description: "List of identifiers of signature sets. This identifier can be the Name, ID (a UUIDv4), URI, or slug of the signature set.",
 						},
 					},
@@ -359,20 +363,24 @@ func (r *resourceCTEPolicy) Create(ctx context.Context, req resource.CreateReque
 		if ldtKeyRule.IsExclusionRule.ValueBool() != types.BoolNull().ValueBool() {
 			ldtKeyRuleJSON.IsExclusionRule = bool(ldtKeyRule.IsExclusionRule.ValueBool())
 		}
-		if ldtKeyRule.CurrentKey.KeyID.ValueString() != "" && ldtKeyRule.CurrentKey.KeyID.ValueString() != types.StringNull().ValueString() {
-			ldtKeyRuleCurrentKey.KeyID = string(ldtKeyRule.CurrentKey.KeyID.ValueString())
+		if ldtKeyRule.CurrentKey != nil {
+			if ldtKeyRule.CurrentKey.KeyID.ValueString() != "" && ldtKeyRule.CurrentKey.KeyID.ValueString() != types.StringNull().ValueString() {
+				ldtKeyRuleCurrentKey.KeyID = string(ldtKeyRule.CurrentKey.KeyID.ValueString())
+			}
+			if ldtKeyRule.CurrentKey.KeyType.ValueString() != "" && ldtKeyRule.CurrentKey.KeyType.ValueString() != types.StringNull().ValueString() {
+				ldtKeyRuleCurrentKey.KeyType = string(ldtKeyRule.CurrentKey.KeyType.ValueString())
+			}
+			ldtKeyRuleJSON.CurrentKey = ldtKeyRuleCurrentKey
 		}
-		if ldtKeyRule.CurrentKey.KeyType.ValueString() != "" && ldtKeyRule.CurrentKey.KeyType.ValueString() != types.StringNull().ValueString() {
-			ldtKeyRuleCurrentKey.KeyType = string(ldtKeyRule.CurrentKey.KeyType.ValueString())
+		if ldtKeyRule.TransformationKey != nil {
+			if ldtKeyRule.TransformationKey.KeyID.ValueString() != "" && ldtKeyRule.TransformationKey.KeyID.ValueString() != types.StringNull().ValueString() {
+				ldtKeyRuleTransformationKey.KeyID = string(ldtKeyRule.TransformationKey.KeyID.ValueString())
+			}
+			if ldtKeyRule.TransformationKey.KeyType.ValueString() != "" && ldtKeyRule.TransformationKey.KeyType.ValueString() != types.StringNull().ValueString() {
+				ldtKeyRuleTransformationKey.KeyType = string(ldtKeyRule.TransformationKey.KeyType.ValueString())
+			}
+			ldtKeyRuleJSON.TransformationKey = ldtKeyRuleTransformationKey
 		}
-		if ldtKeyRule.TransformationKey.KeyID.ValueString() != "" && ldtKeyRule.TransformationKey.KeyID.ValueString() != types.StringNull().ValueString() {
-			ldtKeyRuleTransformationKey.KeyID = string(ldtKeyRule.TransformationKey.KeyID.ValueString())
-		}
-		if ldtKeyRule.TransformationKey.KeyType.ValueString() != "" && ldtKeyRule.TransformationKey.KeyType.ValueString() != types.StringNull().ValueString() {
-			ldtKeyRuleTransformationKey.KeyType = string(ldtKeyRule.TransformationKey.KeyType.ValueString())
-		}
-		ldtKeyRuleJSON.CurrentKey = ldtKeyRuleCurrentKey
-		ldtKeyRuleJSON.TransformationKey = ldtKeyRuleTransformationKey
 		ldtKeyRules = append(ldtKeyRules, ldtKeyRuleJSON)
 	}
 	payload.LDTKeyRules = ldtKeyRules
@@ -433,7 +441,7 @@ func (r *resourceCTEPolicy) Create(ctx context.Context, req resource.CreateReque
 		return
 	}
 
-	response, err := r.client.PostData(ctx, id, common.URL_CTE_POLICY, payloadJSON, "id")
+	response, err := r.client.PostDataV2(ctx, id, common.URL_CTE_POLICY, payloadJSON)
 	if err != nil {
 		tflog.Debug(ctx, common.ERR_METHOD_END+err.Error()+" [resource_cte_policy.go -> Create]["+id+"]")
 		resp.Diagnostics.AddError(
@@ -443,8 +451,21 @@ func (r *resourceCTEPolicy) Create(ctx context.Context, req resource.CreateReque
 		return
 	}
 
-	plan.ID = types.StringValue(response)
+	var apiResp CTEPolicyJSON
+	err = json.Unmarshal([]byte(response), &apiResp)
+	if err != nil {
+		resp.Diagnostics.AddError("Error parsing API response", err.Error())
+		return
+	}
 
+	// Policy ID from top level
+	plan.ID = types.StringValue(apiResp.ID)
+
+	// IDT Key Rule fields from nested array
+	if len(apiResp.IDTKeyRules) > 0 {
+		rule := apiResp.IDTKeyRules[0]
+		plan.IDTKeyRules[0].ID = types.StringValue(rule.ID)
+	}
 	tflog.Trace(ctx, common.MSG_METHOD_END+"[resource_cte_policy.go -> Create]["+id+"]")
 	diags = resp.State.Set(ctx, plan)
 	resp.Diagnostics.Append(diags...)
