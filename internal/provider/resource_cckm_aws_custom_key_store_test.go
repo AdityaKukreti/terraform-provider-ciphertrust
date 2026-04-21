@@ -145,6 +145,7 @@ func TestCckmAWSCustomKeyStoreUnlinked(t *testing.T) {
 					// API response. setCustomKeyStoreState only overwrites plan.KMS when it is empty,
 					// so the value after import may differ from the planned value causing a spurious diff.
 					"kms",
+					"updated_at", // timestamp; may differ between the import Read and the prior-state Read
 				},
 			},
 			{

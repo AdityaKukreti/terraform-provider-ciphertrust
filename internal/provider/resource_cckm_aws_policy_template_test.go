@@ -39,7 +39,8 @@ func TestCckmAWSPolicyTemplate(t *testing.T) {
 	}
 	users := fmt.Sprintf("\"%s\",\"%s\"", keyUsers[0], keyUsers[1])
 	roles := fmt.Sprintf("\"%s\",\"%s\"", keyRoles[0], keyRoles[1])
-	createConfigEx1 := `
+
+	createJsonencodePolicyConfig := `
 		resource "ciphertrust_aws_policy_template" "policy_template_ex1" {
 			kms    = ciphertrust_aws_kms.kms.id
 			name   = "%s"
@@ -61,7 +62,7 @@ func TestCckmAWSPolicyTemplate(t *testing.T) {
 				}
 			)
 		}`
-	updateConfigEx1 := `
+	updateJsonencodePolicyConfigToUsersAndRoles := `
 		resource "ciphertrust_aws_policy_template" "policy_template_ex1" {
 			kms         = ciphertrust_aws_kms.kms.id
 			name        = "%s"
@@ -73,10 +74,10 @@ func TestCckmAWSPolicyTemplate(t *testing.T) {
 		}`
 	resourceNameEx1 := "ciphertrust_aws_policy_template.policy_template_ex1"
 	templateNameEx1 := "tf-template-" + uuid.New().String()[:8]
-	createConfigStrEx1 := fmt.Sprintf(createConfigEx1, templateNameEx1)
-	updateConfigStrEx1 := fmt.Sprintf(updateConfigEx1, templateNameEx1, users, users, roles, roles)
+	createConfigStrEx1 := fmt.Sprintf(createJsonencodePolicyConfig, templateNameEx1)
+	updateConfigStrEx1 := fmt.Sprintf(updateJsonencodePolicyConfigToUsersAndRoles, templateNameEx1, users, users, roles, roles)
 
-	createConfigEx2 := `
+	createHeredocPolicyConfig := `
 		variable "policy" {
 			type    = string
 			default = <<-EOT
@@ -90,9 +91,9 @@ func TestCckmAWSPolicyTemplate(t *testing.T) {
 		}`
 	resourceNameEx2 := "ciphertrust_aws_policy_template.policy_template_ex2"
 	templateNameEx2 := "tf-template-" + uuid.New().String()[:8]
-	createConfigStrEx2 := fmt.Sprintf(createConfigEx2, templateNameEx2)
+	createConfigStrEx2 := fmt.Sprintf(createHeredocPolicyConfig, templateNameEx2)
 
-	createConfigEx3 := `
+	ceateHeredocFormattedPolicyConfig := `
 		resource "ciphertrust_aws_policy_template" "policy_template_ex3" {
 			kms    = ciphertrust_aws_kms.kms.id
 			name   = "%s"
@@ -102,9 +103,9 @@ func TestCckmAWSPolicyTemplate(t *testing.T) {
 		}`
 	resourceNameEx3 := "ciphertrust_aws_policy_template.policy_template_ex3"
 	templateNameEx3 := "tf-template-" + uuid.New().String()[:8]
-	createConfigStrEx3 := fmt.Sprintf(createConfigEx3, templateNameEx3, defaultPolicy)
+	createConfigStrEx3 := fmt.Sprintf(ceateHeredocFormattedPolicyConfig, templateNameEx3, defaultPolicy)
 
-	createConfigEx4 := `
+	createUsersAndRolesPolicyConfig := `
 		resource "ciphertrust_aws_policy_template" "policy_template_without_policy" {
 			kms         = ciphertrust_aws_kms.kms.id
 			name        = "%s"
@@ -113,7 +114,7 @@ func TestCckmAWSPolicyTemplate(t *testing.T) {
 			key_admins_roles  = [%s]
 			key_users_roles   = [%s]
 		}`
-	updateConfigEx4 := `
+	updateUsersAndRolesToJsonencodePolicy := `
 		resource "ciphertrust_aws_policy_template" "policy_template_without_policy" {
 			kms    = ciphertrust_aws_kms.kms.id
 			name   = "%s"
@@ -137,8 +138,8 @@ func TestCckmAWSPolicyTemplate(t *testing.T) {
 		}`
 	resourceNameEx4 := "ciphertrust_aws_policy_template.policy_template_without_policy"
 	templateNameEx4 := "tf-template-" + uuid.New().String()[:8]
-	createConfigStrEx4 := fmt.Sprintf(createConfigEx4, templateNameEx4, users, users, roles, roles)
-	updateConfigStrEx4 := fmt.Sprintf(updateConfigEx4, templateNameEx4)
+	createConfigStrEx4 := fmt.Sprintf(createUsersAndRolesPolicyConfig, templateNameEx4, users, users, roles, roles)
+	updateConfigStrEx4 := fmt.Sprintf(updateUsersAndRolesToJsonencodePolicy, templateNameEx4)
 
 	resource.Test(t, resource.TestCase{
 		PreCheck:                 func() { cleanupCckmAwsKMS() },
@@ -176,6 +177,33 @@ func TestCckmAWSPolicyTemplate(t *testing.T) {
 					resource.TestCheckResourceAttr(resourceNameEx4, "key_admins_roles.#", "2"),
 					testCheckAttributeContains(resourceNameEx4, "policy", append(keyUsers, keyRoles...), true),
 				),
+			},
+			// Import all 4 templates immediately after creation to verify round-trip correctness.
+			// policy is ignored because the API returns compacted JSON while the config may use
+			// jsonencode() or a heredoc, producing a different string representation.
+			{
+				ResourceName:            resourceNameEx1,
+				ImportState:             true,
+				ImportStateVerify:       true,
+				ImportStateVerifyIgnore: []string{"policy"},
+			},
+			{
+				ResourceName:            resourceNameEx2,
+				ImportState:             true,
+				ImportStateVerify:       true,
+				ImportStateVerifyIgnore: []string{"policy"},
+			},
+			{
+				ResourceName:            resourceNameEx3,
+				ImportState:             true,
+				ImportStateVerify:       true,
+				ImportStateVerifyIgnore: []string{"policy"},
+			},
+			{
+				ResourceName:            resourceNameEx4,
+				ImportState:             true,
+				ImportStateVerify:       true,
+				ImportStateVerifyIgnore: []string{"policy"},
 			},
 			{
 				Config: awsConnectionResource + updateConfigStrEx1 + updateConfigStrEx4,
@@ -231,38 +259,6 @@ func TestCckmAWSPolicyTemplate(t *testing.T) {
 					resource.TestCheckResourceAttr(resourceNameEx4, "key_admins_roles.#", "2"),
 					testCheckAttributeContains(resourceNameEx4, "policy", append(keyUsers, keyRoles...), true),
 				),
-			},
-			{
-				ResourceName:      resourceNameEx1,
-				ImportState:       true,
-				ImportStateVerify: true,
-				ImportStateVerifyIgnore: []string{
-					"policy",
-				},
-			},
-			{
-				ResourceName:      resourceNameEx2,
-				ImportState:       true,
-				ImportStateVerify: true,
-				ImportStateVerifyIgnore: []string{
-					"policy",
-				},
-			},
-			{
-				ResourceName:      resourceNameEx3,
-				ImportState:       true,
-				ImportStateVerify: true,
-				ImportStateVerifyIgnore: []string{
-					"policy",
-				},
-			},
-			{
-				ResourceName:      resourceNameEx4,
-				ImportState:       true,
-				ImportStateVerify: true,
-				ImportStateVerifyIgnore: []string{
-					"policy",
-				},
 			},
 		},
 	})

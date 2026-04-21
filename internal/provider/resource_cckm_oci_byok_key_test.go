@@ -9,6 +9,20 @@ import (
 	"github.com/hashicorp/terraform-plugin-testing/terraform"
 )
 
+// importStateVerifyIgnoreOCIKey lists attributes that cannot round-trip through terraform import
+// for an OCI key (both native and BYOK). Used by import steps in TestCckmOCIKeysAndVersionsBYOK
+// and TestCckmOCIKeysAndVersionsNative.
+var importStateVerifyIgnoreOCIKey = []string{
+	// version_summary: Computed list; reflects versions present at key-read time, not
+	// at import time -- may have changed between the two operations.
+	"version_summary",
+	// oci_key_params.current_key_version: Computed; changes as new versions are promoted.
+	"oci_key_params.current_key_version",
+	// schedule_for_deletion_days: Optional-only on the key schema (no Computed/default);
+	// stays null in both pre-import and post-import state, but kept here for explicitness.
+	"schedule_for_deletion_days",
+}
+
 func TestCckmOCIKeysAndVersionsBYOK(t *testing.T) {
 
 	connectionResource := initCckmOCITest(t)
@@ -319,14 +333,10 @@ func TestCckmOCIKeysAndVersionsBYOK(t *testing.T) {
 				RefreshState: true,
 			},
 			{
-				ResourceName:      keyResource,
-				ImportState:       true,
-				ImportStateVerify: true,
-				ImportStateVerifyIgnore: []string{
-					"version_summary",
-					"oci_key_params.current_key_version",
-					"schedule_for_deletion_days",
-				},
+				ResourceName:            keyResource,
+				ImportState:             true,
+				ImportStateVerify:       true,
+				ImportStateVerifyIgnore: importStateVerifyIgnoreOCIKey,
 			},
 			{
 				ResourceName:      versionResource,
@@ -337,11 +347,16 @@ func TestCckmOCIKeysAndVersionsBYOK(t *testing.T) {
 			{
 				Config: updateResourceStr,
 				Check: resource.ComposeTestCheckFunc(
-					// Key resource
+					// Key resource -- scheduler switched to scheduler_2, name changed to oci_key_name_update
 					resource.TestCheckResourceAttrSet(keyResource, "id"),
+					resource.TestCheckResourceAttr(keyResource, "enable_key", "true"),
+					resource.TestCheckResourceAttr(keyResource, "labels.%", "2"),
+					resource.TestCheckResourceAttr(keyResource, "oci_key_params.protection_mode", "SOFTWARE"),
 					resource.TestCheckResourceAttrSet(keyResource, "version_summary.0.version_id"),
 					// Version resource
 					resource.TestCheckResourceAttrSet(versionResource, "id"),
+					resource.TestCheckResourceAttrPair(versionResource, "cckm_key_id", keyResource, "id"),
+					resource.TestCheckResourceAttrSet(versionResource, "oci_key_version_params.version_id"),
 				),
 			},
 			{
@@ -352,26 +367,28 @@ func TestCckmOCIKeysAndVersionsBYOK(t *testing.T) {
 			{
 				Config: minResourceStr,
 				Check: resource.ComposeTestCheckFunc(
-					// Key resource
+					// Key resource -- no rotation, no tags, default enable_key (true)
 					resource.TestCheckResourceAttrSet(keyResource, "id"),
+					resource.TestCheckResourceAttr(keyResource, "enable_key", "true"),
 					resource.TestCheckResourceAttr(keyResource, "labels.%", "0"),
 					resource.TestCheckResourceAttr(keyResource, "oci_key_params.protection_mode", "SOFTWARE"),
+					resource.TestCheckResourceAttr(keyResource, "source_key_tier", "local"),
 					// Version resource
 					resource.TestCheckResourceAttrSet(versionResource, "id"),
+					resource.TestCheckResourceAttrPair(versionResource, "cckm_key_id", keyResource, "id"),
+					resource.TestCheckResourceAttrSet(versionResource, "oci_key_version_params.vault_id"),
+					resource.TestCheckResourceAttrSet(versionResource, "oci_key_version_params.key_id"),
+					resource.TestCheckResourceAttrSet(versionResource, "oci_key_version_params.version_id"),
 				),
 			},
 			{
 				RefreshState: true,
 			},
 			{
-				ResourceName:      keyResource,
-				ImportState:       true,
-				ImportStateVerify: true,
-				ImportStateVerifyIgnore: []string{
-					"version_summary",
-					"oci_key_params.current_key_version",
-					"schedule_for_deletion_days",
-				},
+				ResourceName:            keyResource,
+				ImportState:             true,
+				ImportStateVerify:       true,
+				ImportStateVerifyIgnore: importStateVerifyIgnoreOCIKey,
 			},
 			{
 				ResourceName:      versionResource,
@@ -384,6 +401,7 @@ func TestCckmOCIKeysAndVersionsBYOK(t *testing.T) {
 				Check: resource.ComposeTestCheckFunc(
 					// Key resource
 					resource.TestCheckResourceAttrSet(keyResource, "id"),
+					resource.TestCheckResourceAttr(keyResource, "labels.%", "2"),
 					// Version resource
 					resource.TestCheckResourceAttrSet(versionResource, "id"),
 				),

@@ -9,6 +9,29 @@ import (
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
 )
 
+// importStateVerifyIgnoreAwsXksKey lists the attributes that cannot round-trip through
+// terraform import for unlinked XKS keys. It is the superset of all four import steps
+// in TestCckmAWSXKSUnlinkedKey - extra entries are harmless when the attributes already match.
+var importStateVerifyIgnoreAwsXksKey = []string{
+	// alias: not applied to AWS for unlinked keys, so not returned by GET.
+	"alias",
+	// description: Read() preserves prior state value for unlinked keys; no prior state after import.
+	"description",
+	// enable_key: not applied for unlinked keys (block/enable ops require linked_state = true).
+	"enable_key",
+	// enable_rotation: not surfaced in GET response; cannot round-trip.
+	"enable_rotation",
+	// key_policy: not surfaced in GET response; cannot round-trip.
+	"key_policy",
+	// local_hosted_params: write-only input block; top-level blocked/linked computed attributes
+	// reflect the actual key state instead.
+	"local_hosted_params",
+	// schedule_for_deletion_days: null for active keys; does not round-trip cleanly after import.
+	"schedule_for_deletion_days",
+	// tags: not applied/returned for unlinked keys (AWS-side operation).
+	"tags",
+}
+
 func TestCckmAWSXKSUnlinkedKey(t *testing.T) {
 	awsConnectionResource, ok := initCckmAwsTest()
 	if !ok {
@@ -196,43 +219,16 @@ func TestCckmAWSXKSUnlinkedKey(t *testing.T) {
 				),
 			},
 			{
-				ResourceName:      keyResourceMaxParams,
-				ImportState:       true,
-				ImportStateVerify: true,
-				ImportStateVerifyIgnore: []string{
-					// alias: set type; for unlinked keys aliases are not applied to AWS, so not returned by GET.
-					"alias",
-					// description: Read() preserves prior state value for unlinked keys; no prior state after import.
-					"description",
-					// enable_key: not applied for unlinked keys; enabled (aws_param.Enabled) reflects CM internal state.
-					"enable_key",
-					// enable_rotation: not surfaced in GET response; cannot round-trip.
-					"enable_rotation",
-					// key_policy: not surfaced in GET response; cannot round-trip.
-					"key_policy",
-					// local_hosted_params: blocked/linked/source_key_id/custom_key_store_id are write-only inputs;
-					// the top-level blocked/linked computed attributes reflect actual state instead.
-					"local_hosted_params",
-					// schedule_for_deletion_days: defaults to 7; may not round-trip cleanly after import.
-					"schedule_for_deletion_days",
-					// tags: not applied/returned for unlinked keys (AWS-side operation).
-					"tags",
-				},
+				ResourceName:            keyResourceMaxParams,
+				ImportState:             true,
+				ImportStateVerify:       true,
+				ImportStateVerifyIgnore: importStateVerifyIgnoreAwsXksKey,
 			},
 			{
-				ResourceName:      keyResourceMinParams,
-				ImportState:       true,
-				ImportStateVerify: true,
-				ImportStateVerifyIgnore: []string{
-					// description: Read() preserves prior state value for unlinked keys; no prior state after import.
-					"description",
-					// enable_key: not applied for unlinked keys.
-					"enable_key",
-					// local_hosted_params: write-only input fields; top-level computed attributes reflect actual state.
-					"local_hosted_params",
-					// schedule_for_deletion_days: defaults to 7; may not round-trip cleanly after import.
-					"schedule_for_deletion_days",
-				},
+				ResourceName:            keyResourceMinParams,
+				ImportState:             true,
+				ImportStateVerify:       true,
+				ImportStateVerifyIgnore: importStateVerifyIgnoreAwsXksKey,
 			},
 			{
 				Config: updateConfigStr,
@@ -263,50 +259,16 @@ func TestCckmAWSXKSUnlinkedKey(t *testing.T) {
 				RefreshState: true,
 			},
 			{
-				ResourceName:      keyResourceMaxParams,
-				ImportState:       true,
-				ImportStateVerify: true,
-				ImportStateVerifyIgnore: []string{
-					// alias: set type; for unlinked keys aliases are not applied to AWS, so not returned by GET.
-					"alias",
-					// description: Read() preserves prior state value for unlinked keys; no prior state after import.
-					"description",
-					// enable_key: not applied for unlinked keys.
-					"enable_key",
-					// enable_rotation: not surfaced in GET response; cannot round-trip.
-					"enable_rotation",
-					// key_policy: not surfaced in GET response; cannot round-trip.
-					"key_policy",
-					// local_hosted_params: write-only input fields; top-level computed attributes reflect actual state.
-					"local_hosted_params",
-					// schedule_for_deletion_days: defaults to 7; may not round-trip cleanly after import.
-					"schedule_for_deletion_days",
-					// tags: not applied/returned for unlinked keys (AWS-side operation).
-					"tags",
-				},
+				ResourceName:            keyResourceMaxParams,
+				ImportState:             true,
+				ImportStateVerify:       true,
+				ImportStateVerifyIgnore: importStateVerifyIgnoreAwsXksKey,
 			},
 			{
-				ResourceName:      keyResourceMinParams,
-				ImportState:       true,
-				ImportStateVerify: true,
-				ImportStateVerifyIgnore: []string{
-					// alias: added during update; not returned by GET for unlinked keys.
-					"alias",
-					// description: Read() preserves prior state value for unlinked keys; no prior state after import.
-					"description",
-					// enable_key: not applied for unlinked keys.
-					"enable_key",
-					// enable_rotation: not surfaced in GET response; cannot round-trip.
-					"enable_rotation",
-					// key_policy: not surfaced in GET response; cannot round-trip.
-					"key_policy",
-					// local_hosted_params: write-only input fields; top-level computed attributes reflect actual state.
-					"local_hosted_params",
-					// schedule_for_deletion_days: defaults to 7; may not round-trip cleanly after import.
-					"schedule_for_deletion_days",
-					// tags: not applied/returned for unlinked keys (AWS-side operation).
-					"tags",
-				},
+				ResourceName:            keyResourceMinParams,
+				ImportState:             true,
+				ImportStateVerify:       true,
+				ImportStateVerifyIgnore: importStateVerifyIgnoreAwsXksKey,
 			},
 			{
 				Config: createConfigStr,
