@@ -280,7 +280,7 @@ func (r *resourceCTEProcessSet) Update(ctx context.Context, req resource.UpdateR
 	if err != nil {
 		tflog.Debug(ctx, common.ERR_METHOD_END+err.Error()+" [resource_cm_process_set.go -> Update]["+plan.ID.ValueString()+"]")
 		resp.Diagnostics.AddError(
-			"Error creating CTE Process Set on CipherTrust Manager: ",
+			"Error updating CTE Process Set on CipherTrust Manager: ",
 			"Could not create CTE Process Set, unexpected error: "+err.Error(),
 		)
 		return

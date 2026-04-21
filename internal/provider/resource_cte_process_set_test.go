@@ -27,13 +27,6 @@ resource "ciphertrust_cte_process_set" "process_set" {
 					resource.TestCheckResourceAttrSet("ciphertrust_cte_process_set.process_set", "id"),
 				),
 			},
-			// ImportState testing
-			//{
-			//	ResourceName:      "ciphertrust_cm_reg_token.reg_token",
-			//	ImportState:       true,
-			//	ImportStateVerify: true,
-			//	ImportStateVerifyIgnore: []string{"last_updated"},
-			//},
 			// Update and Read testing
 			{
 				Config: providerConfig + `
@@ -43,6 +36,11 @@ resource "ciphertrust_cte_process_set" "process_set" {
 	{
       signature=""
       directory="/home/testUser"
+      file="*"
+    },
+	{
+      signature=""
+      directory="/tmp"
       file="*"
     },
   ]
