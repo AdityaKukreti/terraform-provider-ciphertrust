@@ -113,18 +113,15 @@ output "scp_connection_name" {
 
 ### Required
 
-- `auth_method` (String) Authentication type for SCP/SFTP server. Accepted values are 'key' or 'password'
+- `auth_method` (String) Authentication type for SCP/SFTP server. Accepted values are 'key' or 'password'.
 - `host` (String) Hostname or FQDN of SCP/SFTP remote machine.
 - `name` (String) Unique connection name.
-- `path_to` (String) A path where the file to be copied via SCP/SFTP. Example '/home/ubuntu/datafolder/'
+- `path_to` (String) A path where the file to be copied via SCP/SFTP. Example '/home/ubuntu/datafolder/'.
 - `public_key` (String) Public key of destination host machine. It will be used to verify the host's identity by verifying key fingerprint. You can find it in /etc/ssh/ at host machine.
 - `username` (String) Username for accessing SCP/SFTP server.
 
 ### Optional
 
-- `account` (String)
-- `category` (String)
-- `created_at` (String)
 - `description` (String) Description about the connection.
 - `labels` (Map of String) Labels are key/value pairs used to group resources. They are based on Kubernetes Labels, see https://kubernetes.io/docs/concepts/overview/working-with-objects/labels/.
 
@@ -140,9 +137,6 @@ To remove a key/value pair, pass value null to the particular key
     "labels": {
       "key1": null
     }
-- `last_connection_at` (String)
-- `last_connection_error` (String)
-- `last_connection_ok` (Boolean)
 - `meta` (Map of String) Optional end-user or service data stored with the connection.
 - `password` (String) Password for SCP/SFTP server.
 - `port` (Number) Port where SCP/SFTP service runs on host (usually 22).
@@ -174,12 +168,18 @@ To remove a key/value pair, pass value null to the particular key
         Luna connections
     "csm" for:
         Akeyless connections
-- `protocol` (String) Use 'sftp' or 'scp'. 'sftp' is the default value
-- `resource_url` (String)
-- `service` (String)
-- `updated_at` (String)
-- `uri` (String)
+- `protocol` (String) Use 'sftp' or 'scp'. 'sftp' is the default value.
 
 ### Read-Only
 
+- `account` (String) Account associated with the SCP connection.
+- `category` (String) Category of the connection.
+- `created_at` (String) Timestamp when the connection was created.
 - `id` (String) The ID of this resource.
+- `last_connection_at` (String) Timestamp of the last connection attempt.
+- `last_connection_error` (String) Error message from the last connection attempt, if any.
+- `last_connection_ok` (Boolean) Whether the last connection attempt was successful.
+- `resource_url` (String) Resource URL of the connection on CipherTrust Manager.
+- `service` (String) Service type for the connection.
+- `updated_at` (String) Timestamp when the connection was last updated.
+- `uri` (String) URI of the SCP connection resource.
