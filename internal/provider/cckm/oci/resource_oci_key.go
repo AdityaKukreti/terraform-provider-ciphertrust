@@ -131,7 +131,7 @@ func (r *resourceCCKMOCIKey) Schema(_ context.Context, _ resource.SchemaRequest,
 					},
 					"compartment_id": schema.StringAttribute{
 						Required:    true,
-						Description: "(Updateable) The compartment's OCID in which to create the key.",
+						Description: "(Updatable) The compartment's OCID in which to create the key.",
 					},
 					"current_key_version": schema.StringAttribute{
 						Computed:    true,
