@@ -47,6 +47,9 @@ func (r *resourceCMRegToken) Schema(_ context.Context, _ resource.SchemaRequest,
 			"token": schema.StringAttribute{
 				Computed:    true,
 				Description: "Set the token recieved from the API call to the state.",
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.UseStateForUnknown(),
+				},
 			},
 			"ca_id": schema.StringAttribute{
 				Optional:    true,
@@ -179,6 +182,7 @@ func (r *resourceCMRegToken) Read(ctx context.Context, req resource.ReadRequest,
 // Update updates the resource and sets the updated Terraform state on success.
 func (r *resourceCMRegToken) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
 	var plan CMRegTokenTFSDK
+	var state CMRegTokenTFSDK
 	var payload CMRegTokenJSON
 
 	diags := req.Plan.Get(ctx, &plan)
@@ -186,6 +190,15 @@ func (r *resourceCMRegToken) Update(ctx context.Context, req resource.UpdateRequ
 	if resp.Diagnostics.HasError() {
 		return
 	}
+
+	// Read current state to preserve computed fields
+	diags = req.State.Get(ctx, &state)
+	resp.Diagnostics.Append(diags...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	plan.Token = state.Token
 
 	if plan.CAID.ValueString() != "" && plan.CAID.ValueString() != types.StringNull().ValueString() {
 		payload.CAID = plan.CAID.ValueString()
