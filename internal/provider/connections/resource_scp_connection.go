@@ -151,17 +151,17 @@ func (r *resourceCMScpConnection) Schema(_ context.Context, _ resource.SchemaReq
 				Computed:    true,
 				Description: "Use 'sftp' or 'scp'. 'sftp' is the default value",
 			},
-			//common response parameters (optional)
-			"uri":                   schema.StringAttribute{Computed: true, Optional: true},
-			"account":               schema.StringAttribute{Computed: true, Optional: true},
-			"created_at":            schema.StringAttribute{Computed: true, Optional: true},
-			"updated_at":            schema.StringAttribute{Computed: true, Optional: true},
-			"service":               schema.StringAttribute{Computed: true, Optional: true},
-			"category":              schema.StringAttribute{Computed: true, Optional: true},
-			"resource_url":          schema.StringAttribute{Computed: true, Optional: true},
-			"last_connection_ok":    schema.BoolAttribute{Computed: true, Optional: true},
-			"last_connection_error": schema.StringAttribute{Computed: true, Optional: true},
-			"last_connection_at":    schema.StringAttribute{Computed: true, Optional: true},
+			//common response parameters (read-only)
+			"uri":                   schema.StringAttribute{Computed: true, Description: "URI of the SCP connection resource."},
+			"account":               schema.StringAttribute{Computed: true, Description: "Account associated with the SCP connection."},
+			"created_at":            schema.StringAttribute{Computed: true, Description: "Timestamp when the connection was created."},
+			"updated_at":            schema.StringAttribute{Computed: true, Description: "Timestamp when the connection was last updated."},
+			"service":               schema.StringAttribute{Computed: true, Description: "Service type for the connection."},
+			"category":              schema.StringAttribute{Computed: true, Description: "Category of the connection."},
+			"resource_url":          schema.StringAttribute{Computed: true, Description: "Resource URL of the connection on CipherTrust Manager."},
+			"last_connection_ok":    schema.BoolAttribute{Computed: true, Description: "Whether the last connection attempt was successful."},
+			"last_connection_error": schema.StringAttribute{Computed: true, Description: "Error message from the last connection attempt, if any."},
+			"last_connection_at":    schema.StringAttribute{Computed: true, Description: "Timestamp of the last connection attempt."},
 		},
 	}
 }
