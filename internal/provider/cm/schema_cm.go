@@ -999,12 +999,12 @@ type CMSyslogJSON struct {
 	ID            string `json:"id"`
 	Host          string `json:"host"`
 	Transport     string `json:"transport"`
-	CACert        string `json:"ca_cert"`
-	MessageFormat string `json:"message_format"`
-	Port          int64  `json:"port"`
+	CACert        string `json:"caCert,omitempty"`
+	MessageFormat string `json:"messageFormat,omitempty"`
+	Port          int64  `json:"port,omitempty"`
 	Account       string `json:"account"`
-	CreatedAt     string `json:"created_at"`
-	UpdatedAt     string `json:"updated_at"`
+	CreatedAt     string `json:"createdAt"`
+	UpdatedAt     string `json:"updatedAt"`
 }
 
 type CMProxyTFSDK struct {
