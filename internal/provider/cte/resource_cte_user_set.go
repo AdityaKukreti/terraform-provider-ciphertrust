@@ -139,12 +139,17 @@ func (r *resourceCTEUserSet) Create(ctx context.Context, req resource.CreateRequ
 	var usersJSONArr []CTEUserJSON
 	for _, user := range plan.Users {
 		var userJSON CTEUserJSON
-		if user.GID.ValueInt64() != types.Int64Null().ValueInt64() {
-			userJSON.GID = int(user.GID.ValueInt64())
+
+		if !user.GID.IsNull() {
+			gid := int(user.GID.ValueInt64())
+			userJSON.GID = &gid
 		}
-		if user.GID.ValueInt64() != types.Int64Null().ValueInt64() {
-			userJSON.UID = int(user.UID.ValueInt64())
+
+		if !user.UID.IsNull() {
+			uid := int(user.UID.ValueInt64())
+			userJSON.UID = &uid
 		}
+
 		if user.OSDomain.ValueString() != "" && user.OSDomain.ValueString() != types.StringNull().ValueString() {
 			userJSON.OSDomain = string(user.OSDomain.ValueString())
 		}
@@ -243,12 +248,17 @@ func (r *resourceCTEUserSet) Update(ctx context.Context, req resource.UpdateRequ
 	var usersJSONArr []CTEUserJSON
 	for _, user := range plan.Users {
 		var userJSON CTEUserJSON
-		if user.GID.ValueInt64() != types.Int64Null().ValueInt64() {
-			userJSON.GID = int(user.GID.ValueInt64())
+
+		if !user.GID.IsNull() {
+			gid := int(user.GID.ValueInt64())
+			userJSON.GID = &gid
 		}
-		if user.GID.ValueInt64() != types.Int64Null().ValueInt64() {
-			userJSON.UID = int(user.UID.ValueInt64())
+
+		if !user.UID.IsNull() {
+			uid := int(user.UID.ValueInt64())
+			userJSON.UID = &uid
 		}
+
 		if user.OSDomain.ValueString() != "" && user.OSDomain.ValueString() != types.StringNull().ValueString() {
 			userJSON.OSDomain = string(user.OSDomain.ValueString())
 		}
@@ -275,7 +285,7 @@ func (r *resourceCTEUserSet) Update(ctx context.Context, req resource.UpdateRequ
 	if err != nil {
 		tflog.Debug(ctx, common.ERR_METHOD_END+err.Error()+" [resource_cm_user_set.go -> Update]["+plan.ID.ValueString()+"]")
 		resp.Diagnostics.AddError(
-			"Error creating CTE User Set on CipherTrust Manager: ",
+			"Error updating CTE User Set on CipherTrust Manager: ",
 			"Could not create CTE User Set, unexpected error: "+err.Error(),
 		)
 		return

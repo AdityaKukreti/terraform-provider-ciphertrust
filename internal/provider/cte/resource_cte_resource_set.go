@@ -114,38 +114,6 @@ func (r *resourceCTEResourceSet) Schema(_ context.Context, _ resource.SchemaRequ
 					},
 				},
 			},
-			// "classification_tags": schema.ListNestedAttribute{
-			// 	Optional: true,
-			// 	NestedObject: schema.NestedAttributeObject{
-			// 		Attributes: map[string]schema.Attribute{
-			// 			"description": schema.StringAttribute{
-			// 				Optional: true,
-			// 			},
-			// 			"name": schema.StringAttribute{
-			// 				Optional: true,
-			// 			},
-			// 			"attributes": schema.ListNestedAttribute{
-			// 				Optional: true,
-			// 				NestedObject: schema.NestedAttributeObject{
-			// 					Attributes: map[string]schema.Attribute{
-			// 						"data_type": schema.StringAttribute{
-			// 							Optional: true,
-			// 						},
-			// 						"name": schema.StringAttribute{
-			// 							Optional: true,
-			// 						},
-			// 						"operator": schema.StringAttribute{
-			// 							Optional: true,
-			// 						},
-			// 						"value": schema.StringAttribute{
-			// 							Optional: true,
-			// 						},
-			// 					},
-			// 				},
-			// 			},
-			// 		},
-			// 	},
-			// },
 		},
 	}
 }
@@ -174,38 +142,6 @@ func (r *resourceCTEResourceSet) Create(ctx context.Context, req resource.Create
 	} else {
 		payload.Type = "Directory"
 	}
-
-	//var tagsJSONArr []ClassificationTagJSON
-	// for _, tag := range plan.ClassificationTags {
-	// 	var tagsJSON ClassificationTagJSON
-	// 	if tag.Description.ValueString() != "" && tag.Description.ValueString() != types.StringNull().ValueString() {
-	// 		tagsJSON.Description = string(tag.Description.ValueString())
-	// 	}
-	// 	if tag.Name.ValueString() != "" && tag.Name.ValueString() != types.StringNull().ValueString() {
-	// 		tagsJSON.Name = string(tag.Name.ValueString())
-	// 	}
-	// 	var tagAttributesJSONArr []ClassificationTagAttributesJSON
-	// 	for _, atribute := range tag.Attributes {
-	// 		var tagAttributesJSON ClassificationTagAttributesJSON
-	// 		if atribute.Name.ValueString() != "" && atribute.Name.ValueString() != types.StringNull().ValueString() {
-	// 			tagAttributesJSON.Name = string(atribute.Name.ValueString())
-	// 		}
-	// 		if atribute.DataType.ValueString() != "" && atribute.DataType.ValueString() != types.StringNull().ValueString() {
-	// 			tagAttributesJSON.DataType = string(atribute.DataType.ValueString())
-	// 		}
-	// 		if atribute.Operator.ValueString() != "" && atribute.Operator.ValueString() != types.StringNull().ValueString() {
-	// 			tagAttributesJSON.Operator = string(atribute.Operator.ValueString())
-	// 		}
-	// 		if atribute.Value.ValueString() != "" && atribute.Value.ValueString() != types.StringNull().ValueString() {
-	// 			tagAttributesJSON.Value = string(atribute.Value.ValueString())
-	// 		}
-	// 		tagAttributesJSONArr = append(tagAttributesJSONArr, tagAttributesJSON)
-	// 	}
-	// 	tagsJSON.Attributes = tagAttributesJSONArr
-
-	// 	tagsJSONArr = append(tagsJSONArr, tagsJSON)
-	// }
-	//payload.ClassificationTags = tagsJSONArr
 
 	var resources []CTEResourceJSON
 	for _, resource := range plan.Resources {
@@ -314,38 +250,6 @@ func (r *resourceCTEResourceSet) Update(ctx context.Context, req resource.Update
 
 	payload.Description = common.TrimString(plan.Description.String())
 
-	// var tagsJSONArr []ClassificationTagJSON
-	// for _, tag := range plan.ClassificationTags {
-	// 	var tagsJSON ClassificationTagJSON
-	// 	if tag.Description.ValueString() != "" && tag.Description.ValueString() != types.StringNull().ValueString() {
-	// 		tagsJSON.Description = string(tag.Description.ValueString())
-	// 	}
-	// 	if tag.Name.ValueString() != "" && tag.Name.ValueString() != types.StringNull().ValueString() {
-	// 		tagsJSON.Name = string(tag.Name.ValueString())
-	// 	}
-	// 	var tagAttributesJSONArr []ClassificationTagAttributesJSON
-	// 	for _, atribute := range tag.Attributes {
-	// 		var tagAttributesJSON ClassificationTagAttributesJSON
-	// 		if atribute.Name.ValueString() != "" && atribute.Name.ValueString() != types.StringNull().ValueString() {
-	// 			tagAttributesJSON.Name = string(atribute.Name.ValueString())
-	// 		}
-	// 		if atribute.DataType.ValueString() != "" && atribute.DataType.ValueString() != types.StringNull().ValueString() {
-	// 			tagAttributesJSON.DataType = string(atribute.DataType.ValueString())
-	// 		}
-	// 		if atribute.Operator.ValueString() != "" && atribute.Operator.ValueString() != types.StringNull().ValueString() {
-	// 			tagAttributesJSON.Operator = string(atribute.Operator.ValueString())
-	// 		}
-	// 		if atribute.Value.ValueString() != "" && atribute.Value.ValueString() != types.StringNull().ValueString() {
-	// 			tagAttributesJSON.Value = string(atribute.Value.ValueString())
-	// 		}
-	// 		tagAttributesJSONArr = append(tagAttributesJSONArr, tagAttributesJSON)
-	// 	}
-	// 	tagsJSON.Attributes = tagAttributesJSONArr
-
-	// 	tagsJSONArr = append(tagsJSONArr, tagsJSON)
-	// }
-	// payload.ClassificationTags = tagsJSONArr
-
 	var resources []CTEResourceJSON
 	for _, resource := range plan.Resources {
 		var resourceJSON CTEResourceJSON
@@ -385,7 +289,7 @@ func (r *resourceCTEResourceSet) Update(ctx context.Context, req resource.Update
 	if err != nil {
 		tflog.Debug(ctx, common.ERR_METHOD_END+err.Error()+" [resource_cm_resource_set.go -> Update]["+plan.ID.ValueString()+"]")
 		resp.Diagnostics.AddError(
-			"Error creating CTE Resource Set on CipherTrust Manager: ",
+			"Error updating CTE Resource Set on CipherTrust Manager: ",
 			"Could not create CTE Resource Set, unexpected error: "+err.Error(),
 		)
 		return
