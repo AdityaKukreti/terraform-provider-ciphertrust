@@ -211,9 +211,6 @@ func (r *resourceCTEClient) Create(ctx context.Context, req resource.CreateReque
 	if plan.SystemLocked.ValueBool() != types.BoolNull().ValueBool() {
 		payload.SystemLocked = plan.SystemLocked.ValueBool()
 	}
-	if plan.CommunicationEnabled.ValueBool() != types.BoolNull().ValueBool() {
-		payload.CommunicationEnabled = plan.CommunicationEnabled.ValueBool()
-	}
 
 	payloadJSON, err := json.Marshal(payload)
 	if err != nil {
@@ -278,6 +275,15 @@ func (r *resourceCTEClient) Update(ctx context.Context, req resource.UpdateReque
 	if resp.Diagnostics.HasError() {
 		return
 	}
+
+	var state CTEClientTFSDK
+
+	diags = req.State.Get(ctx, &state)
+	resp.Diagnostics.Append(diags...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	plan.ClientType = state.ClientType
 
 	if plan.ClientLocked.ValueBool() != types.BoolNull().ValueBool() {
 		payload.ClientLocked = plan.ClientLocked.ValueBool()
