@@ -499,7 +499,7 @@ func (r *resourceAWSXKSKey) Create(ctx context.Context, req resource.CreateReque
 		resp.Diagnostics.AddError(details, "")
 		return
 	}
-	tflog.Debug(ctx, "[resource_aws_xks_key.go -> Create][response:"+response+"]")
+	tflog.Debug(ctx, "[resource_aws_xks_key.go -> Create][response:"+redactAWSResponse(response)+"]")
 	plan.ID = types.StringValue(gjson.Get(response, "id").String())
 	plan.KeyID = plan.ID
 
@@ -536,7 +536,7 @@ func (r *resourceAWSXKSKey) Create(ctx context.Context, req resource.CreateReque
 		resp.Diagnostics.AddWarning(details, "")
 	} else {
 		response = getResponse
-		tflog.Debug(ctx, "[resource_aws_xks_key.go -> Create][get response:"+response+"]")
+		tflog.Debug(ctx, "[resource_aws_xks_key.go -> Create][get response:"+redactAWSResponse(response)+"]")
 	}
 
 	var diags diag.Diagnostics
@@ -576,7 +576,6 @@ func (r *resourceAWSXKSKey) Read(ctx context.Context, req resource.ReadRequest, 
 		resp.Diagnostics.AddError(details, "")
 		return
 	}
-	tflog.Debug(ctx, "[resource_aws_xks_key.go -> Read][response:"+response+"]")
 	description := state.Description
 	r.setXKSKeyState(ctx, response, &state, &resp.Diagnostics)
 	if resp.Diagnostics.HasError() {
@@ -739,7 +738,7 @@ func (r *resourceAWSXKSKey) Update(ctx context.Context, req resource.UpdateReque
 	if resp.Diagnostics.HasError() {
 		return
 	}
-	tflog.Debug(ctx, "[resource_aws_xks_key.go -> Update][response:"+response+"]")
+	tflog.Debug(ctx, "[resource_aws_xks_key.go -> Update][response:"+redactAWSResponse(response)+"]")
 }
 
 // Delete schedules a linked AWS XKS key for deletion via the schedule-deletion API, or directly deletes
@@ -825,7 +824,7 @@ func (r *resourceAWSXKSKey) Delete(ctx context.Context, req resource.DeleteReque
 			}
 		}
 	}
-	tflog.Debug(ctx, "[resource_aws_xks_key.go -> Delete][response:"+response+"]")
+	tflog.Debug(ctx, "[resource_aws_xks_key.go -> Delete][response:"+redactAWSResponse(response)+"]")
 }
 
 // setXKSKeyState populates the Terraform state for an AWS XKS key from an API response JSON string.

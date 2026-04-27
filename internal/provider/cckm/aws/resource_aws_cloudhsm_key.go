@@ -458,6 +458,7 @@ func (r *resourceAWSCloudHSMKey) Create(ctx context.Context, req resource.Create
 		resp.Diagnostics.AddError(details, "")
 		return
 	}
+	tflog.Debug(ctx, "[resource_aws_cloudhsm_key.go -> Create][response:"+redactAWSResponse(response)+"]")
 	plan.ID = types.StringValue(gjson.Get(response, "id").String())
 	plan.KeyID = plan.ID
 
@@ -496,7 +497,7 @@ func (r *resourceAWSCloudHSMKey) Create(ctx context.Context, req resource.Create
 		resp.Diagnostics.AddWarning(details, "")
 	} else {
 		response = getResponse
-		tflog.Debug(ctx, "[resource_aws_cloudhsm_key.go -> Create][response:"+response+"]")
+		tflog.Debug(ctx, "[resource_aws_cloudhsm_key.go -> Create][response:"+redactAWSResponse(response)+"]")
 	}
 
 	var diags diag.Diagnostics
@@ -540,7 +541,6 @@ func (r *resourceAWSCloudHSMKey) Read(ctx context.Context, req resource.ReadRequ
 		resp.Diagnostics.AddError(details, "")
 		return
 	}
-	tflog.Debug(ctx, "[resource_aws_cloudhsm_key.go -> Read][response:"+response+"]")
 	description := state.Description
 	setCommonKeyStoreKeyState(ctx, response, &state.AWSKeyStoreKeyCommonTFSDK, &resp.Diagnostics)
 	if resp.Diagnostics.HasError() {
@@ -681,7 +681,7 @@ func (r *resourceAWSCloudHSMKey) Update(ctx context.Context, req resource.Update
 	if resp.Diagnostics.HasError() {
 		return
 	}
-	tflog.Debug(ctx, "[resource_aws_cloudhsm_key.go -> Update][response:"+response+"]")
+	tflog.Debug(ctx, "[resource_aws_cloudhsm_key.go -> Update][response:"+redactAWSResponse(response)+"]")
 }
 
 // Delete schedules a linked AWS CloudHSM key for deletion via the schedule-deletion API, or directly
@@ -767,5 +767,5 @@ func (r *resourceAWSCloudHSMKey) Delete(ctx context.Context, req resource.Delete
 			}
 		}
 	}
-	tflog.Debug(ctx, "[resource_aws_cloudhsm_key.go -> Delete][response:"+response+"]")
+	tflog.Debug(ctx, "[resource_aws_cloudhsm_key.go -> Delete][response:"+redactAWSResponse(response)+"]")
 }

@@ -162,7 +162,7 @@ func (r *resourceCCKMAWSAcl) Create(ctx context.Context, req resource.CreateRequ
 	var actions []string
 	resp.Diagnostics.Append(plan.Actions.ElementsAs(ctx, &actions, false)...)
 	if resp.Diagnostics.HasError() {
-		tflog.Debug(ctx, fmt.Sprintf("Error converting ACL actions: %v", resp.Diagnostics.Errors()))
+		tflog.Error(ctx, fmt.Sprintf("Error converting ACL actions: %v", resp.Diagnostics.Errors()))
 		return
 	}
 	resourceID := acls.EncodeContainerAclID(kmsID, plan.UserID.ValueString(), plan.Group.ValueString())
@@ -178,7 +178,7 @@ func (r *resourceCCKMAWSAcl) Create(ctx context.Context, req resource.CreateRequ
 			if resp.Diagnostics.HasError() {
 				return
 			}
-			tflog.Debug(ctx, fmt.Sprintf("Create response: %s", response))
+			tflog.Debug(ctx, "[resource_aws_acls.go -> Create][response:"+redactAWSResponse(response)+"]")
 		}
 	}
 
@@ -223,7 +223,6 @@ func (r *resourceCCKMAWSAcl) Read(ctx context.Context, req resource.ReadRequest,
 		tflog.Warn(ctx, details)
 		resp.Diagnostics.AddWarning(details, "")
 	}
-	tflog.Debug(ctx, "[resource_aws_acls.go -> Read][response:"+response+"]")
 	r.setAWSAclState(ctx, resourceID, response, &state, &resp.Diagnostics)
 	resp.Diagnostics.Append(resp.State.Set(ctx, state)...)
 }
@@ -289,7 +288,7 @@ func (r *resourceCCKMAWSAcl) Update(ctx context.Context, req resource.UpdateRequ
 			if resp.Diagnostics.HasError() {
 				return
 			}
-			tflog.Debug(ctx, fmt.Sprintf("Update response: %s", response))
+			tflog.Debug(ctx, "[resource_aws_acls.go -> Update][response:"+redactAWSResponse(response)+"]")
 		}
 	}
 	r.setAWSAclState(ctx, resourceID, response, &plan, &resp.Diagnostics)
@@ -338,7 +337,7 @@ func (r *resourceCCKMAWSAcl) Delete(ctx context.Context, req resource.DeleteRequ
 		if resp.Diagnostics.HasError() {
 			return
 		}
-		tflog.Debug(ctx, fmt.Sprintf("Delete response: %s", response))
+		tflog.Debug(ctx, "[resource_aws_acls.go -> Delete][response:"+redactAWSResponse(response)+"]")
 	}
 }
 
@@ -371,7 +370,7 @@ func (r *resourceCCKMAWSAcl) applyAcls(ctx context.Context, id string, kmsID str
 			return ""
 		}
 	}
-	tflog.Debug(ctx, "[resource_aws_acls.go -> applyAcls][response:"+response+"]")
+	tflog.Debug(ctx, "[resource_aws_acls.go -> applyAcls][response:"+redactAWSResponse(response)+"]")
 	return response
 }
 

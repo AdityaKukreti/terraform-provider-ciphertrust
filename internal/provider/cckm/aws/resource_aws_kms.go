@@ -199,6 +199,7 @@ func (r *resourceCCKMAWSKMS) Create(ctx context.Context, req resource.CreateRequ
 		resp.Diagnostics.AddError(details, "")
 		return
 	}
+	tflog.Debug(ctx, "[resource_aws_kms.go -> Create][response:"+redactAWSResponse(response)+"]")
 	plan.ID = types.StringValue(gjson.Get(response, "id").String())
 	r.setKmsState(ctx, response, &plan, &resp.Diagnostics)
 	if resp.Diagnostics.HasError() {
@@ -230,7 +231,6 @@ func (r *resourceCCKMAWSKMS) Read(ctx context.Context, req resource.ReadRequest,
 		resp.Diagnostics.AddError(details, "")
 		return
 	}
-	tflog.Debug(ctx, "[resource_aws_kms.go -> Read][response:"+response)
 	r.setKmsState(ctx, response, &state, &resp.Diagnostics)
 	if resp.Diagnostics.HasError() {
 		return
@@ -298,6 +298,7 @@ func (r *resourceCCKMAWSKMS) Update(ctx context.Context, req resource.UpdateRequ
 		resp.Diagnostics.AddError(details, "")
 		return
 	}
+	tflog.Debug(ctx, "[resource_aws_kms.go -> Update][response:"+redactAWSResponse(response)+"]")
 	r.setKmsState(ctx, response, &plan, &resp.Diagnostics)
 	if resp.Diagnostics.HasError() {
 		msg := "Error updating AWS KMS, failed to set resource state."

@@ -106,7 +106,7 @@ func (r *resourceAWSKeyRotation) Create(ctx context.Context, req resource.Create
 	now := time.Now().UTC().Format("2006-01-02 15:04:05 MST")
 	plan.Status = types.StringValue("A key material rotation request was sent to AWS on " + now + ".")
 	resp.Diagnostics.Append(resp.State.Set(ctx, plan)...)
-	tflog.Debug(ctx, "[resource_aws_key_rotation.go -> Create][response:"+response)
+	tflog.Debug(ctx, "[resource_aws_key_rotation.go -> Create][response:"+redactAWSResponse(response))
 }
 
 // Read verifies the referenced AWS key still exists in CipherTrust Manager. If the underlying AWS key is
@@ -122,7 +122,7 @@ func (r *resourceAWSKeyRotation) Read(ctx context.Context, req resource.ReadRequ
 		return
 	}
 	keyID := state.KeyID.ValueString()
-	response, err := r.client.GetById(ctx, id, keyID, common.URL_AWS_KEY)
+	_, err := r.client.GetById(ctx, id, keyID, common.URL_AWS_KEY)
 	if err != nil {
 		if strings.Contains(err.Error(), "status: 404") {
 			msg := "AWS key no longer exists, removing rotation resource from state."
@@ -141,7 +141,6 @@ func (r *resourceAWSKeyRotation) Read(ctx context.Context, req resource.ReadRequ
 	if resp.Diagnostics.HasError() {
 		return
 	}
-	tflog.Debug(ctx, "[resource_aws_key_rotation.go -> Read][response:"+response)
 }
 
 // Update is a no-op; rotations are immutable once submitted and require replace.
@@ -154,7 +153,6 @@ func (r *resourceAWSKeyRotation) Delete(ctx context.Context, req resource.Delete
 
 // rotateKeyMaterial calls the CipherTrust Manager rotate-material API for the specified AWS key.
 func (r *resourceAWSKeyRotation) rotateKeyMaterial(ctx context.Context, id string, plan *AWSKeyRotationTFSDK, diags *diag.Diagnostics) string {
-	tflog.Debug(ctx, "[resource_aws_key_rotation.go -> rotateKeyMaterial]["+id+"]")
 	keyID := plan.KeyID.ValueString()
 	response, err := r.client.PostDataV2(ctx, id, common.URL_AWS_KEY+"/"+keyID+"/rotate-material", nil)
 	if err != nil {
@@ -164,6 +162,6 @@ func (r *resourceAWSKeyRotation) rotateKeyMaterial(ctx context.Context, id strin
 		diags.AddError(details, "")
 		return ""
 	}
-	tflog.Debug(ctx, "[resource_aws_key_rotation.go -> rotateKeyMaterial][response:"+response)
+	tflog.Debug(ctx, "[resource_aws_key_rotation.go -> rotateKeyMaterial][response:"+redactAWSResponse(response))
 	return response
 }

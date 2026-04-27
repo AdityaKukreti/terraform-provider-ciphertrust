@@ -569,7 +569,7 @@ func (r *resourceAWSKey) Create(ctx context.Context, req resource.CreateRequest,
 	plan.ID = types.StringValue(encodeAWSKeyTerraformResourceID(region, kid))
 	plan.KeyID = types.StringValue(gjson.Get(response, "id").String())
 
-	tflog.Debug(ctx, "[resource_aws_key.go -> Create][response:"+response)
+	tflog.Debug(ctx, "[resource_aws_key.go -> Create][response:"+redactAWSResponse(response))
 
 	// Don't return errors after this
 
@@ -612,7 +612,7 @@ func (r *resourceAWSKey) Create(ctx context.Context, req resource.CreateRequest,
 		resp.Diagnostics.AddWarning(details, "")
 	} else {
 		response = getResponse
-		tflog.Debug(ctx, "[resource_aws_key.go -> Create][response:"+response)
+		tflog.Debug(ctx, "[resource_aws_key.go -> Create][response:"+redactAWSResponse(response))
 	}
 
 	var diags diag.Diagnostics
@@ -621,7 +621,7 @@ func (r *resourceAWSKey) Create(ctx context.Context, req resource.CreateRequest,
 		resp.Diagnostics.AddWarning(d.Summary(), d.Detail())
 	}
 	resp.Diagnostics.Append(resp.State.Set(ctx, plan)...)
-	tflog.Debug(ctx, "[resource_aws_key.go -> Create][response:"+response)
+	tflog.Debug(ctx, "[resource_aws_key.go -> Create][response:"+redactAWSResponse(response))
 }
 
 // Read refreshes the Terraform state for an AWS key by fetching the latest data from CipherTrust Manager.
@@ -650,7 +650,6 @@ func (r *resourceAWSKey) Read(ctx context.Context, req resource.ReadRequest, res
 		resp.State.RemoveResource(ctx)
 		return
 	}
-	tflog.Debug(ctx, "[resource_aws_key.go -> Read][response:"+response)
 	r.setKeyState(ctx, response, &state, &resp.Diagnostics)
 	if resp.Diagnostics.HasError() {
 		return
@@ -773,7 +772,7 @@ func (r *resourceAWSKey) Update(ctx context.Context, req resource.UpdateRequest,
 		return
 	}
 	resp.Diagnostics.Append(resp.State.Set(ctx, plan)...)
-	tflog.Debug(ctx, "[resource_aws_key.go -> Update][response:"+response)
+	tflog.Debug(ctx, "[resource_aws_key.go -> Update][response:"+redactAWSResponse(response))
 }
 
 // updateAwsKeyCommon applies description, key policy, and rotation-job changes that are shared across
@@ -863,7 +862,7 @@ func (r *resourceAWSKey) Delete(ctx context.Context, req resource.DeleteRequest,
 			resp.Diagnostics.AddError(details, "")
 		}
 	}
-	tflog.Debug(ctx, "[resource_aws_key.go -> Delete][response:"+response)
+	tflog.Debug(ctx, "[resource_aws_key.go -> Delete][response:"+redactAWSResponse(response))
 }
 
 // createKey creates a native or external AWS key and returns the API response JSON.
@@ -899,13 +898,13 @@ func (r *resourceAWSKey) createKey(ctx context.Context, id string, plan *AWSKeyT
 		diags.AddError(details, "")
 		return ""
 	}
-	tflog.Debug(ctx, "[resource_aws_key.go -> createKey][response:"+response)
+	tflog.Debug(ctx, "[resource_aws_key.go -> createKey][response:"+redactAWSResponse(response))
 	return response
 }
 
 // setKeyState populates the full Terraform state for an AWS key from an API response JSON string.
 func (r *resourceAWSKey) setKeyState(ctx context.Context, response string, state *AWSKeyTFSDK, diags *diag.Diagnostics) {
-	tflog.Debug(ctx, "[resource_aws_key.go -> setKeyState][response:"+response)
+	tflog.Debug(ctx, "[resource_aws_key.go -> setKeyState][response:"+redactAWSResponse(response))
 	setCommonKeyState(ctx, response, &state.AWSKeyCommonTFSDK, diags)
 	setCommonKeyStateEx(ctx, response, &state.AWSKeyCommonTFSDK, diags)
 	if gjson.Get(response, "aws_param.RotationPeriodInDays").Exists() {
@@ -1120,7 +1119,7 @@ func (r *resourceAWSKey) enableAutoRotation(ctx context.Context, id string, plan
 			return
 		}
 	}
-	tflog.Debug(ctx, "[resource_aws_key.go -> enableAutoRotation][response:"+response)
+	tflog.Debug(ctx, "[resource_aws_key.go -> enableAutoRotation][response:"+redactAWSResponse(response))
 }
 
 // disableAutoRotation sends the disable-auto-rotation request to AWS, retrying on transient disabled-key errors.
@@ -1164,7 +1163,7 @@ func (r *resourceAWSKey) disableAutoRotation(ctx context.Context, id string, pla
 			return
 		}
 	}
-	tflog.Debug(ctx, "[resource_aws_key.go -> disableAutoRotation][response:"+response)
+	tflog.Debug(ctx, "[resource_aws_key.go -> disableAutoRotation][response:"+redactAWSResponse(response))
 }
 
 // enableKeyRotationJob registers an AWS key with a CipherTrust Manager scheduled rotation job.
@@ -1205,7 +1204,7 @@ func enableKeyRotationJob(ctx context.Context, id string, client *common.Client,
 			diags.AddError(details, "")
 			return
 		}
-		tflog.Debug(ctx, "[resource_aws_key.go -> enableKeyRotationJob][response:"+response)
+		tflog.Debug(ctx, "[resource_aws_key.go -> enableKeyRotationJob][response:"+redactAWSResponse(response))
 	}
 }
 
@@ -1223,7 +1222,7 @@ func disableKeyRotationJob(ctx context.Context, id string, client *common.Client
 		tflog.Error(ctx, details)
 		return
 	}
-	tflog.Debug(ctx, "[resource_aws_key.go -> disableKeyRotationJob][response:"+response)
+	tflog.Debug(ctx, "[resource_aws_key.go -> disableKeyRotationJob][response:"+redactAWSResponse(response))
 }
 
 // importKeyMaterial creates an EXTERNAL AWS key, then creates a local CipherTrust Manager key and imports
@@ -1283,7 +1282,7 @@ func (r *resourceAWSKey) importKeyMaterial(ctx context.Context, id string, plan 
 		diags.AddWarning(details, "")
 		return awsKeyResponse
 	}
-	tflog.Debug(ctx, "[resource_aws_key.go -> importKeyMaterial][response:"+response)
+	tflog.Debug(ctx, "[resource_aws_key.go -> importKeyMaterial][response:"+redactAWSResponse(response))
 	return response
 }
 
@@ -1337,7 +1336,7 @@ func (r *resourceAWSKey) uploadKey(ctx context.Context, id string, plan *AWSKeyT
 		diags.AddError(details, "")
 		return ""
 	}
-	tflog.Debug(ctx, "[resource_aws_key.go -> uploadKey][response:"+response)
+	tflog.Debug(ctx, "[resource_aws_key.go -> uploadKey][response:"+redactAWSResponse(response))
 	return response
 }
 
@@ -1413,7 +1412,7 @@ func (r *resourceAWSKey) replicateKey(ctx context.Context, id string, plan *AWSK
 		diags.AddWarning(details, "")
 		return ""
 	}
-	tflog.Debug(ctx, "[resource_aws_key.go -> replicateKey][response:"+response)
+	tflog.Debug(ctx, "[resource_aws_key.go -> replicateKey][response:"+redactAWSResponse(response))
 	return response
 }
 
@@ -1465,7 +1464,7 @@ func (r *resourceAWSKey) replicateAwsKey(ctx context.Context, id string, plan *A
 		diags.AddError(details, "")
 		return ""
 	}
-	tflog.Debug(ctx, "[resource_aws_key.go -> replicateAwsKey][response:"+response)
+	tflog.Debug(ctx, "[resource_aws_key.go -> replicateAwsKey][response:"+redactAWSResponse(response))
 	return response
 }
 
@@ -1515,7 +1514,7 @@ func (r *resourceAWSKey) waitForReplication(ctx context.Context, id string, repl
 		keyState = gjson.Get(response, "aws_param.KeyState").String()
 		tflog.Debug(ctx, fmt.Sprintf("Key state: %s", keyState))
 		if keyState != "Creating" {
-			tflog.Debug(ctx, "[resource_aws_key.go -> waitForReplication][response:"+response)
+			tflog.Debug(ctx, "[resource_aws_key.go -> waitForReplication][response:"+redactAWSResponse(response))
 			return response
 		}
 	}
@@ -1523,7 +1522,7 @@ func (r *resourceAWSKey) waitForReplication(ctx context.Context, id string, repl
 	details := utils.ApiError(msg, map[string]interface{}{"key_id": replicaKeyID})
 	tflog.Warn(ctx, details)
 	diags.AddWarning(details, "")
-	tflog.Debug(ctx, "[resource_aws_key.go -> waitForReplication][response:"+response)
+	tflog.Debug(ctx, "[resource_aws_key.go -> waitForReplication][response:"+redactAWSResponse(response))
 	return response
 }
 
@@ -1575,7 +1574,7 @@ func (r *resourceAWSKey) waitForReplicatedKeyIsEnabled(ctx context.Context, id s
 		keyState = gjson.Get(response, "aws_param.KeyState").String()
 		tflog.Debug(ctx, fmt.Sprintf("Key state: %s", keyState))
 		if keyState == "Enabled" {
-			tflog.Debug(ctx, "[resource_aws_key.go -> waitForReplicatedKeyIsEnabled][response:"+response)
+			tflog.Debug(ctx, "[resource_aws_key.go -> waitForReplicatedKeyIsEnabled][response:"+redactAWSResponse(response))
 			return response
 		}
 	}
@@ -1583,7 +1582,7 @@ func (r *resourceAWSKey) waitForReplicatedKeyIsEnabled(ctx context.Context, id s
 	details := utils.ApiError(msg, map[string]interface{}{"key_id": replicaKeyID})
 	tflog.Warn(ctx, details)
 	diags.AddWarning(details, "")
-	tflog.Debug(ctx, "[resource_aws_key.go -> waitForReplicatedKeyIsEnabled][response:"+response)
+	tflog.Debug(ctx, "[resource_aws_key.go -> waitForReplicatedKeyIsEnabled][response:"+redactAWSResponse(response))
 	return response
 }
 
@@ -1649,7 +1648,7 @@ func (r *resourceAWSKey) importKeyMaterialToReplica(ctx context.Context, id stri
 		diags.AddError(details, "")
 		return
 	}
-	tflog.Debug(ctx, "[resource_aws_key.go -> importKeyMaterialToReplica][response:"+response)
+	tflog.Debug(ctx, "[resource_aws_key.go -> importKeyMaterialToReplica][response:"+redactAWSResponse(response))
 }
 
 // updatePrimaryRegion changes the primary region of a multi-region AWS key and polls until the change is confirmed.
@@ -1740,7 +1739,7 @@ func (r *resourceAWSKey) updatePrimaryRegion(ctx context.Context, id string, pri
 		tflog.Debug(ctx, fmt.Sprintf("Key primary region: %s", currentPrimaryRegion))
 		if currentPrimaryRegion == newPrimaryRegion {
 			// Success - return before firing any /refresh so no background task is left running.
-			tflog.Debug(ctx, "[resource_aws_key.go -> updatePrimaryRegion][response:"+response)
+			tflog.Debug(ctx, "[resource_aws_key.go -> updatePrimaryRegion][response:"+redactAWSResponse(response))
 			return
 		}
 		<-ticker.C
@@ -1754,7 +1753,7 @@ func (r *resourceAWSKey) updatePrimaryRegion(ctx context.Context, id string, pri
 		tflog.Warn(ctx, details)
 		diags.AddWarning(details, "")
 	}
-	tflog.Debug(ctx, "[resource_aws_key.go -> updatePrimaryRegion][response:"+response)
+	tflog.Debug(ctx, "[resource_aws_key.go -> updatePrimaryRegion][response:"+redactAWSResponse(response))
 }
 
 // enableKey enables a disabled AWS key.
@@ -1770,7 +1769,7 @@ func enableKey(ctx context.Context, id string, client *common.Client, keyID stri
 		diags.AddError(details, "")
 		return
 	}
-	tflog.Debug(ctx, "[resource_aws_key.go -> enableKey][response:"+response)
+	tflog.Debug(ctx, "[resource_aws_key.go -> enableKey][response:"+redactAWSResponse(response))
 }
 
 // disableKey disables an enabled AWS key.
@@ -1786,7 +1785,7 @@ func disableKey(ctx context.Context, id string, client *common.Client, keyID str
 		diags.AddError(details, "")
 		return
 	}
-	tflog.Debug(ctx, "[resource_aws_key.go -> disableKey][response:"+response)
+	tflog.Debug(ctx, "[resource_aws_key.go -> disableKey][response:"+redactAWSResponse(response))
 }
 
 // addAliases assigns additional aliases (beyond the first) to an AWS key after creation.
@@ -1824,7 +1823,7 @@ func addAliases(ctx context.Context, client *common.Client, id string, plan *AWS
 			return
 		}
 	}
-	tflog.Debug(ctx, "[resource_aws_key.go -> addAliases][response:"+response)
+	tflog.Debug(ctx, "[resource_aws_key.go -> addAliases][response:"+redactAWSResponse(response))
 }
 
 // updateAliases reconciles the plan's alias list against the key's current aliases, adding and removing
@@ -1880,7 +1879,7 @@ func updateAliases(ctx context.Context, id string, client *common.Client, plan *
 				diags.AddError(details, "")
 				return
 			}
-			tflog.Debug(ctx, "[resource_aws_key.go -> updateAliases][response:"+response)
+			tflog.Debug(ctx, "[resource_aws_key.go -> updateAliases][response:"+redactAWSResponse(response))
 		}
 	}
 
@@ -1917,7 +1916,7 @@ func updateAliases(ctx context.Context, id string, client *common.Client, plan *
 				diags.AddError(details, "")
 				return
 			}
-			tflog.Debug(ctx, "[resource_aws_key.go -> updateAliases][response:"+response)
+			tflog.Debug(ctx, "[resource_aws_key.go -> updateAliases][response:"+redactAWSResponse(response))
 		}
 	}
 }
@@ -1959,7 +1958,7 @@ func updateDescription(ctx context.Context, id string, client *common.Client, pl
 		diags.AddError(details, "")
 		return
 	}
-	tflog.Debug(ctx, "[resource_aws_key.go -> updateDescription][response:"+response)
+	tflog.Debug(ctx, "[resource_aws_key.go -> updateDescription][response:"+redactAWSResponse(response))
 }
 
 // updateTags reconciles the plan's tag map against the key's current tags, adding and removing as needed.
@@ -2011,7 +2010,7 @@ func updateTags(ctx context.Context, id string, client *common.Client, planTags 
 			diags.AddError(details, "")
 			return
 		}
-		tflog.Debug(ctx, "[resource_aws_key.go -> updateTags][response:"+response)
+		tflog.Debug(ctx, "[resource_aws_key.go -> updateTags][response:"+redactAWSResponse(response))
 	}
 	for planKey, planValue := range planTags {
 		found := false
@@ -2046,7 +2045,7 @@ func updateTags(ctx context.Context, id string, client *common.Client, planTags 
 			diags.AddError(details, "")
 			return
 		}
-		tflog.Debug(ctx, "[resource_aws_key.go -> updateTags][response:"+response)
+		tflog.Debug(ctx, "[resource_aws_key.go -> updateTags][response:"+redactAWSResponse(response))
 	}
 }
 
@@ -2081,7 +2080,7 @@ func updateKeyPolicy(ctx context.Context, id string, client *common.Client, plan
 			return
 		}
 		plan.KeyID = types.StringValue(gjson.Get(response, "id").String())
-		tflog.Debug(ctx, "[resource_aws_key.go -> updateKeyPolicy][response:"+response)
+		tflog.Debug(ctx, "[resource_aws_key.go -> updateKeyPolicy][response:"+redactAWSResponse(response))
 	}
 }
 
@@ -2495,7 +2494,7 @@ func (r *resourceAWSKey) getPrimaryKey(ctx context.Context, id string, keyID str
 	for _, keyResourceJSON := range resources {
 		response = keyResourceJSON.Raw
 	}
-	tflog.Debug(ctx, "[resource_aws_key.go -> getPrimaryKey][response:"+response)
+	tflog.Debug(ctx, "[resource_aws_key.go -> getPrimaryKey][response:"+redactAWSResponse(response))
 	return response
 }
 
@@ -2564,7 +2563,7 @@ func (r *resourceAWSKey) createKeyMaterial(ctx context.Context, id string, impor
 			diags.AddError(details, "")
 			return ""
 		}
-		tflog.Debug(ctx, "[resource_aws_key.go -> createKeyMaterial][response:"+response)
+		tflog.Debug(ctx, "[resource_aws_key.go -> createKeyMaterial][response:"+redactAWSResponse(response))
 	}
 	return response
 }

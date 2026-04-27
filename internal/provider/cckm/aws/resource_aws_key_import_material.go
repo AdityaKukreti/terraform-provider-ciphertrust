@@ -349,7 +349,7 @@ func (r *resourceAWSKeyImportMaterial) Create(ctx context.Context, req resource.
 		resp.Diagnostics.AddWarning(d.Summary(), d.Detail())
 	}
 	resp.Diagnostics.Append(resp.State.Set(ctx, plan)...)
-	tflog.Debug(ctx, "[resource_aws_key_import_material.go -> Create][response:"+response)
+	tflog.Debug(ctx, "[resource_aws_key_import_material.go -> Create][response:"+redactAWSResponse(response))
 }
 
 // Read refreshes Terraform state for an import-material resource by reading the current AWS key from CipherTrust Manager.
@@ -383,7 +383,6 @@ func (r *resourceAWSKeyImportMaterial) Read(ctx context.Context, req resource.Re
 	if resp.Diagnostics.HasError() {
 		return
 	}
-	tflog.Debug(ctx, "[resource_aws_key_import_material.go -> Read][response:"+response)
 }
 
 // Update re-imports key material into the EXTERNAL AWS key when the plan changes.
@@ -419,7 +418,7 @@ func (r *resourceAWSKeyImportMaterial) Update(ctx context.Context, req resource.
 	if resp.Diagnostics.HasError() {
 		return
 	}
-	tflog.Debug(ctx, "[resource_aws_key_import_material.go -> Update][response:"+response)
+	tflog.Debug(ctx, "[resource_aws_key_import_material.go -> Update][response:"+redactAWSResponse(response))
 }
 
 // Delete is a no-op; the import material resource does not delete the underlying AWS key on destroy.
@@ -428,7 +427,7 @@ func (r *resourceAWSKeyImportMaterial) Delete(ctx context.Context, req resource.
 
 // setKeyState populates the full Terraform state for an import-material resource from an API response JSON string.
 func (r *resourceAWSKeyImportMaterial) setKeyState(ctx context.Context, response string, state *AWSKeyForImportMaterialTFSDK, diags *diag.Diagnostics) {
-	tflog.Debug(ctx, "[resource_aws_key_import_material.go -> setKeyState][response:"+response)
+	tflog.Debug(ctx, "[resource_aws_key_import_material.go -> setKeyState][response:"+redactAWSResponse(response))
 	r.setImportMaterialState(ctx, response, &state.AWSKeyCommonImportMaterialTFSDK, diags)
 	state.MultiRegion = types.BoolValue(gjson.Get(response, "aws_param.MultiRegion").Bool())
 	state.MultiRegionKeyType = types.StringValue(gjson.Get(response, "aws_param.MultiRegionConfiguration.MultiRegionKeyType").String())
@@ -488,7 +487,7 @@ func (r *resourceAWSKeyImportMaterial) importKeyMaterial(ctx context.Context, id
 		diags.AddError(details, "")
 		return ""
 	}
-	tflog.Debug(ctx, "[resource_aws_key_import_material.go -> importKeyMaterial][response:"+response)
+	tflog.Debug(ctx, "[resource_aws_key_import_material.go -> importKeyMaterial][response:"+redactAWSResponse(response))
 	return response
 }
 
