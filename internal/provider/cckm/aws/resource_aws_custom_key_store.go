@@ -315,18 +315,18 @@ func (r *resourceAWSCustomKeyStore) Create(ctx context.Context, req resource.Cre
 		return
 	}
 
-	timeouts, diags := plan.Timeouts.Create(ctx, 30*time.Minute)
+	createTimeout, diags := plan.Timeouts.Create(ctx, 30*time.Minute)
 	resp.Diagnostics.Append(diags...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
-	ctx, cancel := context.WithTimeout(ctx, timeouts)
+	ctx, cancel := context.WithTimeout(ctx, createTimeout)
 	defer cancel()
 
 	if plan.KMS.ValueString() != "" && plan.KMS.ValueString() != types.StringNull().ValueString() {
 		payload.KMS = common.TrimString(plan.KMS.String())
 	} else {
-		tflog.Debug(ctx, "kms is a mandatory parameter for this operation")
+		tflog.Error(ctx, "kms is a mandatory parameter for this operation")
 		resp.Diagnostics.AddError(
 			"Missing Mandatory Parameter",
 			"KMS name is a mandatory field in the create Custom Key Store Operation",
@@ -336,7 +336,7 @@ func (r *resourceAWSCustomKeyStore) Create(ctx context.Context, req resource.Cre
 	if plan.Name.ValueString() != "" && plan.Name.ValueString() != types.StringNull().ValueString() {
 		payload.Name = common.TrimString(plan.Name.String())
 	} else {
-		tflog.Debug(ctx, "name is a mandatory parameter for this operation")
+		tflog.Error(ctx, "name is a mandatory parameter for this operation")
 		resp.Diagnostics.AddError(
 			"Missing Mandatory Parameter",
 			"Name is a mandatory field in the create Custom Key Store Operation",
@@ -346,7 +346,7 @@ func (r *resourceAWSCustomKeyStore) Create(ctx context.Context, req resource.Cre
 	if plan.Region.ValueString() != "" && plan.Region.ValueString() != types.StringNull().ValueString() {
 		payload.Region = common.TrimString(plan.Region.String())
 	} else {
-		tflog.Debug(ctx, "region is a mandatory parameter for this operation")
+		tflog.Error(ctx, "region is a mandatory parameter for this operation")
 		resp.Diagnostics.AddError(
 			"Missing Mandatory Parameter",
 			"AWS Region is a mandatory field in the create Custom Key Store Operation",
@@ -440,6 +440,7 @@ func (r *resourceAWSCustomKeyStore) Create(ctx context.Context, req resource.Cre
 		)
 		return
 	}
+	tflog.Debug(ctx, "[resource_aws_custom_key_store.go -> Create][response:"+redactAWSResponse(response)+"]")
 	plan.ID = types.StringValue(gjson.Get(response, "id").String())
 
 	// No error after this
@@ -462,10 +463,10 @@ func (r *resourceAWSCustomKeyStore) Create(ctx context.Context, req resource.Cre
 			}
 			maxOperationRetries := operationTimeOutInSeconds / operationRetryDelay
 
-			payload := AWSCustomKeyStoreConnectPayloadJSON{
+			connectPayload := AWSCustomKeyStoreConnectPayloadJSON{
 				KeyStorePassword: common.TrimString(awsParamJSON.KeyStorePassword),
 			}
-			payloadJSON, err := json.Marshal(payload)
+			payloadJSON, err := json.Marshal(connectPayload)
 			if err != nil {
 				tflog.Debug(ctx, common.ERR_METHOD_END+err.Error()+" [resource_aws_custom_key_store.go -> connect]["+plan.ID.ValueString()+"]")
 				resp.Diagnostics.AddWarning(
@@ -516,7 +517,7 @@ func (r *resourceAWSCustomKeyStore) Create(ctx context.Context, req resource.Cre
 		)
 	} else {
 		response = getResponse
-		tflog.Debug(ctx, "[resource_aws_custom_key_store.go -> Create][response:"+response+"]")
+		tflog.Debug(ctx, "[resource_aws_custom_key_store.go -> Create][response:"+redactAWSResponse(response)+"]")
 	}
 
 	var warningDiags diag.Diagnostics
@@ -556,7 +557,6 @@ func (r *resourceAWSCustomKeyStore) Read(ctx context.Context, req resource.ReadR
 		)
 		return
 	}
-	tflog.Debug(ctx, "[resource_aws_custom_key_store.go -> Read][response:"+response+"]")
 	r.setCustomKeyStoreState(ctx, response, &state, &state, &resp.Diagnostics)
 	if resp.Diagnostics.HasError() {
 		return
@@ -597,12 +597,12 @@ func (r *resourceAWSCustomKeyStore) Update(ctx context.Context, req resource.Upd
 		return
 	}
 
-	timeouts, diags := plan.Timeouts.Update(ctx, 30*time.Minute)
+	updateTimeout, diags := plan.Timeouts.Update(ctx, 30*time.Minute)
 	resp.Diagnostics.Append(diags...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
-	ctx, cancel := context.WithTimeout(ctx, timeouts)
+	ctx, cancel := context.WithTimeout(ctx, updateTimeout)
 	defer cancel()
 
 	var state AWSCustomKeyStoreTFSDK
@@ -725,12 +725,10 @@ func (r *resourceAWSCustomKeyStore) Update(ctx context.Context, req resource.Upd
 	} else if stateLocalHostedParamsTFSDK.Blocked.ValueBool() != planLocalHostedParamsTFSDK.Blocked.ValueBool() {
 		toBeUpdatedOps = true
 		if toBeBlock := planLocalHostedParamsTFSDK.Blocked.ValueBool(); toBeBlock {
-			var payload []byte
-			response, err := r.client.PostDataV2(
+			response, err := r.client.PostNoData(
 				ctx,
 				plan.ID.ValueString(),
-				common.URL_AWS_XKS+"/"+plan.ID.ValueString()+"/block",
-				payload)
+				common.URL_AWS_XKS+"/"+plan.ID.ValueString()+"/block")
 			if err != nil {
 				tflog.Debug(ctx, common.ERR_METHOD_END+err.Error()+" [resource_aws_custom_key_store.go -> block]["+plan.ID.ValueString()+"]")
 				resp.Diagnostics.AddError(
@@ -741,12 +739,10 @@ func (r *resourceAWSCustomKeyStore) Update(ctx context.Context, req resource.Upd
 			}
 			r.setCustomKeyStoreState(ctx, response, &plan, &state, &resp.Diagnostics)
 		} else {
-			var payload []byte
-			response, err := r.client.PostDataV2(
+			response, err := r.client.PostNoData(
 				ctx,
 				plan.ID.ValueString(),
-				common.URL_AWS_XKS+"/"+plan.ID.ValueString()+"/unblock",
-				payload)
+				common.URL_AWS_XKS+"/"+plan.ID.ValueString()+"/unblock")
 			if err != nil {
 				tflog.Debug(ctx, common.ERR_METHOD_END+err.Error()+" [resource_aws_custom_key_store.go -> unblock]["+plan.ID.ValueString()+"]")
 				resp.Diagnostics.AddError(
@@ -760,16 +756,16 @@ func (r *resourceAWSCustomKeyStore) Update(ctx context.Context, req resource.Upd
 	} else if plan.LinkedState.ValueBool() &&
 		state.LinkedState.ValueBool() != plan.LinkedState.ValueBool() {
 		toBeUpdatedOps = true
-		var payload AWSCustomKeyStoreJSON
-		var awsParamJSON AWSParamJSON
+		var linkPayload AWSCustomKeyStoreJSON
+		var linkAWSParams AWSParamJSON
 		if planAWSParamTFSDK.XKSProxyURIEndpoint.ValueString() != "" && planAWSParamTFSDK.XKSProxyURIEndpoint.ValueString() != types.StringNull().ValueString() {
-			awsParamJSON.XKSProxyURIEndpoint = planAWSParamTFSDK.XKSProxyURIEndpoint.ValueString()
+			linkAWSParams.XKSProxyURIEndpoint = planAWSParamTFSDK.XKSProxyURIEndpoint.ValueString()
 		}
 		if planAWSParamTFSDK.XKSProxyVPCEndpointServiceName.ValueString() != types.StringNull().ValueString() {
-			awsParamJSON.XKSProxyVPCEndpointServiceName = planAWSParamTFSDK.XKSProxyVPCEndpointServiceName.ValueString()
+			linkAWSParams.XKSProxyVPCEndpointServiceName = planAWSParamTFSDK.XKSProxyVPCEndpointServiceName.ValueString()
 		}
-		payload.AWSParams = &awsParamJSON
-		payloadJSON, err := json.Marshal(payload)
+		linkPayload.AWSParams = &linkAWSParams
+		payloadJSON, err := json.Marshal(linkPayload)
 		if err != nil {
 			tflog.Debug(ctx, common.ERR_METHOD_END+err.Error()+" [resource_aws_custom_key_store.go -> link]["+plan.ID.ValueString()+"]")
 			resp.Diagnostics.AddError(
@@ -803,10 +799,10 @@ func (r *resourceAWSCustomKeyStore) Update(ctx context.Context, req resource.Upd
 			}
 			maxOperationRetries := operationTimeOutInSeconds / operationRetryDelay
 
-			payload := AWSCustomKeyStoreConnectPayloadJSON{
+			connectPayload := AWSCustomKeyStoreConnectPayloadJSON{
 				KeyStorePassword: common.TrimString(stateAWSParamTFSDK.KeyStorePassword.ValueString()),
 			}
-			payloadJSON, err := json.Marshal(payload)
+			payloadJSON, err := json.Marshal(connectPayload)
 			if err != nil {
 				tflog.Debug(ctx, common.ERR_METHOD_END+err.Error()+" [resource_aws_custom_key_store.go -> connect]["+plan.ID.ValueString()+"]")
 				resp.Diagnostics.AddError(
@@ -840,16 +836,14 @@ func (r *resourceAWSCustomKeyStore) Update(ctx context.Context, req resource.Upd
 			r.setCustomKeyStoreState(ctx, response, &plan, &state, &resp.Diagnostics)
 		} else if plan.ConnectDisconnectKeystore.ValueString() == StateDisconnectKeystore {
 			toBeUpdatedOps = true
-			var payload []byte
 			if planAWSParamTFSDK.CustomKeystoreType.ValueString() == CustomKeystoreTypeAWSCloudHSM {
 				operationTimeOutInSeconds = 11 * 60
 			}
 			maxOperationRetries := operationTimeOutInSeconds / operationRetryDelay
-			_, err := r.client.PostDataV2(
+			_, err := r.client.PostNoData(
 				ctx,
 				plan.ID.ValueString(),
-				common.URL_AWS_XKS+"/"+plan.ID.ValueString()+"/disconnect",
-				payload)
+				common.URL_AWS_XKS+"/"+plan.ID.ValueString()+"/disconnect")
 			if err != nil {
 				tflog.Debug(ctx, common.ERR_METHOD_END+err.Error()+" [resource_aws_custom_key_store.go -> disconnect]["+plan.ID.ValueString()+"]")
 				resp.Diagnostics.AddError(
@@ -877,6 +871,7 @@ func (r *resourceAWSCustomKeyStore) Update(ctx context.Context, req resource.Upd
 		)
 		return
 	}
+	lastResponse := response
 	linkedState := gjson.Get(response, "local_hosted_params.linked_state").Bool()
 	if linkedState {
 		var dg diag.Diagnostics
@@ -884,28 +879,31 @@ func (r *resourceAWSCustomKeyStore) Update(ctx context.Context, req resource.Upd
 		if dg.HasError() {
 			resp.Diagnostics.Append(dg...)
 		} else if updated {
-			response, err := r.customKeyStoreById(ctx, id, &state)
-			if err != nil {
+			updatedResponse, updatedErr := r.customKeyStoreById(ctx, id, &state)
+			if updatedErr != nil {
 				resp.Diagnostics.AddError(
 					"Error getting AWS Custom Key Store on CipherTrust Manager: ",
-					"Could not get AWS Custom Key Store, unexpected error: "+err.Error(),
+					"Could not get AWS Custom Key Store, unexpected error: "+updatedErr.Error(),
 				)
 				return
 			}
-			r.setCustomKeyStoreState(ctx, response, &plan, &state, &resp.Diagnostics)
+			r.setCustomKeyStoreState(ctx, updatedResponse, &plan, &state, &resp.Diagnostics)
+			lastResponse = updatedResponse
 		}
 	}
 	if !(toBeUpdated || toBeUpdatedOps) {
-		response, err := r.customKeyStoreById(ctx, id, &state)
-		if err != nil {
+		finalResponse, finalErr := r.customKeyStoreById(ctx, id, &state)
+		if finalErr != nil {
 			resp.Diagnostics.AddError(
 				"Error getting AWS Custom Key Store on CipherTrust Manager: ",
-				"Could not get AWS Custom Key Store, unexpected error: "+err.Error(),
+				"Could not get AWS Custom Key Store, unexpected error: "+finalErr.Error(),
 			)
 			return
 		}
-		r.setCustomKeyStoreState(ctx, response, &plan, &state, &resp.Diagnostics)
+		r.setCustomKeyStoreState(ctx, finalResponse, &plan, &state, &resp.Diagnostics)
+		lastResponse = finalResponse
 	}
+	tflog.Debug(ctx, "[resource_aws_custom_key_store.go -> Update][response:"+redactAWSResponse(lastResponse)+"]")
 	resp.Diagnostics.Append(resp.State.Set(ctx, plan)...)
 	if resp.Diagnostics.HasError() {
 		return
@@ -923,12 +921,12 @@ func (r *resourceAWSCustomKeyStore) Delete(ctx context.Context, req resource.Del
 		return
 	}
 
-	timeouts, diags := state.Timeouts.Delete(ctx, 30*time.Minute)
+	deleteTimeout, diags := state.Timeouts.Delete(ctx, 30*time.Minute)
 	resp.Diagnostics.Append(diags...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
-	ctx, cancel := context.WithTimeout(ctx, timeouts)
+	ctx, cancel := context.WithTimeout(ctx, deleteTimeout)
 	defer cancel()
 
 	// Delete existing order
@@ -1256,7 +1254,7 @@ func (r *resourceAWSCustomKeyStore) enableCredentialRotation(ctx context.Context
 			diags.AddError(details, "")
 			return
 		}
-		tflog.Debug(ctx, "[resource_aws_custom_key_store.go -> enableCredentialRotation][response:"+response+"]")
+		tflog.Debug(ctx, "[resource_aws_custom_key_store.go -> enableCredentialRotation][response:"+redactAWSResponse(response)+"]")
 	}
 }
 
@@ -1271,7 +1269,7 @@ func (r *resourceAWSCustomKeyStore) disableCredentialRotation(ctx context.Contex
 		tflog.Error(ctx, details)
 		return
 	}
-	tflog.Debug(ctx, "[resource_aws_custom_key_store.go -> disableCredentialRotation][response:"+response+"]")
+	tflog.Debug(ctx, "[resource_aws_custom_key_store.go -> disableCredentialRotation][response:"+redactAWSResponse(response)+"]")
 }
 
 // setKeyStoreLabels parses the custom key store labels from the API response and stores them in Terraform state.

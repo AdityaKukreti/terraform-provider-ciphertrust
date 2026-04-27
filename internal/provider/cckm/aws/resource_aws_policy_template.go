@@ -176,6 +176,7 @@ func (r *resourceAWSPolicyTemplate) Create(ctx context.Context, req resource.Cre
 		resp.Diagnostics.AddError(details, "")
 		return
 	}
+	tflog.Debug(ctx, "[resource_aws_policy_template.go -> Create][response:"+redactAWSResponse(response)+"]")
 	plan.ID = types.StringValue(gjson.Get(response, "id").String())
 
 	var diags diag.Diagnostics
@@ -212,7 +213,6 @@ func (r *resourceAWSPolicyTemplate) Read(ctx context.Context, req resource.ReadR
 		resp.Diagnostics.AddError(details, "")
 		return
 	}
-	tflog.Debug(ctx, "[resource_aws_policy_template.go -> Read][response:"+response+"]")
 	r.setPolicyTemplateState(ctx, response, &state, &resp.Diagnostics)
 	if resp.Diagnostics.HasError() {
 		return
@@ -258,7 +258,6 @@ func (r *resourceAWSPolicyTemplate) Update(ctx context.Context, req resource.Upd
 		resp.Diagnostics.AddError(details, "")
 		return
 	}
-	tflog.Debug(ctx, "[resource_aws_policy_template.go -> Update][response:"+response+"]")
 
 	keyPolicyParams := r.getUpdatePolicyTemplateParams(ctx, &plan, &state, &resp.Diagnostics)
 	if resp.Diagnostics.HasError() {
@@ -297,6 +296,7 @@ func (r *resourceAWSPolicyTemplate) Update(ctx context.Context, req resource.Upd
 		resp.Diagnostics.AddError(details, "")
 		return
 	}
+	tflog.Debug(ctx, "[resource_aws_policy_template.go -> Update][response:"+redactAWSResponse(response)+"]")
 
 	r.setPolicyTemplateState(ctx, response, &plan, &resp.Diagnostics)
 	if resp.Diagnostics.HasError() {
