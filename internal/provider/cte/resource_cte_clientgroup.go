@@ -429,7 +429,7 @@ func (r *resourceCTEClientGroup) Update(ctx context.Context, req resource.Update
 			}
 			plan.ID = types.StringValue(response)
 		} else if plan.OpType.ValueString() == "remove-client" {
-			for _, client := range state.ClientList {
+			for _, client := range plan.ClientList {
 				response, err := r.client.DeleteByURL(
 					ctx,
 					plan.ID.ValueString(),

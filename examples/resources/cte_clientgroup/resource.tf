@@ -1,7 +1,7 @@
 # Terraform Configuration for CipherTrust Provider
 
-# This configuration demonstrates the creation of a CTE guardpoint resource
-# with the CipherTrust provider, including setting up guardpoint details.
+# This configuration demonstrates the creation of a CTE Clientgroup resource
+# with the CipherTrust provider, including setting up cliengroup details.
 
 terraform {
   # Define the required providers for the configuration
@@ -30,8 +30,58 @@ provider "ciphertrust" {
 
 # Add a resource of type CTE  Client Group
 resource "ciphertrust_cte_client_group" "test_cg_group_test1" {
-  name = "test_cgp_1"
-  cluster_type = "NON-CLUSTER"
+  name = "test_cgp1"                # Name of the client group
+
+  cluster_type = "NON-CLUSTER"      # Type of cluster (e.g., CLUSTER / NON-CLUSTER)
+
+  communication_enabled = true      # Enable/disable communication for this group
+
+  description = "tf test cg.."      # Optional description for the client group
+
+  # Operation type to perform on the client group
+  #
+  # IMPORTANT:
+  # - This field is ONLY used during UPDATE operations
+  # - It is IGNORED during the initial `terraform apply` (resource creation)
+  #
+  # Supported values:
+  # - add-client       : Add clients to the group
+  # - remove-client    : Remove clients from the group
+  # - update           : Update group-level properties
+  # - update-password  : Update client password
+  # - reset-password   : Reset client password
+  # - auth-binaries    : Configure authorized binaries
+
+ # op_type = "add-client/remove-client/update/update-password/reset-password/auth-binaries"
+
+  # List of clients to operate on
+  #
+  # NOTE:
+  # - Used ONLY for client-related operations:
+  #     add-client, remove-client
+  # - Ignored for other op_type values
+
+  /*
+  client_list = [
+    "client1",  # Client hostname or identifier
+    "client2"      # Client IP address
+  ]
+  */
+
+  # Whether to inherit attributes from parent client group
+  #
+  # NOTE:
+  # - Applicable ONLY when op_type = "add-client"
+  # - Ignored for all other operations
+
+  # inherit_attributes = true
+
+  #NOTE:
+  # - These two fields are applicable ONLY when op_type = update
+  # - Ignored for all other operations
+
+  # client_locked = true
+  # system_locked = true
 }
 
 # Output the unique ID of the created CTE Client Group
