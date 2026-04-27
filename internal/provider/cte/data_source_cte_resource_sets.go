@@ -8,6 +8,7 @@ import (
 	"github.com/google/uuid"
 
 	common "github.com/ThalesGroup/terraform-provider-ciphertrust/internal/provider/common"
+	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
 	"github.com/hashicorp/terraform-plugin-framework/datasource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/types"
@@ -65,6 +66,10 @@ func (d *dataSourceCTEResourceSets) Schema(_ context.Context, _ datasource.Schem
 						},
 						"type": schema.StringAttribute{
 							Computed: true,
+						},
+						"labels": schema.MapAttribute{
+							Computed:    true,
+							ElementType: types.StringType,
 						},
 						"resources": schema.ListNestedAttribute{
 							Optional: true,
@@ -132,6 +137,18 @@ func (d *dataSourceCTEResourceSets) Read(ctx context.Context, req datasource.Rea
 		resourceSetState.UpdatedAt = types.StringValue(resourceSet.UpdatedAt)
 		resourceSetState.Description = types.StringValue(resourceSet.Description)
 		resourceSetState.Type = types.StringValue(resourceSet.Type)
+
+		labelsMap := make(map[string]attr.Value)
+		for k, v := range resourceSet.Labels {
+			labelsMap[k] = types.StringValue(fmt.Sprintf("%v", v))
+		}
+
+		labels, diags := types.MapValue(types.StringType, labelsMap)
+		resp.Diagnostics.Append(diags...)
+		if resp.Diagnostics.HasError() {
+			return
+		}
+		resourceSetState.Labels = labels
 
 		for _, resource := range resourceSet.Resources {
 			_resourceData := CTEResourceSetListItemTFSDK{

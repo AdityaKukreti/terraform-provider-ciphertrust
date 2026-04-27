@@ -8,6 +8,7 @@ import (
 	"github.com/google/uuid"
 
 	common "github.com/ThalesGroup/terraform-provider-ciphertrust/internal/provider/common"
+	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
 	"github.com/hashicorp/terraform-plugin-framework/datasource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/types"
@@ -62,6 +63,10 @@ func (d *dataSourceCTEUserSets) Schema(_ context.Context, _ datasource.SchemaReq
 						},
 						"description": schema.StringAttribute{
 							Computed: true,
+						},
+						"labels": schema.MapAttribute{
+							Computed:    true,
+							ElementType: types.StringType,
 						},
 						"users": schema.ListNestedAttribute{
 							Optional: true,
@@ -132,13 +137,38 @@ func (d *dataSourceCTEUserSets) Read(ctx context.Context, req datasource.ReadReq
 		userState.UpdatedAt = types.StringValue(userset.UpdatedAt)
 		userState.Description = types.StringValue(userset.Description)
 
+		labelsMap := make(map[string]attr.Value)
+		for k, v := range userset.Labels {
+			labelsMap[k] = types.StringValue(fmt.Sprintf("%v", v))
+		}
+
+		labels, diags := types.MapValue(types.StringType, labelsMap)
+		resp.Diagnostics.Append(diags...)
+		if resp.Diagnostics.HasError() {
+			return
+		}
+		userState.Labels = labels
 		for _, userResponse := range userset.Users {
+			var uid types.Int64
+			if userResponse.UID == nil {
+				uid = types.Int64Null()
+			} else {
+				uid = types.Int64Value(*userResponse.UID)
+			}
+
+			var gid types.Int64
+			if userResponse.GID == nil {
+				gid = types.Int64Null()
+			} else {
+				gid = types.Int64Value(*userResponse.GID)
+			}
+
 			user := CTEUserSetsListItemTFSDK{
 				Index:    types.Int64Value(userResponse.Index),
-				GID:      types.Int64Value(userResponse.Index),
+				GID:      gid,
 				GName:    types.StringValue(userResponse.GName),
 				OSDomain: types.StringValue(userResponse.OSDomain),
-				UID:      types.Int64Value(userResponse.UID),
+				UID:      uid,
 				UName:    types.StringValue(userResponse.UName),
 			}
 			userState.Users = append(userState.Users, user)
