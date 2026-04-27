@@ -39,7 +39,7 @@ func (d *dataSourceCTEPolicySignatureRule) Schema(_ context.Context, _ datasourc
 	resp.Schema = schema.Schema{
 		Attributes: map[string]schema.Attribute{
 			"policy": schema.StringAttribute{
-				Optional: true,
+				Required: true,
 			},
 			"rules": schema.ListNestedAttribute{
 				Computed: true,
@@ -64,10 +64,10 @@ func (d *dataSourceCTEPolicySignatureRule) Schema(_ context.Context, _ datasourc
 						"policy_id": schema.StringAttribute{
 							Computed: true,
 						},
-						"signature_set_id": schema.Int64Attribute{
+						"signature_set_id": schema.StringAttribute{
 							Computed: true,
 						},
-						"signature_set_name": schema.BoolAttribute{
+						"signature_set_name": schema.StringAttribute{
 							Computed: true,
 						},
 					},

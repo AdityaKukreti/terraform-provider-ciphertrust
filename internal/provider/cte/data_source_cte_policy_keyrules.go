@@ -39,7 +39,7 @@ func (d *dataSourceCTEPolicyKeyRule) Schema(_ context.Context, _ datasource.Sche
 	resp.Schema = schema.Schema{
 		Attributes: map[string]schema.Attribute{
 			"policy": schema.StringAttribute{
-				Optional: true,
+				Required: true,
 			},
 			"rules": schema.ListNestedAttribute{
 				Computed: true,

@@ -39,7 +39,7 @@ func (d *dataSourceCTEPolicyIDTKeyRule) Schema(_ context.Context, _ datasource.S
 	resp.Schema = schema.Schema{
 		Attributes: map[string]schema.Attribute{
 			"policy": schema.StringAttribute{
-				Optional: true,
+				Required: true,
 			},
 			"rules": schema.ListNestedAttribute{
 				Computed: true,
@@ -55,6 +55,9 @@ func (d *dataSourceCTEPolicyIDTKeyRule) Schema(_ context.Context, _ datasource.S
 							Computed: true,
 						},
 						"transformation_key": schema.StringAttribute{
+							Computed: true,
+						},
+						"order_number": schema.Int64Attribute{
 							Computed: true,
 						},
 					},
@@ -102,6 +105,7 @@ func (d *dataSourceCTEPolicyIDTKeyRule) Read(ctx context.Context, req datasource
 		idtKeyRule.PolicyID = types.StringValue(rule.PolicyID)
 		idtKeyRule.CurrentKey = types.StringValue(rule.CurrentKey)
 		idtKeyRule.TransformationKey = types.StringValue(rule.TransformationKey)
+		idtKeyRule.OrderNumber = types.Int64Value(rule.OrderNumber)
 
 		state.Rules = append(state.Rules, idtKeyRule)
 	}
