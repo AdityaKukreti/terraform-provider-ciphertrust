@@ -4,11 +4,14 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"slices"
+	"strings"
 
 	"github.com/google/uuid"
 
 	common "github.com/ThalesGroup/terraform-provider-ciphertrust/internal/provider/common"
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
+	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
@@ -98,9 +101,10 @@ func (r *resourceCTECSIGroup) Schema(_ context.Context, _ resource.SchemaRequest
 				Description: "ID of the client to be removed from the client group.",
 			},
 			//Update GuardPolicy in Storage Group
-			"gp_id": schema.StringAttribute{
-				Optional:    true,
-				Description: "ID of the guard policy to be updated in the client group.",
+			"gp_id": schema.ListAttribute{
+				Computed:    true,
+				ElementType: types.StringType,
+				Description: "List of guard policy IDs associated with the storage group.",
 			},
 			"guard_enabled": schema.BoolAttribute{
 				Optional:    true,
@@ -157,6 +161,7 @@ func (r *resourceCTECSIGroup) Create(ctx context.Context, req resource.CreateReq
 	}
 
 	plan.ID = types.StringValue(response)
+	plan.GPID = types.ListValueMust(types.StringType, []attr.Value{})
 
 	tflog.Trace(ctx, common.MSG_METHOD_END+"[resource_cte_csigroup.go -> Create]["+id+"]")
 	diags = resp.State.Set(ctx, plan)
@@ -168,11 +173,41 @@ func (r *resourceCTECSIGroup) Create(ctx context.Context, req resource.CreateReq
 
 // Read refreshes the Terraform state with the latest data.
 func (r *resourceCTECSIGroup) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
+	id := uuid.New().String()
+
+	var state CTECSIGroupTFSDK
+
+	// Get current state
+	diags := req.State.Get(ctx, &state)
+	resp.Diagnostics.Append(diags...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	// Call API to check if resource exists
+	_, err := r.client.GetById(
+		ctx,
+		id,
+		state.ID.ValueString(),
+		common.URL_CTE_CSIGROUP,
+	)
+
+	if err != nil {
+		tflog.Debug(ctx, common.ERR_METHOD_END+err.Error()+" [resource_cte_csigroup.go -> Read]["+id+"]")
+
+		resp.Diagnostics.AddError(
+			"Error reading CSI Group on CipherTrust Manager:",
+			"Could not read CSI Group id: "+state.ID.ValueString()+" unexpected error: "+err.Error(),
+		)
+		return
+	}
+
+	tflog.Trace(ctx, common.MSG_METHOD_END+"[resource_cte_csigroup.go -> Read]["+id+"]")
 }
 
 // Update updates the resource and sets the updated Terraform state on success.
 func (r *resourceCTECSIGroup) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
-	var plan CTECSIGroupTFSDK
+	var plan, state CTECSIGroupTFSDK
 	var payload CTECSIGroupJSON
 
 	diags := req.Plan.Get(ctx, &plan)
@@ -180,6 +215,12 @@ func (r *resourceCTECSIGroup) Update(ctx context.Context, req resource.UpdateReq
 	if resp.Diagnostics.HasError() {
 		return
 	}
+	diags = req.State.Get(ctx, &state)
+	resp.Diagnostics.Append(diags...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	plan.GPID = state.GPID
 
 	if plan.OpType.ValueString() != "" && plan.Description.ValueString() != types.StringNull().ValueString() {
 		if plan.OpType.ValueString() == "update" {
@@ -227,7 +268,7 @@ func (r *resourceCTECSIGroup) Update(ctx context.Context, req resource.UpdateReq
 				return
 			}
 
-			response, err := r.client.UpdateDataFullURL(
+			_, err = r.client.PostData(
 				ctx,
 				plan.ID.ValueString(),
 				common.URL_CTE_CSIGROUP+"/"+plan.ID.ValueString()+"/clients",
@@ -241,7 +282,6 @@ func (r *resourceCTECSIGroup) Update(ctx context.Context, req resource.UpdateReq
 				)
 				return
 			}
-			plan.ID = types.StringValue(response)
 		} else if plan.OpType.ValueString() == "remove-client" {
 			response, err := r.client.DeleteByURL(
 				ctx,
@@ -257,12 +297,18 @@ func (r *resourceCTECSIGroup) Update(ctx context.Context, req resource.UpdateReq
 			}
 			tflog.Debug(ctx, "[resource_cte_clientgroup.go -> remove-client -> Output]["+types.StringValue(response).String()+"]")
 		} else if plan.OpType.ValueString() == "add-guard-policies" {
-			var policiesArr []string
-			for _, policy := range plan.PolicyList {
-				policiesArr = append(policiesArr, policy.ValueString())
+			var statePolicies []string
+			for _, p := range state.PolicyList {
+				statePolicies = append(statePolicies, p.ValueString())
 			}
-			payload.PolicyList = policiesArr
-
+			var policiesToAdd []string
+			for _, p := range plan.PolicyList {
+				policyVal := p.ValueString()
+				if !slices.Contains(statePolicies, policyVal) {
+					policiesToAdd = append(policiesToAdd, policyVal)
+				}
+			}
+			payload.PolicyList = policiesToAdd
 			payloadJSON, err := json.Marshal(payload)
 			if err != nil {
 				tflog.Debug(ctx, common.ERR_METHOD_END+err.Error()+" [resource_cte_csigroup.go -> add-guard-policies]["+plan.ID.ValueString()+"]")
@@ -273,12 +319,12 @@ func (r *resourceCTECSIGroup) Update(ctx context.Context, req resource.UpdateReq
 				return
 			}
 
-			response, err := r.client.UpdateDataFullURL(
+			response, err := r.client.PostDataV2(
 				ctx,
 				plan.ID.ValueString(),
 				common.URL_CTE_CSIGROUP+"/"+plan.ID.ValueString()+"/guardpoints",
 				payloadJSON,
-				"id")
+			)
 			if err != nil {
 				tflog.Debug(ctx, common.ERR_METHOD_END+err.Error()+" [resource_cte_csigroup.go -> add-guard-policies]["+plan.ID.ValueString()+"]")
 				resp.Diagnostics.AddError(
@@ -287,51 +333,76 @@ func (r *resourceCTECSIGroup) Update(ctx context.Context, req resource.UpdateReq
 				)
 				return
 			}
-			plan.ID = types.StringValue(response)
+			parsedID := parseConfig(response)
+			if parsedID == "" {
+				resp.Diagnostics.AddError("Error parsing guardpoint ID",
+					"Could not extract gp_id from response: "+response)
+				return
+			}
+			gpIDs := state.GPID.Elements()
+			for _, id := range strings.Split(parsedID, ",") {
+				if strings.TrimSpace(id) != "" {
+					gpIDs = append(gpIDs, types.StringValue(strings.TrimSpace(id)))
+				}
+			}
+			plan.GPID, _ = types.ListValue(types.StringType, gpIDs)
+
 		} else if plan.OpType.ValueString() == "update-guard-policy" {
-			if plan.GuardEnabled.ValueBool() != types.BoolNull().ValueBool() {
+			if !plan.GuardEnabled.IsNull() {
 				payload.GuardEnabled = plan.GuardEnabled.ValueBool()
 			}
+			gpElements := plan.GPID.Elements()
+			for _, gpElement := range gpElements {
+				gpIDStr := gpElement.(types.String).ValueString()
 
-			payloadJSON, err := json.Marshal(payload)
-			if err != nil {
-				tflog.Debug(ctx, common.ERR_METHOD_END+err.Error()+" [resource_cte_csigroup.go -> update-guard-policy]["+plan.ID.ValueString()+"]")
-				resp.Diagnostics.AddError(
-					"Invalid data input: CTE CSIStorageGroup Update GuardPolicies",
-					err.Error(),
-				)
-				return
-			}
+				if gpIDStr == "" {
+					continue
+				}
 
-			response, err := r.client.UpdateDataFullURL(
-				ctx,
-				plan.ID.ValueString(),
-				common.URL_CTE_CSIGROUP+"/guardpoints"+"/"+plan.GPID.ValueString(),
-				payloadJSON,
-				"id")
-			if err != nil {
-				tflog.Debug(ctx, common.ERR_METHOD_END+err.Error()+" [resource_cte_csigroup.go -> update-guard-policy]["+plan.ID.ValueString()+"]")
-				resp.Diagnostics.AddError(
-					"Error updating CTE CSIStorageGroup on CipherTrust Manager: ",
-					"Could not update CTE CSIStorageGroup, unexpected error: "+err.Error(),
+				payloadJSON, err := json.Marshal(payload)
+				if err != nil {
+					tflog.Debug(ctx, common.ERR_METHOD_END+err.Error()+" [resource_cte_csigroup.go -> update-guard-policy]")
+					resp.Diagnostics.AddError("Invalid data input", err.Error())
+					return
+				}
+				apiURL := fmt.Sprintf("%s/guardpoints/%s", common.URL_CTE_CSIGROUP, gpIDStr)
+
+				_, err = r.client.UpdateDataFullURL(
+					ctx,
+					plan.ID.ValueString(),
+					apiURL,
+					payloadJSON,
+					"id",
 				)
-				return
+
+				if err != nil {
+					tflog.Debug(ctx, common.ERR_METHOD_END+err.Error()+" [update-guard-policy]["+gpIDStr+"]")
+					resp.Diagnostics.AddError(
+						"Error updating Guard Policy",
+						"Could not update GuardPoint "+gpIDStr+": "+err.Error(),
+					)
+					return
+				}
 			}
-			plan.ID = types.StringValue(response)
 		} else if plan.OpType.ValueString() == "remove-guard-policy" {
-			response, err := r.client.DeleteByURL(
-				ctx,
-				plan.ID.ValueString(),
-				common.URL_CTE_CSIGROUP+"/guardpoints/"+plan.GPID.ValueString())
-			if err != nil {
-				tflog.Debug(ctx, common.ERR_METHOD_END+err.Error()+" [resource_cte_clientgroup.go -> remove-guard-policy]["+plan.ID.ValueString()+"]")
-				resp.Diagnostics.AddError(
-					"Error removing guard policy from CTE CSIStorageGroup on CipherTrust Manager: ",
-					"Could not remove guard policy from the CTE CSIStorageGroup, unexpected error: "+err.Error(),
-				)
-				return
+			gpElements := plan.GPID.Elements()
+			for _, gpElement := range gpElements {
+				gpIDStr := gpElement.(types.String).ValueString()
+				response, err := r.client.DeleteByURL(
+					ctx,
+					plan.ID.ValueString(),
+					common.URL_CTE_CSIGROUP+"/guardpoints/"+gpIDStr)
+				if err != nil {
+					tflog.Debug(ctx, common.ERR_METHOD_END+err.Error()+" [resource_cte_clientgroup.go -> remove-guard-policy]["+plan.ID.ValueString()+"]")
+					resp.Diagnostics.AddError(
+						"Error removing guard policy from CTE CSIStorageGroup on CipherTrust Manager: ",
+						"Could not remove guard policy from the CTE CSIStorageGroup, unexpected error: "+err.Error(),
+					)
+					return
+				}
+				tflog.Debug(ctx, "[resource_cte_clientgroup.go -> remove-client -> Output]["+types.StringValue(response).String()+"]")
 			}
-			tflog.Debug(ctx, "[resource_cte_clientgroup.go -> remove-client -> Output]["+types.StringValue(response).String()+"]")
+			plan.GPID = types.ListValueMust(types.StringType, []attr.Value{})
 		} else {
 			resp.Diagnostics.AddError(
 				"op_type is a required",
