@@ -55,7 +55,7 @@ func deleteKeyVersion(ctx context.Context, id string, client *common.Client, key
 		}
 		return
 	}
-	tflog.Debug(ctx, "[oci_key_version_common.go -> deleteKeyVersion][response:"+response+"]")
+	tflog.Debug(ctx, "[oci_key_version_common.go -> deleteKeyVersion][response:"+redactOCIResponse(response)+"]")
 }
 
 // setCommonKeyVersionState populates shared TFSDK state fields from a raw CM API response string.
@@ -167,5 +167,5 @@ func waitForKeyVersionState(ctx context.Context, id string, client *common.Clien
 		tflog.Error(ctx, details)
 		diags.AddError(details, "")
 	}
-	tflog.Debug(ctx, "[oci_key_version_common.go -> waitForKeyVersionState][response:"+response+"]")
+	tflog.Debug(ctx, "[oci_key_version_common.go -> waitForKeyVersionState][response:"+redactOCIResponse(response)+"]")
 }

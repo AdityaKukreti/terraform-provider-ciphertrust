@@ -231,7 +231,6 @@ func (r *resourceCCKMOCIConnection) Create(ctx context.Context, req resource.Cre
 	plan.ID = types.StringValue(gjson.Get(response, "id").String())
 
 	// The connection has been created, no errors returned after this
-	tflog.Debug(ctx, "[resource_oci_connection.go -> Create Output]["+response+"]")
 
 	var testConnectionDiags diag.Diagnostics
 	r.testConnection(ctx, id, plan.ID.ValueString(), &testConnectionDiags)
@@ -440,7 +439,6 @@ func (r *resourceCCKMOCIConnection) Update(ctx context.Context, req resource.Upd
 		return
 	}
 
-	tflog.Debug(ctx, fmt.Sprintf("[resource_oci_connection.go -> Update] response: %s", response))
 	response, err = r.client.GetById(ctx, id, state.ID.ValueString(), common.URL_OCI_CONNECTION)
 	if err != nil {
 		tflog.Error(ctx, common.ERR_METHOD_END+err.Error()+" [resource_oci_connection.go -> Read]["+id+"]")

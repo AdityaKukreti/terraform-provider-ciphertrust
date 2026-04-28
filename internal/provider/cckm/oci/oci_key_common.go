@@ -147,7 +147,7 @@ func deleteKey(ctx context.Context, id string, client *common.Client, keyID stri
 			return
 		}
 	}
-	tflog.Debug(ctx, "[oci_key_common.go -> deleteKey][response:"+response)
+	tflog.Debug(ctx, "[oci_key_common.go -> deleteKey][response:"+redactOCIResponse(response)+"]")
 }
 
 // setKeyState sets the full Terraform state. Used by resourceCCKMOCIKey and resourceCCKMOCIByokKey.
@@ -354,7 +354,7 @@ func patchKey(ctx context.Context, id string, client *common.Client, keyID strin
 			diags.AddError(details, "")
 			return
 		}
-		tflog.Debug(ctx, "[oci_key_common.go -> updateKey][response:"+response)
+		tflog.Debug(ctx, "[oci_key_common.go -> updateKey][response:"+redactOCIResponse(response)+"]")
 		keyState := gjson.Get(response, "oci_params.lifecycle_state").String()
 		if keyState == keyStateUpdating {
 			waitForKeyStateChange(ctx, id, client, keyID, keyState, true, diags)
@@ -403,7 +403,7 @@ func enableSchedulerRotation(ctx context.Context, id string, client *common.Clie
 		diags.AddError(details, "")
 		return
 	}
-	tflog.Debug(ctx, "[oci_key_common.go -> enableSchedulerRotation][response:"+response)
+	tflog.Debug(ctx, "[oci_key_common.go -> enableSchedulerRotation][response:"+redactOCIResponse(response)+"]")
 }
 
 // disableSchedulerRotation disables scheduled auto-rotation for an OCI key.
@@ -416,7 +416,7 @@ func disableSchedulerRotation(ctx context.Context, id string, client *common.Cli
 		tflog.Error(ctx, details)
 		return
 	}
-	tflog.Debug(ctx, "[oci_key_common.go -> disableSchedulerRotation][response:"+response)
+	tflog.Debug(ctx, "[oci_key_common.go -> disableSchedulerRotation][response:"+redactOCIResponse(response)+"]")
 }
 
 // enableKey enables an OCI key and waits for the state to settle.
@@ -429,7 +429,7 @@ func enableKey(ctx context.Context, id string, client *common.Client, keyID stri
 		diags.AddError(details, "")
 		return
 	}
-	tflog.Debug(ctx, "[oci_key_common.go -> enableKey][response:"+response)
+	tflog.Debug(ctx, "[oci_key_common.go -> enableKey][response:"+redactOCIResponse(response)+"]")
 	keyState := gjson.Get(response, "oci_params.lifecycle_state").String()
 	if keyState == keyStateEnabling {
 		waitForKeyStateChange(ctx, id, client, keyID, keyState, false, diags)
@@ -449,7 +449,7 @@ func disableKey(ctx context.Context, id string, client *common.Client, keyID str
 		diags.AddError(details, "")
 		return
 	}
-	tflog.Debug(ctx, "[oci_key_common.go -> disableKey][response:"+response)
+	tflog.Debug(ctx, "[oci_key_common.go -> disableKey][response:"+redactOCIResponse(response)+"]")
 	keyState := gjson.Get(response, "oci_params.lifecycle_state").String()
 	if keyState == keyStateDisabling {
 		waitForKeyStateChange(ctx, id, client, keyID, keyState, false, diags)
@@ -480,7 +480,7 @@ func changeKeyCompartment(ctx context.Context, id string, client *common.Client,
 		diags.AddError(details, "")
 		return
 	}
-	tflog.Debug(ctx, "[oci_key_common.go -> changeKeyCompartment][response:"+response)
+	tflog.Debug(ctx, "[oci_key_common.go -> changeKeyCompartment][response:"+redactOCIResponse(response)+"]")
 	keyState := gjson.Get(response, "oci_params.lifecycle_state").String()
 	if keyState == keyStateUpdating || keyState == keyStateChangingCompartment {
 		waitForKeyStateChange(ctx, id, client, keyID, keyState, true, diags)
@@ -553,5 +553,5 @@ func waitForKeyStateChange(ctx context.Context, id string, client *common.Client
 		tflog.Warn(ctx, details)
 		diags.AddWarning(details, "")
 	}
-	tflog.Debug(ctx, "[oci_key_common.go -> waitForKeyStateChange][response:"+response)
+	tflog.Debug(ctx, "[oci_key_common.go -> waitForKeyStateChange][response:"+redactOCIResponse(response)+"]")
 }

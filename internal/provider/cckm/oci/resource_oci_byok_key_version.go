@@ -225,8 +225,6 @@ func (r *resourceCCKMOCIByokVersion) Create(ctx context.Context, req resource.Cr
 		resp.Diagnostics.AddError(details, "")
 		return
 	}
-	tflog.Debug(ctx, "[resource_oci_byok_key_version.go -> Create][response:"+response+"]")
-
 	versionID := gjson.Get(response, "id").String()
 	plan.ID = types.StringValue(versionID)
 
@@ -248,10 +246,10 @@ func (r *resourceCCKMOCIByokVersion) Create(ctx context.Context, req resource.Cr
 		resp.Diagnostics.AddWarning(details, "")
 	} else {
 		response = getResponse
-		tflog.Debug(ctx, "[resource_oci_byok_key_version.go -> Create][response:"+response+"]")
 	}
 
 	var setStateDiags diag.Diagnostics
+	tflog.Debug(ctx, "[resource_oci_byok_key_version.go -> Create][response:"+redactOCIResponse(response)+"]")
 	setBYOOKKeyVersionState(ctx, response, &plan, &setStateDiags)
 	for _, d := range setStateDiags {
 		resp.Diagnostics.AddWarning(d.Summary(), d.Detail())
@@ -290,7 +288,6 @@ func (r *resourceCCKMOCIByokVersion) Read(ctx context.Context, req resource.Read
 		resp.Diagnostics.AddError(details, "")
 		return
 	}
-	tflog.Debug(ctx, "[resource_oci_byok_key_version.go -> Read][response:"+response+"]")
 	setBYOOKKeyVersionState(ctx, response, &state, &resp.Diagnostics)
 	if resp.Diagnostics.HasError() {
 		return
@@ -322,7 +319,7 @@ func (r *resourceCCKMOCIByokVersion) ImportState(ctx context.Context, req resour
 		resp.Diagnostics.AddError(details, "")
 		return
 	}
-	tflog.Debug(ctx, "[resource_oci_byok_key_version.go -> ImportState][response:"+response+"]")
+	tflog.Debug(ctx, "[resource_oci_byok_key_version.go -> ImportState][response:"+redactOCIResponse(response)+"]")
 	var state models.BYOKKeyVersionTFSDK
 	state.CCKMKeyID = types.StringValue(keyID)
 	state.ID = types.StringValue(versionID)

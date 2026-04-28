@@ -208,7 +208,6 @@ func (r *resourceCCKMOCIVersion) Create(ctx context.Context, req resource.Create
 		resp.Diagnostics.AddError(details, "")
 		return
 	}
-	tflog.Debug(ctx, "[resource_oci_key_version.go -> Create][response:"+response+"]")
 	versionID := gjson.Get(response, "id").String()
 	plan.ID = types.StringValue(versionID)
 
@@ -230,10 +229,10 @@ func (r *resourceCCKMOCIVersion) Create(ctx context.Context, req resource.Create
 		resp.Diagnostics.AddWarning(details, "")
 	} else {
 		response = getResponse
-		tflog.Debug(ctx, "[resource_oci_key_version.go -> Create][response:"+response+"]")
 	}
 
 	var setStateDiags diag.Diagnostics
+	tflog.Debug(ctx, "[resource_oci_key_version.go -> Create][response:"+redactOCIResponse(response)+"]")
 	setCommonKeyVersionState(ctx, response, &plan, &setStateDiags)
 	for _, d := range setStateDiags {
 		resp.Diagnostics.AddWarning(d.Summary(), d.Detail())
@@ -272,7 +271,6 @@ func (r *resourceCCKMOCIVersion) Read(ctx context.Context, req resource.ReadRequ
 		resp.Diagnostics.AddError(details, "")
 		return
 	}
-	tflog.Debug(ctx, "[resource_oci_key_version.go -> Read][response:"+response+"]")
 	setCommonKeyVersionState(ctx, response, &state, &resp.Diagnostics)
 	if resp.Diagnostics.HasError() {
 		return
@@ -306,7 +304,7 @@ func (r *resourceCCKMOCIVersion) ImportState(ctx context.Context, req resource.I
 		resp.Diagnostics.AddError(details, "")
 		return
 	}
-	tflog.Debug(ctx, "[resource_oci_key_version.go -> ImportState][response:"+response+"]")
+	tflog.Debug(ctx, "[resource_oci_key_version.go -> ImportState][response:"+redactOCIResponse(response)+"]")
 	var state models.KeyVersionTFSDK
 	state.CCKMKeyID = types.StringValue(keyID)
 	state.ID = types.StringValue(versionID)

@@ -345,7 +345,6 @@ func (r *resourceCCKMOCIKey) Create(ctx context.Context, req resource.CreateRequ
 		resp.Diagnostics.AddError(details, "")
 		return
 	}
-	tflog.Debug(ctx, "[resource_oci_key.go -> Create][response:"+response+"]")
 	keyID := gjson.Get(response, "id").String()
 	keyState := gjson.Get(response, "oci_params.lifecycle_state").String()
 	plan.ID = types.StringValue(keyID)
@@ -388,10 +387,10 @@ func (r *resourceCCKMOCIKey) Create(ctx context.Context, req resource.CreateRequ
 		tflog.Error(ctx, details)
 	} else {
 		response = refreshResponse
-		tflog.Debug(ctx, "[resource_oci_key.go -> Create][response:"+response+"]")
 	}
 
 	var diags diag.Diagnostics
+	tflog.Debug(ctx, "[resource_oci_key.go -> Create][response:"+redactOCIResponse(response)+"]")
 	setKeyState(ctx, id, r.client, response, &plan, &diags)
 	for _, d := range diags {
 		resp.Diagnostics.AddWarning(d.Summary(), d.Detail())
@@ -429,7 +428,6 @@ func (r *resourceCCKMOCIKey) Read(ctx context.Context, req resource.ReadRequest,
 		resp.Diagnostics.AddError(details, "")
 		return
 	}
-	tflog.Debug(ctx, "[resource_oci_key.go -> Read][response:"+response+"]")
 	setKeyState(ctx, id, r.client, response, &state, &resp.Diagnostics)
 	if resp.Diagnostics.HasError() {
 		return
@@ -478,7 +476,7 @@ func (r *resourceCCKMOCIKey) Update(ctx context.Context, req resource.UpdateRequ
 		resp.Diagnostics.AddError(details, "")
 		return
 	}
-	tflog.Debug(ctx, "[resource_oci_key.go -> Update][response:"+response+"]")
+	tflog.Debug(ctx, "[resource_oci_key.go -> Update][response:"+redactOCIResponse(response)+"]")
 	setKeyState(ctx, id, r.client, response, &plan, &resp.Diagnostics)
 	if resp.Diagnostics.HasError() {
 		return

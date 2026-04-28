@@ -256,7 +256,6 @@ func (r *resourceCCKMOCIVault) Create(ctx context.Context, req resource.CreateRe
 		vaultsJSON := gjson.Get(response, "vaults").Array()
 		for _, vaultJSON := range vaultsJSON {
 			plan.ID = types.StringValue(gjson.Get(vaultJSON.Raw, "id").String())
-			tflog.Debug(ctx, "[resource_oci_vault.go -> Create][response:"+vaultJSON.Raw+"]")
 			var diags diag.Diagnostics
 			r.setVaultState(ctx, vaultJSON.Raw, &plan, &diags)
 			for _, d := range diags {
@@ -278,11 +277,11 @@ func (r *resourceCCKMOCIVault) Create(ctx context.Context, req resource.CreateRe
 		resp.Diagnostics.AddWarning(details, "")
 	} else {
 		var diags diag.Diagnostics
+		tflog.Debug(ctx, "[resource_oci_vault.go -> Create][response:"+redactOCIResponse(getResponse)+"]")
 		r.setVaultState(ctx, getResponse, &plan, &diags)
 		for _, d := range diags {
 			resp.Diagnostics.AddWarning(d.Summary(), d.Detail())
 		}
-		tflog.Debug(ctx, "[resource_oci_vault.go -> Create][response:"+getResponse+"]")
 	}
 	resp.Diagnostics.Append(resp.State.Set(ctx, plan)...)
 }
@@ -315,7 +314,6 @@ func (r *resourceCCKMOCIVault) Read(ctx context.Context, req resource.ReadReques
 		}
 		return
 	}
-	tflog.Debug(ctx, "[resource_oci_vault.go -> Read][response:"+response+"]")
 	r.setVaultState(ctx, response, &state, &resp.Diagnostics)
 	if resp.Diagnostics.HasError() {
 		return
@@ -403,7 +401,7 @@ func (r *resourceCCKMOCIVault) Update(ctx context.Context, req resource.UpdateRe
 			return
 		}
 	}
-	tflog.Debug(ctx, "[resource_oci_vault.go -> Update][response:"+response+"]")
+	tflog.Debug(ctx, "[resource_oci_vault.go -> Update][response:"+redactOCIResponse(response)+"]")
 	r.setVaultState(ctx, response, &state, &resp.Diagnostics)
 	if resp.Diagnostics.HasError() {
 		return
