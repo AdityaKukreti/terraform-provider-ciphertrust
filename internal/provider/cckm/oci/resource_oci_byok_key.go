@@ -362,7 +362,6 @@ func (r *resourceCCKMOCIByokKey) Create(ctx context.Context, req resource.Create
 		resp.Diagnostics.AddError(details, "")
 		return
 	}
-	tflog.Debug(ctx, "[resource_oci_byok_key.go -> Create][response:"+response+"]")
 	keyID := gjson.Get(response, "id").String()
 	keyState := gjson.Get(response, "oci_params.lifecycle_state").String()
 	plan.ID = types.StringValue(keyID)
@@ -405,10 +404,10 @@ func (r *resourceCCKMOCIByokKey) Create(ctx context.Context, req resource.Create
 		tflog.Error(ctx, details)
 	} else {
 		response = refreshResponse
-		tflog.Debug(ctx, "[resource_oci_byok_key.go -> Create][response:"+response+"]")
 	}
 
 	var setStateDiags diag.Diagnostics
+	tflog.Debug(ctx, "[resource_oci_byok_key.go -> Create][response:"+redactOCIResponse(response)+"]")
 	setByokKeyState(ctx, id, r.client, response, &plan, &setStateDiags)
 	for _, d := range setStateDiags {
 		resp.Diagnostics.AddWarning(d.Summary(), d.Detail())
@@ -445,7 +444,6 @@ func (r *resourceCCKMOCIByokKey) Read(ctx context.Context, req resource.ReadRequ
 		resp.Diagnostics.AddError(details, "")
 		return
 	}
-	tflog.Debug(ctx, "[resource_oci_byok_key.go -> Read][response:"+response+"]")
 	setByokKeyState(ctx, id, r.client, response, &state, &resp.Diagnostics)
 	if resp.Diagnostics.HasError() {
 		return
@@ -496,7 +494,7 @@ func (r *resourceCCKMOCIByokKey) Update(ctx context.Context, req resource.Update
 		resp.Diagnostics.AddError(details, "")
 		return
 	}
-	tflog.Debug(ctx, "[resource_oci_byok_key.go -> Update][response:"+response+"]")
+	tflog.Debug(ctx, "[resource_oci_byok_key.go -> Update][response:"+redactOCIResponse(response)+"]")
 	setByokKeyState(ctx, id, r.client, response, &plan, &resp.Diagnostics)
 	if resp.Diagnostics.HasError() {
 		return

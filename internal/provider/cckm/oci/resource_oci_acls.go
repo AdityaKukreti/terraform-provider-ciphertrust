@@ -136,7 +136,7 @@ func (r *resourceCCKMOCIAcl) Create(ctx context.Context, req resource.CreateRequ
 	var actions []string
 	resp.Diagnostics.Append(plan.Actions.ElementsAs(ctx, &actions, false)...)
 	if resp.Diagnostics.HasError() {
-		tflog.Debug(ctx, fmt.Sprintf("Error converting ACL actions: %v", resp.Diagnostics.Errors()))
+		tflog.Error(ctx, fmt.Sprintf("Error converting ACL actions: %v", resp.Diagnostics.Errors()))
 		return
 	}
 	resourceID := acls.EncodeContainerAclID(vaultID, plan.UserID.ValueString(), plan.Group.ValueString())
@@ -152,7 +152,6 @@ func (r *resourceCCKMOCIAcl) Create(ctx context.Context, req resource.CreateRequ
 			if resp.Diagnostics.HasError() {
 				return
 			}
-			tflog.Debug(ctx, fmt.Sprintf("[resource_oci_acls.go -> Create][response: %s]", response))
 		}
 	}
 
@@ -256,7 +255,7 @@ func (r *resourceCCKMOCIAcl) Update(ctx context.Context, req resource.UpdateRequ
 	var planActions []string
 	resp.Diagnostics.Append(plan.Actions.ElementsAs(ctx, &planActions, false)...)
 	if resp.Diagnostics.HasError() {
-		tflog.Debug(ctx, fmt.Sprintf("Error converting ACL actions: %v", resp.Diagnostics.Errors()))
+		tflog.Error(ctx, fmt.Sprintf("Error converting ACL actions: %v", resp.Diagnostics.Errors()))
 		return
 	}
 
@@ -281,7 +280,6 @@ func (r *resourceCCKMOCIAcl) Update(ctx context.Context, req resource.UpdateRequ
 			if resp.Diagnostics.HasError() {
 				return
 			}
-			tflog.Debug(ctx, fmt.Sprintf("[resource_oci_acls.go -> Update][response: %s]", response))
 		}
 	}
 
@@ -335,7 +333,6 @@ func (r *resourceCCKMOCIAcl) Delete(ctx context.Context, req resource.DeleteRequ
 		if resp.Diagnostics.HasError() {
 			return
 		}
-		tflog.Debug(ctx, fmt.Sprintf("[resource_oci_acls.go -> Delete][response: %s]", response))
 	}
 }
 
@@ -370,6 +367,7 @@ func (r *resourceCCKMOCIAcl) applyAcls(ctx context.Context, id string, vaultID s
 			return ""
 		}
 	}
+	tflog.Debug(ctx, "[resource_oci_acls.go -> applyAcls][response:"+redactOCIResponse(response)+"]")
 	return response
 }
 
