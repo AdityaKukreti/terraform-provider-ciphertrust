@@ -435,11 +435,11 @@ type UserLoginFlagsJSON struct {
 }
 
 type CMUserJSON struct {
-	UserID                 string             `json:"user_id"`
-	Name                   string             `json:"name"`
-	UserName               string             `json:"username"`
-	Nickname               string             `json:"nickname"`
-	Email                  string             `json:"email"`
+	UserID                 string             `json:"user_id,omitempty"`
+	Name                   string             `json:"name,omitempty"`
+	UserName               string             `json:"username,omitempty"`
+	Nickname               string             `json:"nickname,omitempty"`
+	Email                  string             `json:"email,omitempty"`
 	Password               string             `json:"password,omitempty"`
 	IsDomainUser           bool               `json:"is_domain_user"`
 	LoginFlags             UserLoginFlagsJSON `json:"login_flags"`
