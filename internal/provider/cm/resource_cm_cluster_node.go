@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/google/uuid"
@@ -49,9 +50,9 @@ var (
 	_ resource.Resource              = &resourceCMClusterNode{}
 	_ resource.ResourceWithConfigure = &resourceCMClusterNode{}
 
-	// clusterJoinSemaphore ensures only one node joins the cluster at a time.
-	// This prevents parallel joins which can cause consensus issues.
-	clusterJoinSemaphore = make(chan struct{}, 1)
+	// clusterJoinMu ensures only one node joins or leaves the cluster at a time.
+	// Parallel joins/removals can break Raft consensus.
+	clusterJoinMu sync.Mutex
 )
 
 func NewResourceCMClusterNode() resource.Resource {
@@ -164,13 +165,12 @@ func (r *resourceCMClusterNode) Create(ctx context.Context, req resource.CreateR
 		return
 	}
 
-	// Acquire semaphore to ensure only one node joins at a time
 	nodeHost := plan.Host.ValueString()
 	tflog.Info(ctx, fmt.Sprintf("[%s] [resource_cm_cluster_node.go -> Create] ATTEMPTING to acquire cluster join lock at %v", nodeHost, time.Now()))
-	clusterJoinSemaphore <- struct{}{}
+	clusterJoinMu.Lock()
 	tflog.Info(ctx, fmt.Sprintf("[%s] [resource_cm_cluster_node.go -> Create] LOCK ACQUIRED at %v, proceeding with node join", nodeHost, time.Now()))
 	defer func() {
-		<-clusterJoinSemaphore
+		clusterJoinMu.Unlock()
 		tflog.Info(ctx, fmt.Sprintf("[%s] [resource_cm_cluster_node.go -> Create] LOCK RELEASED at %v", nodeHost, time.Now()))
 	}()
 
@@ -267,7 +267,7 @@ func (r *resourceCMClusterNode) Create(ctx context.Context, req resource.CreateR
 		return
 	}
 
-	maxSignRetries := 30
+	maxSignRetries := 180 // up to 30 minutes
 	signRetryInterval := 10 * time.Second
 	var responseSignCSR string
 	for attempt := 1; attempt <= maxSignRetries; attempt++ {
@@ -328,7 +328,7 @@ func (r *resourceCMClusterNode) Create(ctx context.Context, req resource.CreateR
 	tflog.Info(ctx, fmt.Sprintf("[resource_cm_cluster_node.go -> Create] Join request initiated for node %s, polling for completion...", nodeID))
 
 	// Poll cluster status until node is ready
-	maxPollRetries := 180 // 30 minutes total
+	maxPollRetries := 720 // 120 minutes total
 	pollInterval := 10 * time.Second
 
 	// seenJoining becomes true once the node enters any in-progress joining state
@@ -398,7 +398,7 @@ func (r *resourceCMClusterNode) Create(ctx context.Context, req resource.CreateR
 		} else {
 			resp.Diagnostics.AddError(
 				"Timeout waiting for node to join cluster",
-				fmt.Sprintf("Node did not reach ready state after %d attempts (30 minutes). Last status: %s - %s", maxPollRetries, statusCode, statusDesc),
+				fmt.Sprintf("Node did not reach ready state after %d attempts (120 minutes). Last status: %s - %s", maxPollRetries, statusCode, statusDesc),
 			)
 			return
 		}
@@ -416,7 +416,7 @@ func (r *resourceCMClusterNode) Create(ctx context.Context, req resource.CreateR
 		} else {
 			tflog.Info(ctx, "[resource_cm_cluster_node.go -> Create] Waiting for member to report status=r (initial node count unknown)...")
 		}
-		maxMemberRetries := 120 // up to 20 minutes
+		maxMemberRetries := 360 // up to 60 minutes
 		memberPollInterval := 10 * time.Second
 		memberReady := false
 		for attempt := 1; attempt <= maxMemberRetries; attempt++ {
@@ -446,7 +446,7 @@ func (r *resourceCMClusterNode) Create(ctx context.Context, req resource.CreateR
 		if !memberReady {
 			resp.Diagnostics.AddError(
 				"Cluster member did not stabilize after node join",
-				fmt.Sprintf("Member did not reach ready state with updated node count after %d attempts (20 minutes). "+
+				fmt.Sprintf("Member did not reach ready state with updated node count after %d attempts (60 minutes). "+
 					"The joining node reported ready but the cluster member has not yet converged. "+
 					"Check cluster health before retrying.", maxMemberRetries),
 			)
@@ -600,15 +600,14 @@ func (r *resourceCMClusterNode) Delete(ctx context.Context, req resource.DeleteR
 		return
 	}
 
-	// Acquire the same semaphore used by Create so that node removals are serialized
-	// with node additions. A concurrent add+remove causes the nodeCount stability
-	// check to target the wrong count and can disrupt Raft consensus.
+	// Serialize removals with additions: a concurrent add+remove causes the nodeCount
+	// stability check to target the wrong count and can disrupt Raft consensus.
 	nodeHost := state.Host.ValueString()
 	tflog.Info(ctx, fmt.Sprintf("[%s] [resource_cm_cluster_node.go -> Delete] ATTEMPTING to acquire cluster join lock", nodeHost))
-	clusterJoinSemaphore <- struct{}{}
+	clusterJoinMu.Lock()
 	tflog.Info(ctx, fmt.Sprintf("[%s] [resource_cm_cluster_node.go -> Delete] LOCK ACQUIRED, proceeding with node removal", nodeHost))
 	defer func() {
-		<-clusterJoinSemaphore
+		clusterJoinMu.Unlock()
 		tflog.Info(ctx, fmt.Sprintf("[%s] [resource_cm_cluster_node.go -> Delete] LOCK RELEASED", nodeHost))
 	}()
 
@@ -710,7 +709,7 @@ func (r *resourceCMClusterNode) Delete(ctx context.Context, req resource.DeleteR
 		} else {
 			tflog.Info(ctx, "[resource_cm_cluster_node.go -> Delete] Waiting for member to report status=r (initial node count unknown)...")
 		}
-		maxMemberRetries := 60 // up to 10 minutes
+		maxMemberRetries := 360 // up to 60 minutes
 		memberPollInterval := 10 * time.Second
 		memberReady := false
 		for attempt := 1; attempt <= maxMemberRetries; attempt++ {
@@ -740,7 +739,7 @@ func (r *resourceCMClusterNode) Delete(ctx context.Context, req resource.DeleteR
 		if !memberReady {
 			resp.Diagnostics.AddError(
 				"Cluster member did not stabilize after node removal",
-				fmt.Sprintf("Member did not reach ready state with updated node count after %d attempts (10 minutes). "+
+				fmt.Sprintf("Member did not reach ready state with updated node count after %d attempts (60 minutes). "+
 					"The node was removed but the cluster may still be converging. "+
 					"Check cluster health before retrying.", maxMemberRetries),
 			)
