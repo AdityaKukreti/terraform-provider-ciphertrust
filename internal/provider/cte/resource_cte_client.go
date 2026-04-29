@@ -203,7 +203,7 @@ func (r *resourceCTEClient) Create(ctx context.Context, req resource.CreateReque
 		payload.PasswordCreationMethod = common.TrimString(plan.PasswordCreationMethod.String())
 	}
 	if plan.ProfileIdentifier.ValueString() != "" && plan.ProfileIdentifier.ValueString() != types.StringNull().ValueString() {
-		payload.ProfileIdentifier = common.TrimString(plan.ProfileIdentifier.String())
+		payload.ProfileIdentifier = common.TrimString(plan.ProfileIdentifier.ValueString())
 	}
 	if plan.RegistrationAllowed.ValueBool() != types.BoolNull().ValueBool() {
 		payload.RegistrationAllowed = plan.RegistrationAllowed.ValueBool()
