@@ -112,9 +112,7 @@ func (r *resourceCMProperty) Create(ctx context.Context, req resource.CreateRequ
 		return
 	}
 
-	// Update plan with values from API response
-	plan.Value = types.StringValue(gjson.Get(readResponse, "value").String())
-	plan.Name = types.StringValue(gjson.Get(readResponse, "name").String())
+	// Update plan with computed values from API response; preserve user-provided name and value
 	plan.Description = types.StringValue(gjson.Get(readResponse, "description").String())
 
 	tflog.Trace(ctx, common.MSG_METHOD_END+"[resource_property.go -> Create]["+id+"]")
@@ -210,9 +208,7 @@ func (r *resourceCMProperty) Update(ctx context.Context, req resource.UpdateRequ
 		return
 	}
 
-	// Update plan with values from API response
-	plan.Value = types.StringValue(gjson.Get(readResponse, "value").String())
-	plan.Name = types.StringValue(gjson.Get(readResponse, "name").String())
+	// Update plan with computed values from API response; preserve user-provided name and value
 	plan.Description = types.StringValue(gjson.Get(readResponse, "description").String())
 
 	diags = resp.State.Set(ctx, plan)

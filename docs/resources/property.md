@@ -60,6 +60,9 @@ output "cm_property_name" {
 
 ### Optional
 
-- `description` (String) Description of the property and its value
 - `name` (String) Name of property
 - `value` (String) Value to be set
+
+### Read-Only
+
+- `description` (String) Description of the property and its value (read-only from API)
