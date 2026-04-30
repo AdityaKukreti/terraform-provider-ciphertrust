@@ -79,6 +79,10 @@ Read-Only:
 - `vault_id` (String) OCI Vault OCID.
 - `version_id` (String) OCI version ID
 
+### Updates
+
+Attributes not marked as `(Updatable)` cannot be modified after resource creation. To change these attributes, the resource must be recreated.
+
 ## Import
 
 An OCI BYOK key version can be imported using a composite ID made up of the

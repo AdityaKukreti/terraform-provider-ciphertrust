@@ -99,7 +99,7 @@ resource "ciphertrust_aws_xks_key" "imported_xks_key" {
 - `key_policy` (Block List) (Updatable) Key policy parameters. (see [below for nested schema](#nestedblock--key_policy))
 - `local_hosted_params` (Block List) Parameters for a AWS XKS key. (see [below for nested schema](#nestedblock--local_hosted_params))
 - `origin` (String) Source of the key material for the customer managed key.  Options: AWS_KMS, EXTERNAL, EXTERNAL_KEY_STORE, AWS_CLOUDHSM. AWS_KMS will create a native AWS key and is the default for AWS native key creation. EXTERNAL will create an external AWS key and is the default for import operations. This parameter is not required for upload operations. Origin is EXTERNAL_KEY_STORE for XKS/HYOK key and AWS_CLOUDHSM for key in CloudHSM key store.
-- `schedule_for_deletion_days` (Number) Waiting period after the key is destroyed before the key is deleted. Only relevant when the resource is destroyed. Default is 7.
+- `schedule_for_deletion_days` (Number) (Updatable) Waiting period after the key is destroyed before the key is deleted. Only relevant when the resource is destroyed. Default is 7.
 - `tags` (Map of String) (Updatable) A list of tags assigned to the XKS key.
 
 ### Read-Only
@@ -170,7 +170,7 @@ Optional:
 
 Optional:
 
-- `external_accounts` (Set of String) Other AWS accounts that can access to the key.
+- `external_accounts` (Set of String) Other AWS accounts that can access the key.
 - `key_admins` (Set of String) Key administrators - users.
 - `key_admins_roles` (Set of String) Key administrators - roles.
 - `key_users` (Set of String) Key users - users.
@@ -189,6 +189,10 @@ Required:
 - `linked` (Boolean) (Updatable) Parameter to indicate if AWS XKS key is linked with AWS.
 - `source_key_id` (String) ID of the source key for AWS XKS key.
 - `source_key_tier` (String) Source key tier for AWS XKS key. Current option is local. Default is local.
+
+### Updates
+
+Attributes not marked as `(Updatable)` cannot be modified after resource creation. To change these attributes, the resource must be recreated.
 
 ## Import
 

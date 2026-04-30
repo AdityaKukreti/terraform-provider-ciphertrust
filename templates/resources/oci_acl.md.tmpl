@@ -16,6 +16,10 @@ description: |-
 {{- end }}
 {{ .SchemaMarkdown | trimspace }}
 
+### Updates
+
+Attributes not marked as `(Updatable)` cannot be modified after resource creation. To change these attributes, the resource must be recreated.
+
 ## Import
 
 An OCI ACL can be imported using a composite ID that encodes the vault resource

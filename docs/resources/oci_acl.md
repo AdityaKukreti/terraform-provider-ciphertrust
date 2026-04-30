@@ -31,7 +31,7 @@ resource "ciphertrust_oci_acl" "group_acl" {
 
 ### Required
 
-- `actions` (Set of String) The following table lists the accepted values:
+- `actions` (Set of String) (Updatable) The following table lists the accepted values:
 
 | APIs                            |  Actions               | Description |
 | -----------------------------   |  --------------------- | --------------------------------------------------- |
@@ -71,6 +71,10 @@ The "view" or "viewhyokkey" permissions must be included with key or "hyok key" 
 ### Read-Only
 
 - `id` (String) The CipherTrust Manager vault resource ID concatenated with either the user ID or the group name separated by a semi-colon.
+
+### Updates
+
+Attributes not marked as `(Updatable)` cannot be modified after resource creation. To change these attributes, the resource must be recreated.
 
 ## Import
 

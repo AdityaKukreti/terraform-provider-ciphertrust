@@ -232,7 +232,7 @@ Optional:
 
 Optional:
 
-- `external_accounts` (Set of String) Other AWS accounts that can access to the key.
+- `external_accounts` (Set of String) Other AWS accounts that can access the key.
 - `key_admins` (Set of String) Key administrators - users.
 - `key_admins_roles` (Set of String) Key administrators - roles.
 - `key_users` (Set of String) Key users - users.
@@ -268,6 +268,10 @@ Optional:
 - `key_expiration` (Boolean) Enable key expiration.
 - `source_key_tier` (String) Source of the key material. Current option is 'local' implying a CipherTrust Manager key. Default is 'local'.
 - `valid_to` (String) Date of key expiry in UTC time in RFC3339 format. For example, 2027-07-03T14:24:00Z. Only valid if 'key_expiration' is true.
+
+### Updates
+
+Attributes not marked as `(Updatable)` cannot be modified after resource creation. To change these attributes, the resource must be recreated.
 
 ## Import
 

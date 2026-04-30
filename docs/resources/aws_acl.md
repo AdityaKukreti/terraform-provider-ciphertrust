@@ -31,7 +31,7 @@ resource "ciphertrust_aws_acl" "group_acl" {
 
 ### Required
 
-- `actions` (Set of String) The following table lists the accepted values:
+- `actions` (Set of String) (Updatable) The following table lists the accepted values:
 
 |APIs                             |  Actions Required             | Description |
 |-------------------------------  |  ---------------------------- | ---------------------------------------------------|
@@ -96,6 +96,10 @@ For backwards compatibility the deprecated "view" permission will be automatical
 
 - `id` (String) The CipherTrust Manager KMS resource ID concatenated with either the user ID or the group name separated by two semi-colons.
 - `kms_actions` (Set of String) Actions saved in the KMS for this user or group including automatically added view ACL's.
+
+### Updates
+
+Attributes not marked as `(Updatable)` cannot be modified after resource creation. To change these attributes, the resource must be recreated.
 
 ## Import
 
