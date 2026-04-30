@@ -28,7 +28,7 @@ resource "ciphertrust_cte_profile" "profile" {
 
   file_settings = {
     allow_purge   = true
-    file_threshold = "INFO"
+    file_threshold = "ERROR"
     max_file_size = 100000
     max_old_files = 5
   }
@@ -56,7 +56,7 @@ resource "ciphertrust_cte_profile" "profile" {
 
   file_settings = {
     allow_purge   = false
-    file_threshold = "WARN"
+    file_threshold = "ERROR"
     max_file_size = 200000
     max_old_files = 10
   }
