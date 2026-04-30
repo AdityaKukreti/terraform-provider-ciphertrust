@@ -11,30 +11,51 @@ import (
 func TestCiphertrustCTEClientGroupClientsDataSource(t *testing.T) {
 	clientGroupName := "tf-cg-" + uuid.New().String()[:8]
 	clientName := "tf-client-" + uuid.New().String()[:8]
+	profileName := "tf-profile-" + uuid.New().String()[:8]
 
 	testConfigStep1 := fmt.Sprintf(`
+		resource "ciphertrust_cte_profile" "profile" {
+			name = "%s"
+		}
+
 		resource "ciphertrust_cte_client" "client" {
 			name                     = "%s"
 			password_creation_method = "GENERATE"
+			description              = "Temp host for testing."
+			registration_allowed     = true
+			communication_enabled    = true
+			client_type              = "FS"
+			profile_identifier       = ciphertrust_cte_profile.profile.name
 		}
 
 		resource "ciphertrust_cte_client_group" "cg" {
 			name         = "%s"
 			description  = "Created for CTE client group clients data source test"
 			cluster_type = "NON-CLUSTER"
+			profile_id   = ciphertrust_cte_profile.profile.name
 		}
-	`, clientName, clientGroupName)
+	`, profileName, clientName, clientGroupName)
 
 	testConfigStep2 := fmt.Sprintf(`
+		resource "ciphertrust_cte_profile" "profile" {
+			name = "%s"
+		}
+
 		resource "ciphertrust_cte_client" "client" {
 			name                     = "%s"
 			password_creation_method = "GENERATE"
+			description              = "Temp host for testing."
+			registration_allowed     = true
+			communication_enabled    = true
+			client_type              = "FS"
+			profile_identifier       = ciphertrust_cte_profile.profile.name
 		}
 
 		resource "ciphertrust_cte_client_group" "cg" {
 			name               = "%s"
 			description        = "Created for CTE client group clients data source test"
 			cluster_type       = "NON-CLUSTER"
+			profile_id         = ciphertrust_cte_profile.profile.name
 			op_type            = "add-client"
 			client_list        = [ciphertrust_cte_client.client.id]
 			inherit_attributes = true
@@ -44,22 +65,32 @@ func TestCiphertrustCTEClientGroupClientsDataSource(t *testing.T) {
 			group_name = ciphertrust_cte_client_group.cg.name
 			depends_on = [ciphertrust_cte_client_group.cg]
 		}
-	`, clientName, clientGroupName)
+	`, profileName, clientName, clientGroupName)
 
 	testConfigStep3 := fmt.Sprintf(`
+		resource "ciphertrust_cte_profile" "profile" {
+			name = "%s"
+		}
+
 		resource "ciphertrust_cte_client" "client" {
 			name                     = "%s"
 			password_creation_method = "GENERATE"
+			description              = "Temp host for testing."
+			registration_allowed     = true
+			communication_enabled    = true
+			client_type              = "FS"
+			profile_identifier       = ciphertrust_cte_profile.profile.name
 		}
 
 		resource "ciphertrust_cte_client_group" "cg" {
 			name               = "%s"
 			description        = "Created for CTE client group clients data source test"
 			cluster_type       = "NON-CLUSTER"
+			profile_id         = ciphertrust_cte_profile.profile.name
 			op_type            = "remove-client"
 			client_list        = [ciphertrust_cte_client.client.id]
 		}
-	`, clientName, clientGroupName)
+	`, profileName, clientName, clientGroupName)
 
 	datasourceName := "data.ciphertrust_cte_client_group_clients_list.ds"
 	clientGroupResourceName := "ciphertrust_cte_client_group.cg"
