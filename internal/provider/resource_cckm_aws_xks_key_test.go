@@ -3,6 +3,7 @@ package provider
 import (
 	"fmt"
 	"os"
+	"regexp"
 	"testing"
 
 	"github.com/google/uuid"
@@ -128,7 +129,7 @@ func TestCckmAWSXKSUnlinkedKey(t *testing.T) {
 				custom_key_store_id = ciphertrust_aws_custom_keystore.unlinked_xks_custom_keystore.id
 				blocked = true
 				linked  = false
-				source_key_id   = ciphertrust_cm_key.cm_aes_key.id
+				source_key_id   = %s
 				source_key_tier = "local"
 			}
 			tags = {
@@ -139,7 +140,9 @@ func TestCckmAWSXKSUnlinkedKey(t *testing.T) {
 		awsKeyNamePrefix + uuid.New().String(),
 		awsKeyNamePrefix + uuid.New().String(),
 	}
-	createXKSKeyConfigStr := fmt.Sprintf(createXKSKeyConfig, aliasList[0], aliasList[1], false)
+	createXKSKeyConfigStr := fmt.Sprintf(createXKSKeyConfig, aliasList[0], aliasList[1], false, "ciphertrust_cm_key.cm_aes_key.id")
+	modifyPlanConfigStr := awsConnectionResource + createKeyStoreConfigStr + policyTemplateConfigStr + enableRotationConfigStr +
+		fmt.Sprintf(createXKSKeyConfig, aliasList[0], aliasList[1], false, `"tf-fake-key-id"`)
 	createConfigStr := awsConnectionResource + createKeyStoreConfigStr + policyTemplateConfigStr + enableRotationConfigStr + createXKSKeyConfigStr
 
 	updateXKSKeyConfig := `
@@ -296,6 +299,12 @@ func TestCckmAWSXKSUnlinkedKey(t *testing.T) {
 					resource.TestCheckResourceAttr(keyResourceMinParams, "description", ""),
 					resource.TestCheckResourceAttr(keyResourceMinParams, "tags.%", "0"),
 				),
+			},
+			{
+				// Verify ModifyPlan fires an error when local_hosted_params.source_key_id is changed.
+				Config:      modifyPlanConfigStr,
+				PlanOnly:    true,
+				ExpectError: regexp.MustCompile(`Immutable attribute change detected`),
 			},
 		},
 	})

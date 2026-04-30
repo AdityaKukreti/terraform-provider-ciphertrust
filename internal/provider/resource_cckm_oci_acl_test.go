@@ -3,6 +3,7 @@ package provider
 import (
 	"fmt"
 	"os"
+	"regexp"
 	"testing"
 
 	"github.com/google/uuid"
@@ -117,6 +118,26 @@ func TestCckmOCIAcl(t *testing.T) {
 			actions  = ["view", "keycreate", "keydelete"]
 		}`
 
+	modifyPlanAclConfig := `
+		%s
+		resource "ciphertrust_user" "user" {
+			username = "%s"
+			password = "LongPassword1234++"
+		}
+		resource "ciphertrust_groups" "group" {
+			name = "%s"
+		}
+		resource "ciphertrust_oci_acl" "user_acl" {
+			vault_id = %s
+			user_id  = ciphertrust_user.user.id
+			actions  = ["view"]
+		}
+		resource "ciphertrust_oci_acl" "group_acl" {
+			vault_id = ciphertrust_oci_vault.vault.id
+			group    = ciphertrust_groups.group.id
+			actions  = ["view", "keycreate", "keydelete"]
+		}`
+
 	dataSourceConfig := `
 		data "ciphertrust_oci_vault_list" "vault_ds" {
 			filters = {
@@ -129,9 +150,11 @@ func TestCckmOCIAcl(t *testing.T) {
 		ociPubKeyFP, ociRegion, ociTenancyOCID, ociUserOCID)
 	userName := "tf-" + uuid.New().String()[:8]
 	groupName := "tf-" + uuid.New().String()[:8]
+	fakeVaultID := `"` + uuid.New().String() + `"`
 	createAclsActionsConfigStr := fmt.Sprintf(createACLsConfig, createVaultConfigStr, userName, groupName)
 	addAclActionsConfigStr := fmt.Sprintf(addAclActionsConfig, createVaultConfigStr, userName, groupName)
 	removeAclActionsConfigStr := fmt.Sprintf(removeAclActionsConfig, createVaultConfigStr, userName, groupName)
+	modifyPlanConfigStr := fmt.Sprintf(modifyPlanAclConfig, createVaultConfigStr, userName, groupName, fakeVaultID)
 	deleteAclsConfigStr := createVaultConfigStr
 	applyConfigStr := createVaultConfigStr + dataSourceConfig
 	userACLResourceName := "ciphertrust_oci_acl.user_acl"
@@ -185,6 +208,12 @@ func TestCckmOCIAcl(t *testing.T) {
 					resource.TestCheckResourceAttr(userACLResourceName, "actions.#", "1"),
 					resource.TestCheckResourceAttr(groupACLResourceName, "actions.#", "3"),
 				),
+			},
+			{
+				// Verify ModifyPlan fires an error when vault_id is changed on an existing ACL.
+				Config:      modifyPlanConfigStr,
+				PlanOnly:    true,
+				ExpectError: regexp.MustCompile(`Immutable attribute change detected`),
 			},
 			{
 				Config: deleteAclsConfigStr,

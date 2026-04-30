@@ -33,6 +33,7 @@ var (
 	_ resource.Resource                = &resourceAWSCloudHSMKey{}
 	_ resource.ResourceWithConfigure   = &resourceAWSCloudHSMKey{}
 	_ resource.ResourceWithImportState = &resourceAWSCloudHSMKey{}
+	_ resource.ResourceWithModifyPlan  = &resourceAWSCloudHSMKey{}
 )
 
 func NewResourceAWSCloudHSMKey() resource.Resource {
@@ -131,7 +132,7 @@ func (r *resourceAWSCloudHSMKey) Schema(_ context.Context, _ resource.SchemaRequ
 			"schedule_for_deletion_days": schema.Int64Attribute{
 				Computed:    true,
 				Optional:    true,
-				Description: "Waiting period after the key is destroyed before the key is deleted. Only relevant when the resource is destroyed. Default is 7.",
+				Description: "(Updatable) Waiting period after the key is destroyed before the key is deleted. Only relevant when the resource is destroyed. Default is 7.",
 				Default:     int64default.StaticInt64(7),
 				Validators: []validator.Int64{
 					int64validator.AtLeast(7),
@@ -328,7 +329,7 @@ func (r *resourceAWSCloudHSMKey) Schema(_ context.Context, _ resource.SchemaRequ
 						"external_accounts": schema.SetAttribute{
 							Optional:    true,
 							ElementType: types.StringType,
-							Description: "Other AWS accounts that can access to the key.",
+							Description: "Other AWS accounts that can access the key.",
 						},
 						"key_admins": schema.SetAttribute{
 							Optional:    true,
@@ -513,7 +514,7 @@ func (r *resourceAWSCloudHSMKey) Create(ctx context.Context, req resource.Create
 }
 
 // Read refreshes Terraform state for an AWS CloudHSM key by reading its current data from CipherTrust Manager.
-// If the key is no longer found (404 / "Resource not found"), it is silently removed from Terraform state
+// If the key is no longer found (404 / notFoundError), it is silently removed from Terraform state
 // rather than returning an error, allowing Terraform to plan its recreation.
 // For unlinked keys, the description attribute is preserved from prior state rather than overwritten.
 func (r *resourceAWSCloudHSMKey) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
@@ -528,7 +529,7 @@ func (r *resourceAWSCloudHSMKey) Read(ctx context.Context, req resource.ReadRequ
 	keyID := state.ID.ValueString()
 	response, err := r.client.GetById(ctx, id, keyID, common.URL_AWS_KEY)
 	if err != nil {
-		if strings.Contains(err.Error(), "Resource not found") {
+		if strings.Contains(err.Error(), notFoundError) {
 			msg := "AWS CloudHSM key was not found, it will be removed from state."
 			details := utils.ApiError(msg, map[string]interface{}{"key_id": keyID})
 			tflog.Warn(ctx, details)
@@ -557,14 +558,6 @@ func (r *resourceAWSCloudHSMKey) Read(ctx context.Context, req resource.ReadRequ
 	if resp.Diagnostics.HasError() {
 		return
 	}
-}
-
-// ImportState imports an existing AWS CloudHSM key into Terraform state using its resource ID.
-func (r *resourceAWSCloudHSMKey) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
-	id := uuid.New().String()
-	tflog.Debug(ctx, common.MSG_METHOD_START+"[resource_aws_cloudhsm_key.go -> ImportState]["+id+"]")
-	defer tflog.Debug(ctx, common.MSG_METHOD_END+"[resource_aws_cloudhsm_key.go -> ImportState]["+id+"]")
-	resource.ImportStatePassthroughID(ctx, path.Root("id"), req, resp)
 }
 
 // Update applies plan changes to an AWS CloudHSM key. Only keys in a linked state (linked_state = true)
@@ -687,7 +680,7 @@ func (r *resourceAWSCloudHSMKey) Update(ctx context.Context, req resource.Update
 // Delete schedules a linked AWS CloudHSM key for deletion via the schedule-deletion API, or directly
 // deletes an unlinked key from CipherTrust Manager. In either case:
 //   - If the key is already in PendingDeletion state, a warning is returned and the key is removed from state.
-//   - If the key is not found (404 / "Resource not found"), a warning is returned and the key is removed from state.
+//   - If the key is not found (404 / notFoundError), a warning is returned and the key is removed from state.
 //
 // Only a hard API error from the delete call itself produces a Terraform error.
 func (r *resourceAWSCloudHSMKey) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
@@ -702,7 +695,7 @@ func (r *resourceAWSCloudHSMKey) Delete(ctx context.Context, req resource.Delete
 	keyID := state.KeyID.ValueString()
 	response, err := r.client.GetById(ctx, id, keyID, common.URL_AWS_KEY)
 	if err != nil {
-		if strings.Contains(err.Error(), "Resource not found") {
+		if strings.Contains(err.Error(), notFoundError) {
 			msg := "AWS CloudHSM key was not found, it will be removed from state."
 			details := utils.ApiError(msg, map[string]interface{}{"key_id": keyID})
 			tflog.Warn(ctx, details)
@@ -738,7 +731,7 @@ func (r *resourceAWSCloudHSMKey) Delete(ctx context.Context, req resource.Delete
 		}
 		_, err = r.client.PostDataV2(ctx, id, common.URL_AWS_KEY+"/"+keyID+"/schedule-deletion", payloadJSON)
 		if err != nil {
-			if strings.Contains(err.Error(), "Resource not found") {
+			if strings.Contains(err.Error(), notFoundError) {
 				msg := "AWS CloudHSM key was not found, it will be removed from state."
 				details := utils.ApiError(msg, map[string]interface{}{"id": state.ID.ValueString()})
 				tflog.Warn(ctx, details)
@@ -753,7 +746,7 @@ func (r *resourceAWSCloudHSMKey) Delete(ctx context.Context, req resource.Delete
 	} else {
 		_, err := r.client.DeleteByURL(ctx, keyID, common.URL_AWS_KEY+"/"+keyID)
 		if err != nil {
-			if strings.Contains(err.Error(), "Resource not found") {
+			if strings.Contains(err.Error(), notFoundError) {
 				msg := "AWS CloudHSM key was not found, it will be removed from state."
 				details := utils.ApiError(msg, map[string]interface{}{"id": state.ID.ValueString()})
 				tflog.Warn(ctx, details)
@@ -768,4 +761,57 @@ func (r *resourceAWSCloudHSMKey) Delete(ctx context.Context, req resource.Delete
 		}
 	}
 	tflog.Debug(ctx, "[resource_aws_cloudhsm_key.go -> Delete][response:"+redactAWSResponse(response)+"]")
+}
+
+// ModifyPlan errors at plan time if any immutable attribute is changed on an existing resource,
+// preventing silent in-place updates to fields that cannot be modified after creation.
+func (r *resourceAWSCloudHSMKey) ModifyPlan(ctx context.Context, req resource.ModifyPlanRequest, resp *resource.ModifyPlanResponse) {
+	// Skip create and destroy operations.
+	if req.Plan.Raw.IsNull() || req.State.Raw.IsNull() {
+		return
+	}
+
+	var plan, state AWSCloudHSMKeyTFSDK
+
+	resp.Diagnostics.Append(req.Plan.Get(ctx, &plan)...)
+	resp.Diagnostics.Append(req.State.Get(ctx, &state)...)
+
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	var changed []string
+
+	if !plan.BypassPolicyLockoutSafetyCheck.IsNull() && !plan.BypassPolicyLockoutSafetyCheck.IsUnknown() &&
+		plan.BypassPolicyLockoutSafetyCheck != state.BypassPolicyLockoutSafetyCheck {
+		changed = append(changed, "bypass_policy_lockout_safety_check")
+	}
+
+	if plan.CustomKeyStoreID != state.CustomKeyStoreID {
+		changed = append(changed, "custom_key_store_id")
+	}
+
+	if !plan.Origin.IsNull() && !plan.Origin.IsUnknown() &&
+		plan.Origin != state.Origin {
+		changed = append(changed, "origin")
+	}
+
+	if len(changed) > 0 {
+		resp.Diagnostics.AddError(
+			"Immutable attribute change detected",
+			fmt.Sprintf(
+				"The following attributes cannot be modified after creation: %s. "+
+					"Delete and recreate the resource to apply these changes.",
+				strings.Join(changed, ", "),
+			),
+		)
+	}
+}
+
+// ImportState imports an existing AWS CloudHSM key into Terraform state using its resource ID.
+func (r *resourceAWSCloudHSMKey) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
+	id := uuid.New().String()
+	tflog.Debug(ctx, common.MSG_METHOD_START+"[resource_aws_cloudhsm_key.go -> ImportState]["+id+"]")
+	defer tflog.Debug(ctx, common.MSG_METHOD_END+"[resource_aws_cloudhsm_key.go -> ImportState]["+id+"]")
+	resource.ImportStatePassthroughID(ctx, path.Root("id"), req, resp)
 }

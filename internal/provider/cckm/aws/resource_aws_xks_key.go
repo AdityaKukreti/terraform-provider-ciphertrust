@@ -34,6 +34,7 @@ var (
 	_ resource.Resource                = &resourceAWSXKSKey{}
 	_ resource.ResourceWithConfigure   = &resourceAWSXKSKey{}
 	_ resource.ResourceWithImportState = &resourceAWSXKSKey{}
+	_ resource.ResourceWithModifyPlan  = &resourceAWSXKSKey{}
 )
 
 func NewResourceAWSXKSKey() resource.Resource {
@@ -134,7 +135,7 @@ func (r *resourceAWSXKSKey) Schema(_ context.Context, _ resource.SchemaRequest, 
 			"schedule_for_deletion_days": schema.Int64Attribute{
 				Computed:    true,
 				Optional:    true,
-				Description: "Waiting period after the key is destroyed before the key is deleted. Only relevant when the resource is destroyed. Default is 7.",
+				Description: "(Updatable) Waiting period after the key is destroyed before the key is deleted. Only relevant when the resource is destroyed. Default is 7.",
 				Default:     int64default.StaticInt64(7),
 				Validators: []validator.Int64{
 					int64validator.AtLeast(7),
@@ -335,7 +336,7 @@ func (r *resourceAWSXKSKey) Schema(_ context.Context, _ resource.SchemaRequest, 
 						"external_accounts": schema.SetAttribute{
 							Optional:    true,
 							ElementType: types.StringType,
-							Description: "Other AWS accounts that can access to the key.",
+							Description: "Other AWS accounts that can access the key.",
 						},
 						"key_admins": schema.SetAttribute{
 							Optional:    true,
@@ -548,7 +549,7 @@ func (r *resourceAWSXKSKey) Create(ctx context.Context, req resource.CreateReque
 }
 
 // Read refreshes Terraform state for an AWS XKS key by reading its current data from CipherTrust Manager.
-// If the key is no longer found (404 / "Resource not found"), it is silently removed from Terraform state
+// If the key is no longer found (404 / notFoundError), it is silently removed from Terraform state
 // rather than returning an error, allowing Terraform to plan its recreation.
 // For unlinked keys, the description attribute is preserved from prior state rather than overwritten.
 func (r *resourceAWSXKSKey) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
@@ -563,7 +564,7 @@ func (r *resourceAWSXKSKey) Read(ctx context.Context, req resource.ReadRequest, 
 	keyID := state.ID.ValueString()
 	response, err := r.client.GetById(ctx, id, keyID, common.URL_AWS_KEY)
 	if err != nil {
-		if strings.Contains(err.Error(), "Resource not found") {
+		if strings.Contains(err.Error(), notFoundError) {
 			msg := "AWS XKS key was not found, it will be removed from state."
 			details := utils.ApiError(msg, map[string]interface{}{"key_id": keyID})
 			tflog.Warn(ctx, details)
@@ -588,14 +589,6 @@ func (r *resourceAWSXKSKey) Read(ctx context.Context, req resource.ReadRequest, 
 	if resp.Diagnostics.HasError() {
 		return
 	}
-}
-
-// ImportState imports an existing AWS XKS key into Terraform state using its resource ID.
-func (r *resourceAWSXKSKey) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
-	id := uuid.New().String()
-	tflog.Debug(ctx, common.MSG_METHOD_START+"[resource_aws_xks_key.go -> ImportState]["+id+"]")
-	defer tflog.Debug(ctx, common.MSG_METHOD_END+"[resource_aws_xks_key.go -> ImportState]["+id+"]")
-	resource.ImportStatePassthroughID(ctx, path.Root("id"), req, resp)
 }
 
 // Update applies plan changes to an AWS XKS key. The key's linked state determines which attributes
@@ -744,7 +737,7 @@ func (r *resourceAWSXKSKey) Update(ctx context.Context, req resource.UpdateReque
 // Delete schedules a linked AWS XKS key for deletion via the schedule-deletion API, or directly deletes
 // an unlinked key from CipherTrust Manager. In either case:
 //   - If the key is already in PendingDeletion state, a warning is returned and the key is removed from state.
-//   - If the key is not found (404 / "Resource not found"), a warning is returned and the key is removed from state.
+//   - If the key is not found (404 / notFoundError), a warning is returned and the key is removed from state.
 //
 // Only a hard API error from the delete call itself produces a Terraform error.
 func (r *resourceAWSXKSKey) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
@@ -759,7 +752,7 @@ func (r *resourceAWSXKSKey) Delete(ctx context.Context, req resource.DeleteReque
 	keyID := state.KeyID.ValueString()
 	response, err := r.client.GetById(ctx, id, keyID, common.URL_AWS_KEY)
 	if err != nil {
-		if strings.Contains(err.Error(), "Resource not found") {
+		if strings.Contains(err.Error(), notFoundError) {
 			msg := "AWS XKS key was not found, it will be removed from state."
 			details := utils.ApiError(msg, map[string]interface{}{"key_id": keyID})
 			tflog.Warn(ctx, details)
@@ -795,7 +788,7 @@ func (r *resourceAWSXKSKey) Delete(ctx context.Context, req resource.DeleteReque
 		}
 		_, err = r.client.PostDataV2(ctx, id, common.URL_AWS_KEY+"/"+keyID+"/schedule-deletion", payloadJSON)
 		if err != nil {
-			if strings.Contains(err.Error(), "Resource not found") {
+			if strings.Contains(err.Error(), notFoundError) {
 				msg := "AWS XKS key was not found, it will be removed from state."
 				details := utils.ApiError(msg, map[string]interface{}{"id": state.ID.ValueString()})
 				tflog.Warn(ctx, details)
@@ -810,7 +803,7 @@ func (r *resourceAWSXKSKey) Delete(ctx context.Context, req resource.DeleteReque
 	} else {
 		_, err := r.client.DeleteByURL(ctx, keyID, common.URL_AWS_KEY+"/"+keyID)
 		if err != nil {
-			if strings.Contains(err.Error(), "Resource not found") {
+			if strings.Contains(err.Error(), notFoundError) {
 				msg := "AWS XKS key was not found, it will be removed from state."
 				details := utils.ApiError(msg, map[string]interface{}{"id": state.ID.ValueString()})
 				tflog.Warn(ctx, details)
@@ -825,6 +818,76 @@ func (r *resourceAWSXKSKey) Delete(ctx context.Context, req resource.DeleteReque
 		}
 	}
 	tflog.Debug(ctx, "[resource_aws_xks_key.go -> Delete][response:"+redactAWSResponse(response)+"]")
+}
+
+// ModifyPlan errors at plan time if any immutable attribute is changed on an existing resource,
+// preventing silent in-place updates to fields that cannot be modified after creation.
+func (r *resourceAWSXKSKey) ModifyPlan(ctx context.Context, req resource.ModifyPlanRequest, resp *resource.ModifyPlanResponse) {
+	// Skip create and destroy operations.
+	if req.Plan.Raw.IsNull() || req.State.Raw.IsNull() {
+		return
+	}
+
+	var plan, state AWSXKSKeyTFSDK
+
+	resp.Diagnostics.Append(req.Plan.Get(ctx, &plan)...)
+	resp.Diagnostics.Append(req.State.Get(ctx, &state)...)
+
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	var changed []string
+
+	if !plan.BypassPolicyLockoutSafetyCheck.IsNull() && !plan.BypassPolicyLockoutSafetyCheck.IsUnknown() &&
+		plan.BypassPolicyLockoutSafetyCheck != state.BypassPolicyLockoutSafetyCheck {
+		changed = append(changed, "bypass_policy_lockout_safety_check")
+	}
+
+	// Check immutable fields inside the local_hosted_params block.
+	planLHP := make([]XKSKeyLocalHostedParamsTFSDK, 0)
+	stateLHP := make([]XKSKeyLocalHostedParamsTFSDK, 0)
+	if len(plan.LocalHostParams.Elements()) > 0 {
+		resp.Diagnostics.Append(plan.LocalHostParams.ElementsAs(ctx, &planLHP, false)...)
+	}
+	if len(state.LocalHostParams.Elements()) > 0 {
+		resp.Diagnostics.Append(state.LocalHostParams.ElementsAs(ctx, &stateLHP, false)...)
+	}
+	if !resp.Diagnostics.HasError() && len(planLHP) > 0 && len(stateLHP) > 0 {
+		if planLHP[0].CustomKeyStoreID != stateLHP[0].CustomKeyStoreID {
+			changed = append(changed, "local_hosted_params.custom_key_store_id")
+		}
+		if planLHP[0].SourceKeyID != stateLHP[0].SourceKeyID {
+			changed = append(changed, "local_hosted_params.source_key_id")
+		}
+		if planLHP[0].SourceKeyTier != stateLHP[0].SourceKeyTier {
+			changed = append(changed, "local_hosted_params.source_key_tier")
+		}
+	}
+
+	if !plan.Origin.IsNull() && !plan.Origin.IsUnknown() &&
+		plan.Origin != state.Origin {
+		changed = append(changed, "origin")
+	}
+
+	if len(changed) > 0 {
+		resp.Diagnostics.AddError(
+			"Immutable attribute change detected",
+			fmt.Sprintf(
+				"The following attributes cannot be modified after creation: %s. "+
+					"Delete and recreate the resource to apply these changes.",
+				strings.Join(changed, ", "),
+			),
+		)
+	}
+}
+
+// ImportState imports an existing AWS XKS key into Terraform state using its resource ID.
+func (r *resourceAWSXKSKey) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
+	id := uuid.New().String()
+	tflog.Debug(ctx, common.MSG_METHOD_START+"[resource_aws_xks_key.go -> ImportState]["+id+"]")
+	defer tflog.Debug(ctx, common.MSG_METHOD_END+"[resource_aws_xks_key.go -> ImportState]["+id+"]")
+	resource.ImportStatePassthroughID(ctx, path.Root("id"), req, resp)
 }
 
 // setXKSKeyState populates the Terraform state for an AWS XKS key from an API response JSON string.

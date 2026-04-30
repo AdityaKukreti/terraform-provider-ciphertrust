@@ -7,6 +7,7 @@ import (
 	"github.com/tidwall/gjson"
 	"net/url"
 	"os"
+	"regexp"
 	"testing"
 
 	"github.com/google/uuid"
@@ -98,7 +99,7 @@ func TestCckmAWSKms(t *testing.T) {
 			regions        = [data.ciphertrust_aws_account_details.account_details.regions[0]]
 		}`, uid, uid)
 
-	updateKmsConnectionConfig := fmt.Sprintf(`
+	updateKmsConnectionConfig := `
 		resource "ciphertrust_aws_connection" "new_aws_connection" {
 			name = "%s"
 		}
@@ -109,11 +110,15 @@ func TestCckmAWSKms(t *testing.T) {
 			aws_connection = ciphertrust_aws_connection.aws_connection.id
 		}
 		resource "ciphertrust_aws_kms" "kms" {
-			account_id     = data.ciphertrust_aws_account_details.account_details.account_id
+			account_id     = %s
 			aws_connection = ciphertrust_aws_connection.new_aws_connection.name
 			name           = "%s"
 			regions        = [data.ciphertrust_aws_account_details.account_details.regions[0]]
-		}`, updatedConnName, uid, uid)
+		}`
+	updateKmsConnectionConfigStr := fmt.Sprintf(updateKmsConnectionConfig,
+		updatedConnName, uid, "data.ciphertrust_aws_account_details.account_details.account_id", uid)
+	modifyPlanConfigStr := fmt.Sprintf(updateKmsConnectionConfig,
+		updatedConnName, uid, `"000000000000"`, uid)
 
 	resourceName := "ciphertrust_aws_kms.kms"
 	resource.Test(t, resource.TestCase{
@@ -146,11 +151,79 @@ func TestCckmAWSKms(t *testing.T) {
 				),
 			},
 			{
-				Config: updateKmsConnectionConfig,
+				Config: updateKmsConnectionConfigStr,
 				Check: resource.ComposeTestCheckFunc(
 					resource.TestCheckResourceAttr(resourceName, "aws_connection", updatedConnName),
 					resource.TestCheckResourceAttr(resourceName, "regions.#", "1"),
 				),
+			},
+			{
+				// Verify ModifyPlan fires an error when account_id is changed.
+				Config:      modifyPlanConfigStr,
+				PlanOnly:    true,
+				ExpectError: regexp.MustCompile(`Immutable attribute change detected`),
+			},
+		},
+	})
+}
+
+// TestCckmAWSKeyMinimalConfig verifies that a resource configuration
+// containing only the minimal required attributes is accepted and applied
+// without error.
+func TestCckmAWSKeyMinimalConfig(t *testing.T) {
+	awsConnectionResource, ok := initCckmAwsTest()
+	if !ok {
+		t.Skip()
+	}
+	nativeKeyConfig := `
+		resource "ciphertrust_aws_key" "native_key" {
+			alias        = [local.alias]
+			kms          = ciphertrust_aws_kms.kms.id
+			region       = ciphertrust_aws_kms.kms.regions[0]
+            origin       = "AWS_KMS"
+		}
+		resource "ciphertrust_aws_policy_template" "policy_template" {
+            kms    = ciphertrust_aws_kms.kms.id
+			name   = "%s"
+			policy = <<-EOT
+				%s
+			EOT
+		}
+		resource "ciphertrust_aws_acl" "acl" {
+			kms_id  = ciphertrust_aws_kms.kms.id
+			actions = []
+		}
+		resource "ciphertrust_cm_key" "cm_key" {
+			name      = local.cmKeyName
+			algorithm = "RSA"
+			key_size  = 2048
+		}
+		resource "ciphertrust_aws_key" "external_key" {
+			alias   = ["%s"]
+			customer_master_key_spec = "RSA_2048"
+			kms     = ciphertrust_aws_kms.kms.id
+			region  = ciphertrust_aws_kms.kms.regions[0]
+			upload_key {
+				source_key_identifier = ciphertrust_cm_key.cm_key.id
+			}
+		}
+		resource "ciphertrust_aws_key_import_material" "reimport" {
+			key_id = ciphertrust_aws_key.external_key.key_id
+			import_key_material {
+				source_key_identifier = ciphertrust_aws_key.external_key.local_key_id
+			}
+		}`
+
+	configStr := fmt.Sprintf(nativeKeyConfig, "tf-"+uuid.NewString()[:8], defaultPolicy, "tf-"+uuid.NewString()[:8])
+	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { cleanupCckmAwsKMS() },
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		Steps: []resource.TestStep{
+			{
+				Config: awsConnectionResource + configStr,
+			},
+			{
+				RefreshState: true,
 			},
 		},
 	})

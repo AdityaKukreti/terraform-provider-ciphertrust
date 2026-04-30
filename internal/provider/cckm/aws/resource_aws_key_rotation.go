@@ -20,8 +20,9 @@ import (
 )
 
 var (
-	_ resource.Resource              = &resourceAWSKeyRotation{}
-	_ resource.ResourceWithConfigure = &resourceAWSKeyRotation{}
+	_ resource.Resource               = &resourceAWSKeyRotation{}
+	_ resource.ResourceWithConfigure  = &resourceAWSKeyRotation{}
+	_ resource.ResourceWithModifyPlan = &resourceAWSKeyRotation{}
 )
 
 func NewResourceAWSKeyRotation() resource.Resource {
@@ -68,10 +69,7 @@ func (r *resourceAWSKeyRotation) Schema(_ context.Context, _ resource.SchemaRequ
 			},
 			"key_id": schema.StringAttribute{
 				Required:    true,
-				Description: "A CipherTrust Manager AWS key resource ID. Changing this value forces a new rotation on the new key (this resource will be destroyed and recreated).",
-				PlanModifiers: []planmodifier.String{
-					stringplanmodifier.RequiresReplace(),
-				},
+				Description: "A CipherTrust Manager AWS key resource ID.",
 			},
 			"status": schema.StringAttribute{
 				Computed:    true,
@@ -124,7 +122,7 @@ func (r *resourceAWSKeyRotation) Read(ctx context.Context, req resource.ReadRequ
 	keyID := state.KeyID.ValueString()
 	_, err := r.client.GetById(ctx, id, keyID, common.URL_AWS_KEY)
 	if err != nil {
-		if strings.Contains(err.Error(), "status: 404") {
+		if strings.Contains(err.Error(), notFoundError) {
 			msg := "AWS key no longer exists, removing rotation resource from state."
 			details := utils.ApiError(msg, map[string]interface{}{"key_id": keyID})
 			tflog.Warn(ctx, details)
@@ -149,6 +147,32 @@ func (r *resourceAWSKeyRotation) Update(ctx context.Context, req resource.Update
 
 // Delete is a no-op; rotation records are removed from state only and do not affect the AWS key.
 func (r *resourceAWSKeyRotation) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
+}
+
+// ModifyPlan errors at plan time if any immutable attribute is changed on an existing resource,
+// preventing silent in-place updates to fields that cannot be modified after creation.
+func (r *resourceAWSKeyRotation) ModifyPlan(ctx context.Context, req resource.ModifyPlanRequest, resp *resource.ModifyPlanResponse) {
+	// Skip create and destroy operations.
+	if req.Plan.Raw.IsNull() || req.State.Raw.IsNull() {
+		return
+	}
+
+	var plan, state AWSKeyRotationTFSDK
+
+	resp.Diagnostics.Append(req.Plan.Get(ctx, &plan)...)
+	resp.Diagnostics.Append(req.State.Get(ctx, &state)...)
+
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	if plan.KeyID != state.KeyID {
+		resp.Diagnostics.AddError(
+			"Immutable attribute change detected",
+			"The following attributes cannot be modified after creation: key_id. "+
+				"Delete and recreate the resource to apply these changes.",
+		)
+	}
 }
 
 // rotateKeyMaterial calls the CipherTrust Manager rotate-material API for the specified AWS key.

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 
 	"github.com/ThalesGroup/terraform-provider-ciphertrust/internal/provider/cckm/acls"
 	"github.com/ThalesGroup/terraform-provider-ciphertrust/internal/provider/cckm/utils"
@@ -24,6 +25,7 @@ var (
 	_ resource.Resource                = &resourceCCKMAWSKMS{}
 	_ resource.ResourceWithConfigure   = &resourceCCKMAWSKMS{}
 	_ resource.ResourceWithImportState = &resourceCCKMAWSKMS{}
+	_ resource.ResourceWithModifyPlan  = &resourceCCKMAWSKMS{}
 )
 
 func NewResourceCCKMAWSKMS() resource.Resource {
@@ -63,10 +65,7 @@ func (r *resourceCCKMAWSKMS) Schema(_ context.Context, _ resource.SchemaRequest,
 			},
 			"account_id": schema.StringAttribute{
 				Required:    true,
-				Description: "ID of the AWS account. Changing this value forces the KMS registration to be destroyed and recreated.",
-				PlanModifiers: []planmodifier.String{
-					stringplanmodifier.RequiresReplace(),
-				},
+				Description: "ID of the AWS account.",
 			},
 			"acls": schema.SetNestedAttribute{
 				Computed:    true,
@@ -130,15 +129,12 @@ func (r *resourceCCKMAWSKMS) Schema(_ context.Context, _ resource.SchemaRequest,
 			},
 			"name": schema.StringAttribute{
 				Required:    true,
-				Description: "Unique name for the KMS. Changing this value forces the KMS registration to be destroyed and recreated.",
-				PlanModifiers: []planmodifier.String{
-					stringplanmodifier.RequiresReplace(),
-				},
+				Description: "Unique name for the KMS.",
 			},
 			"regions": schema.ListAttribute{
 				Required:    true,
 				ElementType: types.StringType,
-				Description: "AWS regions to be added to the KMS.",
+				Description: "(Updatable) AWS regions to be added to the KMS.",
 			},
 			"status": schema.StringAttribute{
 				Computed:    true,
@@ -225,8 +221,16 @@ func (r *resourceCCKMAWSKMS) Read(ctx context.Context, req resource.ReadRequest,
 	kmsID := state.ID.ValueString()
 	response, err := r.client.GetById(ctx, id, kmsID, common.URL_AWS_KMS)
 	if err != nil {
+		if strings.Contains(err.Error(), notFoundError) {
+			msg := "AWS KMS was not found, it will be removed from state."
+			details := utils.ApiError(msg, map[string]interface{}{"kms_id": kmsID})
+			tflog.Warn(ctx, details)
+			resp.Diagnostics.AddWarning(details, "")
+			resp.State.RemoveResource(ctx)
+			return
+		}
 		msg := "Error reading AWS KMS."
-		details := utils.ApiError(msg, map[string]interface{}{"error": err.Error(), "kms id": kmsID})
+		details := utils.ApiError(msg, map[string]interface{}{"error": err.Error(), "kms_id": kmsID})
 		tflog.Error(ctx, details)
 		resp.Diagnostics.AddError(details, "")
 		return
@@ -236,14 +240,6 @@ func (r *resourceCCKMAWSKMS) Read(ctx context.Context, req resource.ReadRequest,
 		return
 	}
 	resp.Diagnostics.Append(resp.State.Set(ctx, state)...)
-}
-
-// ImportState imports an existing AWS KMS into Terraform state using its resource ID.
-func (r *resourceCCKMAWSKMS) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
-	id := uuid.New().String()
-	tflog.Debug(ctx, common.MSG_METHOD_START+"[resource_aws_kms.go -> ImportState]["+id+"]")
-	defer tflog.Debug(ctx, common.MSG_METHOD_END+"[resource_aws_kms.go -> ImportState]["+id+"]")
-	resource.ImportStatePassthroughID(ctx, path.Root("id"), req, resp)
 }
 
 // Update applies plan changes (regions, connection, assume-role) to an existing AWS KMS registration.
@@ -311,6 +307,8 @@ func (r *resourceCCKMAWSKMS) Update(ctx context.Context, req resource.UpdateRequ
 }
 
 // Delete removes an AWS KMS registration from CipherTrust Manager.
+// If the KMS is not found (HTTP 404) when destroy runs, a warning is emitted and the resource is
+// removed from state rather than returning an error.
 func (r *resourceCCKMAWSKMS) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
 	id := uuid.New().String()
 	tflog.Debug(ctx, common.MSG_METHOD_START+"[resource_aws_kms.go -> Delete]["+id+"]")
@@ -321,14 +319,74 @@ func (r *resourceCCKMAWSKMS) Delete(ctx context.Context, req resource.DeleteRequ
 		return
 	}
 	kmsID := state.ID.ValueString()
-	_, err := r.client.DeleteByURL(ctx, id, common.URL_AWS_KMS+"/"+kmsID)
+	_, err := r.client.GetById(ctx, id, kmsID, common.URL_AWS_KMS)
+	if err != nil {
+		if strings.Contains(err.Error(), notFoundError) {
+			msg := "AWS KMS was not found, it will be removed from state."
+			details := utils.ApiError(msg, map[string]interface{}{"id": state.ID.ValueString()})
+			tflog.Warn(ctx, details)
+			resp.Diagnostics.AddWarning(details, "")
+		} else {
+			msg := "Error reading AWS KMS."
+			details := utils.ApiError(msg, map[string]interface{}{"error": err.Error(), "kms_id": kmsID})
+			tflog.Error(ctx, details)
+			resp.Diagnostics.AddError(details, "")
+		}
+		return
+	}
+	_, err = r.client.DeleteByURL(ctx, id, common.URL_AWS_KMS+"/"+kmsID)
 	if err != nil {
 		msg := "Error deleting AWS KMS."
 		details := utils.ApiError(msg, map[string]interface{}{"error": err.Error(), "kms_id": kmsID})
 		tflog.Error(ctx, details)
 		resp.Diagnostics.AddError(details, "")
+	}
+}
+
+// ModifyPlan errors at plan time if any immutable attribute is changed on an existing resource,
+// preventing silent in-place updates to fields that cannot be modified after creation.
+func (r *resourceCCKMAWSKMS) ModifyPlan(ctx context.Context, req resource.ModifyPlanRequest, resp *resource.ModifyPlanResponse) {
+	// Skip create and destroy operations.
+	if req.Plan.Raw.IsNull() || req.State.Raw.IsNull() {
 		return
 	}
+
+	var plan, state KMSModelTFSDK
+
+	resp.Diagnostics.Append(req.Plan.Get(ctx, &plan)...)
+	resp.Diagnostics.Append(req.State.Get(ctx, &state)...)
+
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	var changed []string
+
+	if plan.AccountID != state.AccountID {
+		changed = append(changed, "account_id")
+	}
+	if plan.Name != state.Name {
+		changed = append(changed, "name")
+	}
+
+	if len(changed) > 0 {
+		resp.Diagnostics.AddError(
+			"Immutable attribute change detected",
+			fmt.Sprintf(
+				"The following attributes cannot be modified after creation: %s. "+
+					"Delete and recreate the resource to apply these changes.",
+				strings.Join(changed, ", "),
+			),
+		)
+	}
+}
+
+// ImportState imports an existing AWS KMS into Terraform state using its resource ID.
+func (r *resourceCCKMAWSKMS) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
+	id := uuid.New().String()
+	tflog.Debug(ctx, common.MSG_METHOD_START+"[resource_aws_kms.go -> ImportState]["+id+"]")
+	defer tflog.Debug(ctx, common.MSG_METHOD_END+"[resource_aws_kms.go -> ImportState]["+id+"]")
+	resource.ImportStatePassthroughID(ctx, path.Root("id"), req, resp)
 }
 
 // setKmsState populates the Terraform state for an AWS KMS from an API response JSON string.

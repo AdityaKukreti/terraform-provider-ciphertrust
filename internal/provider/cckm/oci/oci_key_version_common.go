@@ -21,38 +21,65 @@ import (
 // Used by resourceCCKMOCIByokVersion and resourceCCKMOCIKeyVersion.
 // Returns a warning (not error) if:
 //   - the version is not found (404)  -  allows Terraform to remove from state
+//   - the version is already scheduled for deletion  -  allows Terraform to remove from state
 //   - the version is the current key version  -  cannot be independently deleted in OCI;
 //     a warning is emitted and the resource is removed from state
 func deleteKeyVersion(ctx context.Context, id string, client *common.Client, keyID string, versionID string, days int64, diags *diag.Diagnostics) {
+	response, err := client.GetById(ctx, id, versionID, common.URL_OCI+"/keys/"+keyID+"/versions")
+	if err != nil {
+		if strings.Contains(err.Error(), notFoundError) {
+			msg := "OCI key version was not found, it will be removed from state."
+			details := utils.ApiError(msg, map[string]interface{}{"key_id": keyID, "version_id": versionID})
+			tflog.Warn(ctx, details)
+			diags.AddWarning(details, "")
+		} else {
+			msg := "Error reading OCI key version."
+			details := utils.ApiError(msg, map[string]interface{}{"error": err.Error(), "key_id": keyID, "version_id": versionID})
+			tflog.Error(ctx, details)
+			diags.AddError(details, "")
+		}
+		return
+	}
+
+	versionState := gjson.Get(response, "oci_key_version_params.lifecycle_state").String()
+	if versionState == keyStateScheduledForDeletion {
+		msg := "The OCI key version is already pending deletion."
+		details := utils.ApiError(msg, map[string]interface{}{"key_id": keyID, "version_id": versionID})
+		tflog.Warn(ctx, details)
+		diags.AddWarning(details, "")
+		return
+	}
+
 	payload := models.ScheduleForDeletionJSON{
 		Days: days,
 	}
 	payloadJSON, err := json.Marshal(payload)
 	if err != nil {
 		msg := "Error scheduling OCI key version for deletion, invalid data input."
-		details := utils.ApiError(msg, map[string]interface{}{"error": err.Error(), "key_id": keyID})
+		details := utils.ApiError(msg, map[string]interface{}{"error": err.Error(), "key_id": keyID, "version_id": versionID})
 		tflog.Error(ctx, details)
 		diags.AddError(details, "")
 		return
 	}
-	response, err := ociPostDataV2WithRetry(ctx, client, id, common.URL_OCI+"/keys/"+keyID+"/versions/"+versionID+"/schedule-deletion", payloadJSON)
+	response, err = ociPostDataV2WithRetry(ctx, client, id, common.URL_OCI+"/keys/"+keyID+"/versions/"+versionID+"/schedule-deletion", payloadJSON)
 	if err != nil {
 		if strings.Contains(err.Error(), currentVersionError) {
-			msg := "OCI BYOK key version is the current key version and cannot be deleted independently. It will be removed from state but remains active in OCI until the parent key is deleted."
+			msg := "OCI key version is the current key version and cannot be deleted independently. It will be removed from state but remains active in OCI until the parent key is deleted."
 			details := utils.ApiError(msg, map[string]interface{}{"key_id": keyID, "version_id": versionID})
 			tflog.Warn(ctx, details)
 			diags.AddWarning(details, "")
 			return
 		}
+		if strings.Contains(err.Error(), notFoundError) {
+			msg := "OCI key version was not found, it will be removed from state."
+			tflog.Warn(ctx, msg)
+			diags.AddWarning(msg, fmt.Sprintf("key_id: %s, version_id: %s", keyID, versionID))
+			return
+		}
 		msg := "Error scheduling OCI key version for deletion."
 		details := utils.ApiError(msg, map[string]interface{}{"error": err.Error(), "key_id": keyID, "version_id": versionID})
-		if strings.Contains(err.Error(), notFoundError) {
-			tflog.Warn(ctx, details)
-			diags.AddWarning(details, "")
-		} else {
-			tflog.Error(ctx, details)
-			diags.AddError(details, "")
-		}
+		tflog.Error(ctx, details)
+		diags.AddError(details, "")
 		return
 	}
 	tflog.Debug(ctx, "[oci_key_version_common.go -> deleteKeyVersion][response:"+redactOCIResponse(response)+"]")

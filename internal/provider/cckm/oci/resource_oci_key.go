@@ -19,6 +19,8 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/booldefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/int64default"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-log/tflog"
@@ -29,6 +31,7 @@ var (
 	_ resource.Resource                = &resourceCCKMOCIKey{}
 	_ resource.ResourceWithConfigure   = &resourceCCKMOCIKey{}
 	_ resource.ResourceWithImportState = &resourceCCKMOCIKey{}
+	_ resource.ResourceWithModifyPlan  = &resourceCCKMOCIKey{}
 )
 
 func NewResourceCCKMOCIKey() resource.Resource {
@@ -104,8 +107,9 @@ func (r *resourceCCKMOCIKey) Schema(_ context.Context, _ resource.SchemaRequest,
 				Default:     booldefault.StaticBool(true),
 			},
 			"id": schema.StringAttribute{
-				Computed:    true,
-				Description: "The keys CipherTrust Manager resource ID.",
+				Computed:      true,
+				Description:   "The keys CipherTrust Manager resource ID.",
+				PlanModifiers: []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
 			},
 			"key_material_origin": schema.StringAttribute{
 				Computed:    true,
@@ -435,13 +439,6 @@ func (r *resourceCCKMOCIKey) Read(ctx context.Context, req resource.ReadRequest,
 	resp.Diagnostics.Append(resp.State.Set(ctx, state)...)
 }
 
-func (r *resourceCCKMOCIKey) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
-	id := uuid.New().String()
-	tflog.Debug(ctx, common.MSG_METHOD_START+"[resource_oci_key.go -> ImportState]["+id+"]")
-	defer tflog.Debug(ctx, common.MSG_METHOD_END+"[resource_oci_key.go -> ImportState]["+id+"]")
-	resource.ImportStatePassthroughID(ctx, path.Root("id"), req, resp)
-}
-
 // Update modifies the OCI key via updateKey (oci_key_common.go).
 // Attributes not updated: algorithm, length, protection_mode, curve_id (immutable in OCI).
 // Compartment changes are applied via a separate change-compartment endpoint.
@@ -503,4 +500,65 @@ func (r *resourceCCKMOCIKey) Delete(ctx context.Context, req resource.DeleteRequ
 	if resp.Diagnostics.HasError() {
 		return
 	}
+}
+func (r *resourceCCKMOCIKey) ModifyPlan(ctx context.Context, req resource.ModifyPlanRequest, resp *resource.ModifyPlanResponse) {
+	// Skip create and destroy operations.
+	if req.Plan.Raw.IsNull() || req.State.Raw.IsNull() {
+		return
+	}
+
+	var plan, state models.KeyTFSDK
+
+	resp.Diagnostics.Append(req.Plan.Get(ctx, &plan)...)
+	resp.Diagnostics.Append(req.State.Get(ctx, &state)...)
+
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	// Defensive nil checks.
+	if plan.KeyParams == nil || state.KeyParams == nil {
+		return
+	}
+
+	var changed []string
+
+	if plan.KeyParams.Algorithm != state.KeyParams.Algorithm {
+		changed = append(changed, "oci_key_params.algorithm")
+	}
+
+	// curve_id is Optional+Computed (no default); skip when the plan value is not yet known.
+	if !plan.KeyParams.CurveID.IsUnknown() && plan.KeyParams.CurveID != state.KeyParams.CurveID {
+		changed = append(changed, "oci_key_params.curve_id")
+	}
+
+	if plan.KeyParams.Length != state.KeyParams.Length {
+		changed = append(changed, "oci_key_params.length")
+	}
+
+	if plan.KeyParams.ProtectionMode != state.KeyParams.ProtectionMode {
+		changed = append(changed, "oci_key_params.protection_mode")
+	}
+
+	if plan.Vault != state.Vault {
+		changed = append(changed, "vault")
+	}
+
+	if len(changed) > 0 {
+		resp.Diagnostics.AddError(
+			"Immutable attribute change detected",
+			fmt.Sprintf(
+				"The following attributes cannot be modified after creation: %s. "+
+					"Delete and recreate the resource to apply these changes.",
+				strings.Join(changed, ", "),
+			),
+		)
+	}
+}
+
+func (r *resourceCCKMOCIKey) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
+	id := uuid.New().String()
+	tflog.Debug(ctx, common.MSG_METHOD_START+"[resource_oci_key.go -> ImportState]["+id+"]")
+	defer tflog.Debug(ctx, common.MSG_METHOD_END+"[resource_oci_key.go -> ImportState]["+id+"]")
+	resource.ImportStatePassthroughID(ctx, path.Root("id"), req, resp)
 }

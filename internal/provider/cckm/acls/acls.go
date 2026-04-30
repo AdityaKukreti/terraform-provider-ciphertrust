@@ -1,3 +1,4 @@
+
 package acls
 
 import (
@@ -141,6 +142,28 @@ func GetPermittedAcl(ctx context.Context, resourceID string, newActions []string
 		acl.Group = userIDOrGroup
 	}
 	return &acl
+}
+
+// AclExistsInResponse returns true if the ACL entry for the user or group encoded in resourceID
+// is present in the acls array of the API response JSON.
+func AclExistsInResponse(responseJSON string, resourceID string) bool {
+	_, aclType, userIDOrGroup, err := DecodeContainerAclID(resourceID)
+	if err != nil {
+		return false
+	}
+	aclsResult := gjson.Get(responseJSON, "acls")
+	if !aclsResult.Exists() {
+		return false
+	}
+	for _, aclJSON := range aclsResult.Array() {
+		if aclType == "group" && gjson.Get(aclJSON.String(), "group").String() == userIDOrGroup {
+			return true
+		}
+		if aclType == "user" && gjson.Get(aclJSON.String(), "user_id").String() == userIDOrGroup {
+			return true
+		}
+	}
+	return false
 }
 
 // SetAclCommonState populates an AclTFSDK state struct by locating the matching ACL entry within the API response JSON.

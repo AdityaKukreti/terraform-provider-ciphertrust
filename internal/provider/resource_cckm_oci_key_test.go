@@ -3,6 +3,7 @@ package provider
 import (
 	"fmt"
 	"os"
+	"regexp"
 	"testing"
 
 	"github.com/google/uuid"
@@ -76,12 +77,12 @@ func TestCckmOCIKeysAndVersionsNative(t *testing.T) {
 				protection_mode = "SOFTWARE"
 			}
 			name            = local.oci_key_name
-			vault           = ciphertrust_oci_vault.vault.id
+			vault           = %s
 		}
 
 		# Add a native version to the key
 		resource "ciphertrust_oci_key_version" "version" {
-			cckm_key_id = ciphertrust_oci_key.rsa.id
+			cckm_key_id = %s
 		}
 
 		# List the key
@@ -134,7 +135,12 @@ func TestCckmOCIKeysAndVersionsNative(t *testing.T) {
 	keysDataSource := "data.ciphertrust_oci_key_list.keys"
 	versionDataSource := "data.ciphertrust_oci_key_version_list.versions"
 
-	createResourceStr := fmt.Sprintf(createConfig, localsResource, connectionResource)
+	createResourceStr := fmt.Sprintf(createConfig, localsResource, connectionResource,
+		"ciphertrust_oci_vault.vault.id", "ciphertrust_oci_key.rsa.id")
+	modifyKeyConfigStr := fmt.Sprintf(createConfig, localsResource, connectionResource,
+		`"tf-fake-vault-id"`, "ciphertrust_oci_key.rsa.id")
+	modifyVersionConfigStr := fmt.Sprintf(createConfig, localsResource, connectionResource,
+		"ciphertrust_oci_vault.vault.id", `"tf-fake-key-id"`)
 	updateResourceStr := fmt.Sprintf(updateConfig, localsResource, connectionResource)
 
 	resource.Test(t, resource.TestCase{
@@ -221,6 +227,16 @@ func TestCckmOCIKeysAndVersionsNative(t *testing.T) {
 					resource.TestCheckResourceAttr(versionDataSource, "matched", "2"),
 					resource.TestCheckResourceAttrSet(versionDataSource, "versions.0.id"),
 				),
+			},
+			// ModifyPlan: vault changed to a random UUID - expect plan-time error on key.
+			{
+				Config:      modifyKeyConfigStr,
+				ExpectError: regexp.MustCompile("Immutable attribute change detected"),
+			},
+			// ModifyPlan: cckm_key_id changed to a random UUID - expect plan-time error on key version.
+			{
+				Config:      modifyVersionConfigStr,
+				ExpectError: regexp.MustCompile("Immutable attribute change detected"),
 			},
 		},
 	})

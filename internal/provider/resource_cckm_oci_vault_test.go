@@ -3,6 +3,8 @@ package provider
 import (
 	"context"
 	"fmt"
+	"regexp"
+
 	"github.com/ThalesGroup/terraform-provider-ciphertrust/internal/provider/common"
 	"github.com/google/uuid"
 	"github.com/tidwall/gjson"
@@ -126,7 +128,7 @@ func TestCckmOCIVault(t *testing.T) {
 			region = data.ciphertrust_get_oci_regions.regions.oci_regions.0
 		}
 		resource "ciphertrust_oci_vault" "vault" {
-				region = data.ciphertrust_get_oci_regions.regions.oci_regions.0
+				region = %s
 				connection_id = ciphertrust_oci_connection.connection_two.name
 				vault_id = tolist(data.ciphertrust_get_oci_vaults.vaults.vaults)[0].vault_id
 		}
@@ -144,7 +146,13 @@ func TestCckmOCIVault(t *testing.T) {
 	name := "tf-" + uuid.New().String()[:8]
 	nameTwo := "tf-" + uuid.New().String()[:8]
 	connectionConfigStr := fmt.Sprintf(connectionConfig, ociKeyFile, name, ociPubKeyFP, ociRegion, ociTenancyOCID, ociUserOCID)
-	updateConfigStr := fmt.Sprintf(updateConfig, ociKeyFile, name, ociPubKeyFP, ociRegion, ociTenancyOCID, ociUserOCID,
+	updateConfigStr := fmt.Sprintf(updateConfig,
+		ociKeyFile, name, ociPubKeyFP, ociRegion, ociTenancyOCID, ociUserOCID,
+		"data.ciphertrust_get_oci_regions.regions.oci_regions.0",
+		ociKeyFile, nameTwo, ociPubKeyFP, ociRegion, ociTenancyOCID, ociUserOCID)
+	modifyVaultConfigStr := fmt.Sprintf(updateConfig,
+		ociKeyFile, name, ociPubKeyFP, ociRegion, ociTenancyOCID, ociUserOCID,
+		`"fake-oci-region"`,
 		ociKeyFile, nameTwo, ociPubKeyFP, ociRegion, ociTenancyOCID, ociUserOCID)
 	connectionResource := "ciphertrust_oci_connection.connection"
 	connectionTwoResource := "ciphertrust_oci_connection.connection_two"
@@ -202,6 +210,12 @@ func TestCckmOCIVault(t *testing.T) {
 			},
 			{
 				RefreshState: true,
+			},
+			// ModifyPlan: region changed to a fake value - expect plan-time error (region is immutable).
+			{
+				Config:      modifyVaultConfigStr,
+				PlanOnly:    true,
+				ExpectError: regexp.MustCompile("Immutable attribute change detected"),
 			},
 			{
 				ResourceName:      vaultResource,

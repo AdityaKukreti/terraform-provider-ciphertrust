@@ -28,6 +28,7 @@ var (
 	_ resource.Resource                = &resourceAWSPolicyTemplate{}
 	_ resource.ResourceWithConfigure   = &resourceAWSPolicyTemplate{}
 	_ resource.ResourceWithImportState = &resourceAWSPolicyTemplate{}
+	_ resource.ResourceWithModifyPlan  = &resourceAWSPolicyTemplate{}
 )
 
 func NewResourceAWSPolicyTemplate() resource.Resource {
@@ -70,7 +71,7 @@ func (r *resourceAWSPolicyTemplate) Schema(_ context.Context, _ resource.SchemaR
 			"account_id": schema.StringAttribute{
 				Computed:    true,
 				Optional:    true,
-				Description: "The AWS account which owns this resource.",
+				Description: "AWS account used to create the key policy.",
 			},
 			"auto_push": schema.BoolAttribute{
 				Computed:    true,
@@ -85,7 +86,7 @@ func (r *resourceAWSPolicyTemplate) Schema(_ context.Context, _ resource.SchemaR
 			"external_accounts": schema.SetAttribute{
 				Optional:    true,
 				ElementType: types.StringType,
-				Description: "(Updatable) Other AWS accounts that can access to the key.",
+				Description: "(Updatable) AWS accounts that can use this key. External accounts are mutually exclusive to policy. If no policy parameters are specified the default policy is created.",
 			},
 			"key_admins": schema.SetAttribute{
 				Optional:    true,
@@ -110,14 +111,11 @@ func (r *resourceAWSPolicyTemplate) Schema(_ context.Context, _ resource.SchemaR
 			"kms": schema.StringAttribute{
 				Optional:    true,
 				Computed:    true,
-				Description: "Name or ID of the KMS to which the template belongs.",
+				Description: "Name or ID of the KMS to which the template belongs, 'account_id', 'external_accounts' or 'kms' must be provided.",
 			},
 			"name": schema.StringAttribute{
 				Required:    true,
-				Description: "A name for the template. Changing this value requires the resource to be replaced.",
-				PlanModifiers: []planmodifier.String{
-					stringplanmodifier.RequiresReplace(),
-				},
+				Description: "Name for the policy template.",
 			},
 			"policy": schema.StringAttribute{
 				Computed: true,
@@ -202,7 +200,7 @@ func (r *resourceAWSPolicyTemplate) Read(ctx context.Context, req resource.ReadR
 	templateID := state.ID.ValueString()
 	response, err := r.client.GetById(ctx, id, templateID, common.URL_AWS_POLICY_TEMPLATES)
 	if err != nil {
-		if strings.Contains(err.Error(), "404") {
+		if strings.Contains(err.Error(), notFoundError) {
 			tflog.Warn(ctx, "[resource_aws_policy_template.go -> Read][template not found, removing from state][template id: "+templateID+"]")
 			resp.State.RemoveResource(ctx)
 			return
@@ -222,14 +220,6 @@ func (r *resourceAWSPolicyTemplate) Read(ctx context.Context, req resource.ReadR
 		state.AutoPush = types.BoolValue(false)
 	}
 	resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
-}
-
-// ImportState imports an existing AWS key policy template into Terraform state using its resource ID.
-func (r *resourceAWSPolicyTemplate) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
-	id := uuid.New().String()
-	tflog.Debug(ctx, common.MSG_METHOD_START+"[resource_aws_policy_template.go -> ImportState]["+id+"]")
-	defer tflog.Debug(ctx, common.MSG_METHOD_END+"[resource_aws_policy_template.go -> ImportState]["+id+"]")
-	resource.ImportStatePassthroughID(ctx, path.Root("id"), req, resp)
 }
 
 // Update applies plan changes to an AWS key policy template and optionally pushes changes to associated keys.
@@ -306,6 +296,8 @@ func (r *resourceAWSPolicyTemplate) Update(ctx context.Context, req resource.Upd
 }
 
 // Delete removes an AWS key policy template from CipherTrust Manager if no keys are associated with it.
+// If the template is not found (HTTP 404) when destroy runs, a warning is emitted and the resource is
+// removed from state rather than returning an error.
 func (r *resourceAWSPolicyTemplate) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
 	id := uuid.New().String()
 	tflog.Debug(ctx, common.MSG_METHOD_START+"[resource_aws_policy_template.go -> Delete]["+id+"]")
@@ -317,7 +309,22 @@ func (r *resourceAWSPolicyTemplate) Delete(ctx context.Context, req resource.Del
 		return
 	}
 	templateID := state.ID.ValueString()
-	_, err := r.client.DeleteByURL(ctx, templateID, common.URL_AWS_POLICY_TEMPLATES+"/"+templateID)
+	_, err := r.client.GetById(ctx, id, templateID, common.URL_AWS_POLICY_TEMPLATES)
+	if err != nil {
+		if strings.Contains(err.Error(), notFoundError) {
+			msg := "AWS policy template was not found, it will be removed from state."
+			details := utils.ApiError(msg, map[string]interface{}{"id": state.ID.ValueString()})
+			tflog.Warn(ctx, details)
+			resp.Diagnostics.AddWarning(details, "")
+		} else {
+			msg := "Error reading AWS key policy template."
+			details := utils.ApiError(msg, map[string]interface{}{"error": err.Error(), "template_id": templateID})
+			tflog.Error(ctx, details)
+			resp.Diagnostics.AddError(details, "")
+		}
+		return
+	}
+	_, err = r.client.DeleteByURL(ctx, templateID, common.URL_AWS_POLICY_TEMPLATES+"/"+templateID)
 	if err != nil {
 		if strings.Contains(err.Error(), "has one or more key associated") {
 			msg := "AWS policy template " + templateID + " has one or more keys associated with it so it can't be deleted. This includes keys scheduled for deletion."
@@ -331,6 +338,59 @@ func (r *resourceAWSPolicyTemplate) Delete(ctx context.Context, req resource.Del
 			resp.Diagnostics.AddError(details, "")
 		}
 	}
+}
+
+// ModifyPlan errors at plan time if any immutable attribute is changed on an existing resource,
+// preventing silent in-place updates to fields that cannot be modified after creation.
+func (r *resourceAWSPolicyTemplate) ModifyPlan(ctx context.Context, req resource.ModifyPlanRequest, resp *resource.ModifyPlanResponse) {
+	// Skip create and destroy operations.
+	if req.Plan.Raw.IsNull() || req.State.Raw.IsNull() {
+		return
+	}
+
+	var plan, state AWSKeyPolicyTemplateTFSDK
+
+	resp.Diagnostics.Append(req.Plan.Get(ctx, &plan)...)
+	resp.Diagnostics.Append(req.State.Get(ctx, &state)...)
+
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	var changed []string
+
+	// Guard against false positives when account_id is not set in config (null in plan)
+	// but has a value in state (set by the API after create).
+	if !plan.AccountID.IsNull() && !plan.AccountID.IsUnknown() && plan.AccountID != state.AccountID {
+		changed = append(changed, "account_id")
+	}
+	// Guard against false positives when kms is not set in config (null in plan)
+	// but has a value in state (set by the API after create).
+	if !plan.Kms.IsNull() && !plan.Kms.IsUnknown() && plan.Kms != state.Kms {
+		changed = append(changed, "kms")
+	}
+	if plan.Name != state.Name {
+		changed = append(changed, "name")
+	}
+
+	if len(changed) > 0 {
+		resp.Diagnostics.AddError(
+			"Immutable attribute change detected",
+			fmt.Sprintf(
+				"The following attributes cannot be modified after creation: %s. "+
+					"Delete and recreate the resource to apply these changes.",
+				strings.Join(changed, ", "),
+			),
+		)
+	}
+}
+
+// ImportState imports an existing AWS key policy template into Terraform state using its resource ID.
+func (r *resourceAWSPolicyTemplate) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
+	id := uuid.New().String()
+	tflog.Debug(ctx, common.MSG_METHOD_START+"[resource_aws_policy_template.go -> ImportState]["+id+"]")
+	defer tflog.Debug(ctx, common.MSG_METHOD_END+"[resource_aws_policy_template.go -> ImportState]["+id+"]")
+	resource.ImportStatePassthroughID(ctx, path.Root("id"), req, resp)
 }
 
 // getCreatePolicyTemplateParams builds the key policy parameters payload for creating a new policy template.

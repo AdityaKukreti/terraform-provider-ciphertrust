@@ -2,6 +2,7 @@ package provider
 
 import (
 	"fmt"
+	"regexp"
 	"testing"
 
 	"github.com/google/uuid"
@@ -71,7 +72,7 @@ func TestCckmAWSAcl(t *testing.T) {
 			name = "%s"
 		}
 		resource "ciphertrust_aws_acl" "user_acl" {
-			kms_id  = ciphertrust_aws_kms.kms.id
+			kms_id  = %s
 			user_id = ciphertrust_user.user.id
 			actions = []
 		}`
@@ -85,9 +86,11 @@ func TestCckmAWSAcl(t *testing.T) {
 
 	userName := "tf-" + uuid.New().String()[:8]
 	groupName := "tf-" + uuid.New().String()[:8]
+	fakeKmsID := `"` + uuid.New().String() + `"`
 	createAclsActionsConfigStr := fmt.Sprintf(createACLsConfig, awsConnectionResource, userName, groupName)
 	addAclActionsConfigStr := fmt.Sprintf(addAclActionsConfig, awsConnectionResource, userName, groupName)
-	removeAclActionsConfigStr := fmt.Sprintf(removeAclActionsConfig, awsConnectionResource, userName, groupName)
+	removeAclActionsConfigStr := fmt.Sprintf(removeAclActionsConfig, awsConnectionResource, userName, groupName, "ciphertrust_aws_kms.kms.id")
+	modifyPlanConfigStr := fmt.Sprintf(removeAclActionsConfig, awsConnectionResource, userName, groupName, fakeKmsID)
 	deleteAclsConfigStr := awsConnectionResource
 	datasourceConfigStr := awsConnectionResource + dataSourceConfig
 	userACLResourceName := "ciphertrust_aws_acl.user_acl"
@@ -156,6 +159,12 @@ func TestCckmAWSAcl(t *testing.T) {
 			{
 				Config: removeAclActionsConfigStr,
 				Check:  resource.ComposeTestCheckFunc(),
+			},
+			{
+				// Verify ModifyPlan fires an error when kms_id is changed on an existing ACL.
+				Config:      modifyPlanConfigStr,
+				PlanOnly:    true,
+				ExpectError: regexp.MustCompile(`Immutable attribute change detected`),
 			},
 			{
 				Config: datasourceConfigStr,

@@ -40,6 +40,7 @@ var (
 	_           resource.Resource                = &resourceAWSKey{}
 	_           resource.ResourceWithConfigure   = &resourceAWSKey{}
 	_           resource.ResourceWithImportState = &resourceAWSKey{}
+	_           resource.ResourceWithModifyPlan  = &resourceAWSKey{}
 	awsKeySpecs                                  = []string{"SYMMETRIC_DEFAULT",
 		"RSA_2048",
 		"RSA_3072",
@@ -66,6 +67,7 @@ const (
 	enableDisableAutoRotationWaitSeconds = 180
 	disabledKeyException                 = "DisabledException"
 	notMultiRegionPrimaryException       = "is not a multi-Region primary key"
+	notFoundError                        = "status: 404"
 )
 
 func NewResourceAWSKey() resource.Resource {
@@ -376,7 +378,7 @@ func (r *resourceAWSKey) Schema(_ context.Context, _ resource.SchemaRequest, res
 						"external_accounts": schema.SetAttribute{
 							Optional:    true,
 							ElementType: types.StringType,
-							Description: "Other AWS accounts that can access to the key.",
+							Description: "Other AWS accounts that can access the key.",
 						},
 						"key_admins": schema.SetAttribute{
 							Optional:    true,
@@ -657,14 +659,6 @@ func (r *resourceAWSKey) Read(ctx context.Context, req resource.ReadRequest, res
 	resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
 }
 
-// ImportState imports an existing AWS key into Terraform state using its resource ID.
-func (r *resourceAWSKey) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
-	id := uuid.New().String()
-	tflog.Debug(ctx, common.MSG_METHOD_START+"[resource_aws_key.go -> ImportState]["+id+"]")
-	defer tflog.Debug(ctx, common.MSG_METHOD_END+"[resource_aws_key.go -> ImportState]["+id+"]")
-	resource.ImportStatePassthroughID(ctx, path.Root("id"), req, resp)
-}
-
 // Update applies plan changes to an AWS key including policy, aliases, tags, rotation, and enable/disable state.
 // All attributes are always sent to AWS  -  unlike XKS and CloudHSM keys, there is no linked-state condition.
 func (r *resourceAWSKey) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
@@ -799,7 +793,7 @@ func updateAwsKeyCommon(ctx context.Context, id string, client *common.Client, p
 }
 
 // Delete schedules an AWS key for deletion using the configured waiting period.
-// If the key is not found (404 / "Resource not found") when destroy runs, or if it is already in
+// If the key is not found (404 / notFoundError) when destroy runs, or if it is already in
 // PendingDeletion or PendingReplicaDeletion state, a warning is emitted and the resource is removed
 // from state rather than returning an error. Any other read error leaves the resource in state.
 // If the schedule-deletion API itself returns "is pending deletion", the same warning-and-remove behaviour applies.
@@ -817,7 +811,7 @@ func (r *resourceAWSKey) Delete(ctx context.Context, req resource.DeleteRequest,
 	if err != nil {
 		msg := "Error reading AWS key."
 		details := utils.ApiError(msg, map[string]interface{}{"error": err.Error(), "key_id": keyID})
-		if strings.Contains(err.Error(), "Resource not found") {
+		if strings.Contains(err.Error(), notFoundError) {
 			// Key was already deleted outside Terraform; treat as a successful destroy.
 			tflog.Warn(ctx, details)
 			resp.Diagnostics.AddWarning(details, "")
@@ -863,6 +857,130 @@ func (r *resourceAWSKey) Delete(ctx context.Context, req resource.DeleteRequest,
 		}
 	}
 	tflog.Debug(ctx, "[resource_aws_key.go -> Delete][response:"+redactAWSResponse(response))
+}
+
+// ModifyPlan errors at plan time if any immutable attribute is changed on an existing resource,
+// preventing silent in-place updates to fields that cannot be modified after creation.
+func (r *resourceAWSKey) ModifyPlan(ctx context.Context, req resource.ModifyPlanRequest, resp *resource.ModifyPlanResponse) {
+	// Skip create and destroy operations.
+	if req.Plan.Raw.IsNull() || req.State.Raw.IsNull() {
+		return
+	}
+
+	var plan, state AWSKeyTFSDK
+
+	resp.Diagnostics.Append(req.Plan.Get(ctx, &plan)...)
+	resp.Diagnostics.Append(req.State.Get(ctx, &state)...)
+
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	var changed []string
+
+	if !plan.BypassPolicyLockoutSafetyCheck.IsNull() && !plan.BypassPolicyLockoutSafetyCheck.IsUnknown() &&
+		plan.BypassPolicyLockoutSafetyCheck != state.BypassPolicyLockoutSafetyCheck {
+		changed = append(changed, "bypass_policy_lockout_safety_check")
+	}
+
+	if !plan.CustomerMasterKeySpec.IsNull() && !plan.CustomerMasterKeySpec.IsUnknown() &&
+		plan.CustomerMasterKeySpec != state.CustomerMasterKeySpec {
+		changed = append(changed, "customer_master_key_spec")
+	}
+
+	// import_key_material block: compare source fields when block is present in both plan and state.
+	planIM := make([]AWSKeyImportKeyMaterialTFSDK, 0)
+	stateIM := make([]AWSKeyImportKeyMaterialTFSDK, 0)
+	if len(plan.ImportKeyMaterial.Elements()) > 0 {
+		resp.Diagnostics.Append(plan.ImportKeyMaterial.ElementsAs(ctx, &planIM, false)...)
+	}
+	if len(state.ImportKeyMaterial.Elements()) > 0 {
+		resp.Diagnostics.Append(state.ImportKeyMaterial.ElementsAs(ctx, &stateIM, false)...)
+	}
+	if !resp.Diagnostics.HasError() && len(planIM) > 0 && len(stateIM) > 0 {
+		if planIM[0].SourceKeyName != stateIM[0].SourceKeyName {
+			changed = append(changed, "import_key_material.source_key_name")
+		}
+		if planIM[0].SourceKeyTier != stateIM[0].SourceKeyTier {
+			changed = append(changed, "import_key_material.source_key_tier")
+		}
+	}
+
+	if !plan.KeyUsage.IsNull() && !plan.KeyUsage.IsUnknown() &&
+		plan.KeyUsage != state.KeyUsage {
+		changed = append(changed, "key_usage")
+	}
+
+	if !plan.KMS.IsNull() && !plan.KMS.IsUnknown() &&
+		plan.KMS != state.KMS {
+		changed = append(changed, "kms")
+	}
+
+	if !plan.MultiRegion.IsNull() && !plan.MultiRegion.IsUnknown() &&
+		plan.MultiRegion != state.MultiRegion {
+		changed = append(changed, "multi_region")
+	}
+
+	if !plan.Origin.IsNull() && !plan.Origin.IsUnknown() &&
+		plan.Origin != state.Origin {
+		changed = append(changed, "origin")
+	}
+
+	if plan.Region != state.Region {
+		changed = append(changed, "region")
+	}
+
+	// replicate_key block: compare source fields when block is present in both plan and state.
+	planRK := make([]AWSReplicateKeyTFSDK, 0)
+	stateRK := make([]AWSReplicateKeyTFSDK, 0)
+	if len(plan.ReplicateKey.Elements()) > 0 {
+		resp.Diagnostics.Append(plan.ReplicateKey.ElementsAs(ctx, &planRK, false)...)
+	}
+	if len(state.ReplicateKey.Elements()) > 0 {
+		resp.Diagnostics.Append(state.ReplicateKey.ElementsAs(ctx, &stateRK, false)...)
+	}
+	if !resp.Diagnostics.HasError() && len(planRK) > 0 && len(stateRK) > 0 {
+		if planRK[0].KeyID != stateRK[0].KeyID {
+			changed = append(changed, "replicate_key.key_id")
+		}
+	}
+
+	// upload_key block: compare source fields when block is present in both plan and state.
+	planUK := make([]AWSUploadKeyTFSDK, 0)
+	stateUK := make([]AWSUploadKeyTFSDK, 0)
+	if len(plan.UploadKey.Elements()) > 0 {
+		resp.Diagnostics.Append(plan.UploadKey.ElementsAs(ctx, &planUK, false)...)
+	}
+	if len(state.UploadKey.Elements()) > 0 {
+		resp.Diagnostics.Append(state.UploadKey.ElementsAs(ctx, &stateUK, false)...)
+	}
+	if !resp.Diagnostics.HasError() && len(planUK) > 0 && len(stateUK) > 0 {
+		if planUK[0].SourceKeyID != stateUK[0].SourceKeyID {
+			changed = append(changed, "upload_key.source_key_identifier")
+		}
+		if planUK[0].SourceKeyTier != stateUK[0].SourceKeyTier {
+			changed = append(changed, "upload_key.source_key_tier")
+		}
+	}
+
+	if len(changed) > 0 {
+		resp.Diagnostics.AddError(
+			"Immutable attribute change detected",
+			fmt.Sprintf(
+				"The following attributes cannot be modified after creation: %s. "+
+					"Delete and recreate the resource to apply these changes.",
+				strings.Join(changed, ", "),
+			),
+		)
+	}
+}
+
+// ImportState imports an existing AWS key into Terraform state using its resource ID.
+func (r *resourceAWSKey) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
+	id := uuid.New().String()
+	tflog.Debug(ctx, common.MSG_METHOD_START+"[resource_aws_key.go -> ImportState]["+id+"]")
+	defer tflog.Debug(ctx, common.MSG_METHOD_END+"[resource_aws_key.go -> ImportState]["+id+"]")
+	resource.ImportStatePassthroughID(ctx, path.Root("id"), req, resp)
 }
 
 // createKey creates a native or external AWS key and returns the API response JSON.

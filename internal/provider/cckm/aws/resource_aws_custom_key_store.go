@@ -33,6 +33,7 @@ var (
 	_ resource.Resource                = &resourceAWSCustomKeyStore{}
 	_ resource.ResourceWithConfigure   = &resourceAWSCustomKeyStore{}
 	_ resource.ResourceWithImportState = &resourceAWSCustomKeyStore{}
+	_ resource.ResourceWithModifyPlan  = &resourceAWSCustomKeyStore{}
 )
 
 const (
@@ -55,6 +56,21 @@ type resourceAWSCustomKeyStore struct {
 
 func (r *resourceAWSCustomKeyStore) Metadata(_ context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
 	resp.TypeName = req.ProviderTypeName + "_aws_custom_keystore"
+}
+
+func (r *resourceAWSCustomKeyStore) Configure(_ context.Context, req resource.ConfigureRequest, resp *resource.ConfigureResponse) {
+	if req.ProviderData == nil {
+		return
+	}
+	client, ok := req.ProviderData.(*common.Client)
+	if !ok {
+		resp.Diagnostics.AddError(
+			"Error in fetching client from provider",
+			fmt.Sprintf("Expected *provider.Client, got: %T. Please report this issue to the provider developers.", req.ProviderData),
+		)
+		return
+	}
+	r.client = client
 }
 
 func (r *resourceAWSCustomKeyStore) Schema(ctx context.Context, _ resource.SchemaRequest, resp *resource.SchemaResponse) {
@@ -264,11 +280,10 @@ func (r *resourceAWSCustomKeyStore) Schema(ctx context.Context, _ resource.Schem
 							Computed: true,
 						},
 						"source_key_tier": schema.StringAttribute{
-							Optional: true,
-							Computed: true,
-							Description: "This field indicates whether to use Luna HSM (luna-hsm) or Ciphertrust Manager (local) as source for cryptographic keys in this key store. " +
-								"Default value is luna-hsm. The only value supported by the service is 'local'.",
-							Validators: []validator.String{stringvalidator.OneOf([]string{"local", "luna-hsm"}...)},
+							Optional:    true,
+							Computed:    true,
+							Description: "Source for cryptographic keys in this key store. The only supported value is 'local' (CipherTrust Manager).",
+							Validators:  []validator.String{stringvalidator.OneOf([]string{"local"}...)},
 						},
 					},
 				},
@@ -358,6 +373,20 @@ func (r *resourceAWSCustomKeyStore) Create(ctx context.Context, req resource.Cre
 	}
 	if plan.LinkedState.ValueBool() != types.BoolNull().ValueBool() {
 		payload.LinkedState = plan.LinkedState.ValueBool()
+	}
+	if len(plan.AWSParams.Elements()) == 0 {
+		resp.Diagnostics.AddError(
+			"Missing aws_param block",
+			"The aws_param.custom_key_store_type attribute is required and must be provided.",
+		)
+		return
+	}
+	if len(plan.LocalHostedParams.Elements()) == 0 {
+		resp.Diagnostics.AddError(
+			"Missing local_hosted_params block",
+			"The local_hosted_params block must be provided (it may be empty) to prevent drift.",
+		)
+		return
 	}
 	var awsParamJSON AWSParamJSON
 	var planAWSParamTFSDK AWSCustomKeyStoreParamTFSDK
@@ -529,7 +558,7 @@ func (r *resourceAWSCustomKeyStore) Create(ctx context.Context, req resource.Cre
 }
 
 // Read refreshes the Terraform state for an AWS custom key store from CipherTrust Manager.
-// If the key store is no longer found (404 / "Resource not found"), it is silently removed from
+// If the key store is no longer found (404 / notFoundError), it is silently removed from
 // Terraform state rather than returning an error, allowing Terraform to plan its recreation.
 func (r *resourceAWSCustomKeyStore) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
 	id := uuid.New().String()
@@ -543,7 +572,7 @@ func (r *resourceAWSCustomKeyStore) Read(ctx context.Context, req resource.ReadR
 	}
 	response, err := r.client.GetById(ctx, id, state.ID.ValueString(), common.URL_AWS_XKS)
 	if err != nil {
-		if strings.Contains(err.Error(), "Resource not found") {
+		if strings.Contains(err.Error(), notFoundError) {
 			msg := "AWS custom key store was not found, it will be removed from state."
 			details := utils.ApiError(msg, map[string]interface{}{"id": state.ID.ValueString()})
 			tflog.Warn(ctx, details)
@@ -562,14 +591,6 @@ func (r *resourceAWSCustomKeyStore) Read(ctx context.Context, req resource.ReadR
 		return
 	}
 	resp.Diagnostics.Append(resp.State.Set(ctx, state)...)
-}
-
-// ImportState imports an existing AWS custom key store into Terraform state using its resource ID.
-func (r *resourceAWSCustomKeyStore) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
-	id := uuid.New().String()
-	tflog.Debug(ctx, common.MSG_METHOD_START+"[resource_aws_custom_key_store.go -> ImportState]["+id+"]")
-	defer tflog.Debug(ctx, common.MSG_METHOD_END+"[resource_aws_custom_key_store.go -> ImportState]["+id+"]")
-	resource.ImportStatePassthroughID(ctx, path.Root("id"), req, resp)
 }
 
 // Update applies plan changes to an AWS custom key store. Changes are applied conditionally based on
@@ -608,6 +629,20 @@ func (r *resourceAWSCustomKeyStore) Update(ctx context.Context, req resource.Upd
 	var state AWSCustomKeyStoreTFSDK
 	resp.Diagnostics.Append(req.State.Get(ctx, &state)...)
 	if resp.Diagnostics.HasError() {
+		return
+	}
+	if len(plan.AWSParams.Elements()) == 0 {
+		resp.Diagnostics.AddError(
+			"Missing aws_param block",
+			"The aws_param.custom_key_store_type attribute is required and must be provided.",
+		)
+		return
+	}
+	if len(plan.LocalHostedParams.Elements()) == 0 {
+		resp.Diagnostics.AddError(
+			"Missing local_hosted_params block",
+			"The local_hosted_params block must be provided (it may be empty) to prevent drift.",
+		)
 		return
 	}
 
@@ -911,9 +946,12 @@ func (r *resourceAWSCustomKeyStore) Update(ctx context.Context, req resource.Upd
 }
 
 // Delete deletes the AWS custom key store from CipherTrust Manager.
-// If the key store is not found (404 / "Resource not found"), a warning is returned instead of an error
-// and the key store is removed from Terraform state.
+// If the key store is not found (HTTP 404) when destroy runs, a warning is emitted and the resource is
+// removed from state rather than returning an error.
 func (r *resourceAWSCustomKeyStore) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
+	id := uuid.New().String()
+	tflog.Debug(ctx, common.MSG_METHOD_START+"[resource_aws_custom_key_store.go -> Delete]["+id+"]")
+	defer tflog.Debug(ctx, common.MSG_METHOD_END+"[resource_aws_custom_key_store.go -> Delete]["+id+"]")
 	var state AWSCustomKeyStoreTFSDK
 	diags := req.State.Get(ctx, &state)
 	resp.Diagnostics.Append(diags...)
@@ -929,41 +967,126 @@ func (r *resourceAWSCustomKeyStore) Delete(ctx context.Context, req resource.Del
 	ctx, cancel := context.WithTimeout(ctx, deleteTimeout)
 	defer cancel()
 
-	// Delete existing order
-	url := fmt.Sprintf("%s/%s/%s", r.client.CipherTrustURL, common.URL_AWS_XKS, state.ID.ValueString())
-	output, err := r.client.DeleteByID(ctx, "DELETE", state.ID.ValueString(), url, nil)
-	tflog.Debug(ctx, common.MSG_METHOD_END+"[resource_aws_custom_key_store.go -> Delete]["+state.ID.ValueString()+"]["+output+"]")
+	_, err := r.client.GetById(ctx, id, state.ID.ValueString(), common.URL_AWS_XKS)
 	if err != nil {
-		if strings.Contains(err.Error(), "Resource not found") {
+		if strings.Contains(err.Error(), notFoundError) {
 			msg := "AWS custom key store was not found, it will be removed from state."
 			details := utils.ApiError(msg, map[string]interface{}{"id": state.ID.ValueString()})
 			tflog.Warn(ctx, details)
 			resp.Diagnostics.AddWarning(details, "")
 		} else {
-			resp.Diagnostics.AddError(
-				"Error Deleting AWS Custom Key Store",
-				"Could not delete AWS Custom Key Store, unexpected error: "+err.Error(),
-			)
+			msg := "Error reading AWS custom key store."
+			details := utils.ApiError(msg, map[string]interface{}{"error": err.Error(), "id": state.ID.ValueString()})
+			tflog.Error(ctx, details)
+			resp.Diagnostics.AddError(details, "")
 		}
+		return
+	}
+
+	url := fmt.Sprintf("%s/%s/%s", r.client.CipherTrustURL, common.URL_AWS_XKS, state.ID.ValueString())
+	output, err := r.client.DeleteByID(ctx, "DELETE", state.ID.ValueString(), url, nil)
+	tflog.Debug(ctx, "[resource_aws_custom_key_store.go -> Delete]["+state.ID.ValueString()+"]["+output+"]")
+	if err != nil {
+		msg := "Error deleting AWS custom key store."
+		details := utils.ApiError(msg, map[string]interface{}{"error": err.Error(), "id": state.ID.ValueString()})
+		tflog.Error(ctx, details)
+		resp.Diagnostics.AddError(details, "")
 	}
 }
 
-func (d *resourceAWSCustomKeyStore) Configure(_ context.Context, req resource.ConfigureRequest, resp *resource.ConfigureResponse) {
-	if req.ProviderData == nil {
+// ModifyPlan errors at plan time if any immutable attribute is changed on an existing resource,
+// preventing silent in-place updates to fields that cannot be modified after creation.
+func (r *resourceAWSCustomKeyStore) ModifyPlan(ctx context.Context, req resource.ModifyPlanRequest, resp *resource.ModifyPlanResponse) {
+	// Skip create and destroy operations.
+	if req.Plan.Raw.IsNull() || req.State.Raw.IsNull() {
 		return
 	}
 
-	client, ok := req.ProviderData.(*common.Client)
-	if !ok {
+	var plan, state AWSCustomKeyStoreTFSDK
+
+	resp.Diagnostics.Append(req.Plan.Get(ctx, &plan)...)
+	resp.Diagnostics.Append(req.State.Get(ctx, &state)...)
+
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	var changed []string
+
+	// Check immutable fields inside the aws_param block.
+	planAWS := make([]AWSCustomKeyStoreParamTFSDK, 0)
+	stateAWS := make([]AWSCustomKeyStoreParamTFSDK, 0)
+	if len(plan.AWSParams.Elements()) > 0 {
+		resp.Diagnostics.Append(plan.AWSParams.ElementsAs(ctx, &planAWS, false)...)
+	}
+	if len(state.AWSParams.Elements()) > 0 {
+		resp.Diagnostics.Append(state.AWSParams.ElementsAs(ctx, &stateAWS, false)...)
+	}
+	if !resp.Diagnostics.HasError() && len(planAWS) > 0 && len(stateAWS) > 0 {
+		if planAWS[0].CustomKeystoreType != stateAWS[0].CustomKeystoreType {
+			changed = append(changed, "aws_param.custom_key_store_type")
+		}
+		// Guard against false positives when the field was never set in config (null)
+		// but the API returned a value (e.g. empty string after create).
+		if !planAWS[0].TrustAnchorCertificate.IsNull() && !planAWS[0].TrustAnchorCertificate.IsUnknown() &&
+			planAWS[0].TrustAnchorCertificate != stateAWS[0].TrustAnchorCertificate {
+			changed = append(changed, "aws_param.trust_anchor_certificate")
+		}
+	}
+
+	if plan.KMS != state.KMS {
+		changed = append(changed, "kms")
+	}
+
+	// Check immutable fields inside the local_hosted_params block.
+	planLHP := make([]LocalHostedParamsTFSDK, 0)
+	stateLHP := make([]LocalHostedParamsTFSDK, 0)
+	if len(plan.LocalHostedParams.Elements()) > 0 {
+		resp.Diagnostics.Append(plan.LocalHostedParams.ElementsAs(ctx, &planLHP, false)...)
+	}
+	if len(state.LocalHostedParams.Elements()) > 0 {
+		resp.Diagnostics.Append(state.LocalHostedParams.ElementsAs(ctx, &stateLHP, false)...)
+	}
+	if !resp.Diagnostics.HasError() && len(planLHP) > 0 && len(stateLHP) > 0 {
+		// max_credentials is Optional-only; guard against false positives when
+		// the field was never set in config (null) but the API returned a value.
+		if !planLHP[0].MaxCredentials.IsNull() && !stateLHP[0].MaxCredentials.IsNull() &&
+			planLHP[0].MaxCredentials != stateLHP[0].MaxCredentials {
+			changed = append(changed, "local_hosted_params.max_credentials")
+		}
+		// Guard against false positives when the field was never set in config (null)
+		// but the API returned a value (e.g. empty string after create).
+		if !planLHP[0].PartitionID.IsNull() && !planLHP[0].PartitionID.IsUnknown() &&
+			planLHP[0].PartitionID != stateLHP[0].PartitionID {
+			changed = append(changed, "local_hosted_params.partition_id")
+		}
+		if planLHP[0].SourceKeyTier != stateLHP[0].SourceKeyTier {
+			changed = append(changed, "local_hosted_params.source_key_tier")
+		}
+	}
+
+	if plan.Region != state.Region {
+		changed = append(changed, "region")
+	}
+
+	if len(changed) > 0 {
 		resp.Diagnostics.AddError(
-			"Error in fetching client from provider",
-			fmt.Sprintf("Expected *provider.Client, got: %T. Please report this issue to the provider developers.", req.ProviderData),
+			"Immutable attribute change detected",
+			fmt.Sprintf(
+				"The following attributes cannot be modified after creation: %s. "+
+					"Delete and recreate the resource to apply these changes.",
+				strings.Join(changed, ", "),
+			),
 		)
-
-		return
 	}
+}
 
-	d.client = client
+// ImportState imports an existing AWS custom key store into Terraform state using its resource ID.
+func (r *resourceAWSCustomKeyStore) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
+	id := uuid.New().String()
+	tflog.Debug(ctx, common.MSG_METHOD_START+"[resource_aws_custom_key_store.go -> ImportState]["+id+"]")
+	defer tflog.Debug(ctx, common.MSG_METHOD_END+"[resource_aws_custom_key_store.go -> ImportState]["+id+"]")
+	resource.ImportStatePassthroughID(ctx, path.Root("id"), req, resp)
 }
 
 // setCustomKeyStoreState populates the Terraform state for a custom key store from an API response JSON string.
