@@ -82,9 +82,11 @@ resource "ciphertrust_aws_acl" "group_acl" {
 |Link (Custom Key Store)          |  keystorelink                 | Permission to link Custom key store to AWS. |
 |Bulk operation                   |  keybulkoperation             | Permission to perform bulk job operations. |
 
-Note: It's not necessary to add any view permissions as they will be automatically added.
+It's not necessary to add any view permissions as they will be automatically added.
 
-For backwards compatibility the deprecated "view" permission will be automatically converted to 'viewnative' and 'viewbyok' permissions.
+To remove a user or group from the KMS ACL entirely, delete the resource.
+
+For backwards compatibility the deprecated 'view' permission will be automatically converted to 'viewnative' and 'viewbyok' permissions.
 - `kms_id` (String) The CipherTrust Manager AWS KMS resource ID in which to set the ACL
 
 ### Optional

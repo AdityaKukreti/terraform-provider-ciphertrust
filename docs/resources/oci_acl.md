@@ -60,7 +60,9 @@ resource "ciphertrust_oci_acl" "group_acl" {
 | Delete  (HYOK Key)              |  hyokkeydelete         | Permission to delete an OCI HYOK key (applicable only to unlinked key). |
 | Rotate  (HYOK Key)              |  hyokkeyrotate         | Permission to rotate a HYOK key in CM. |
 
-The "view" or "viewhyokkey" permissions must be included with key or "hyok key" actions respectively.
+The 'view' or 'viewhyokkey' permissions must be included with 'key' or 'hyok key' actions respectively.
+
+To remove a user or group from the vault ACL entirely, delete the resource.
 - `vault_id` (String) The CipherTrust Manager OCI vault resource ID in which to set the ACL
 
 ### Optional

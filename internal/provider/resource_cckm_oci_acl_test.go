@@ -96,8 +96,17 @@ func TestCckmOCIAcl(t *testing.T) {
 			vault_id = ciphertrust_oci_vault.vault.id
 			group    = ciphertrust_groups.group.id
 			actions  = ["view", "keycreate", "keyupdate", "keydelete"]
+		}
+		data "ciphertrust_oci_vault_list" "vault_ds" {
+			depends_on = [ciphertrust_oci_acl.user_acl, ciphertrust_oci_acl.group_acl]
+			filters = {
+				name = ciphertrust_oci_vault.vault.name
+			}
 		}`
 
+	// removeAclActionsConfig drops group_acl so Terraform destroys it, proving that
+	// deleting the resource removes the group from the vault ACL. user_acl actions
+	// are reduced to view-only. The data source confirms exactly 1 ACL remains.
 	removeAclActionsConfig := `
 		%s
 		resource "ciphertrust_user" "user" {
@@ -112,10 +121,11 @@ func TestCckmOCIAcl(t *testing.T) {
 			user_id  = ciphertrust_user.user.id
 			actions  = ["view"]
 		}
-		resource "ciphertrust_oci_acl" "group_acl" {
-			vault_id = ciphertrust_oci_vault.vault.id
-			group    = ciphertrust_groups.group.id
-			actions  = ["view", "keycreate", "keydelete"]
+		data "ciphertrust_oci_vault_list" "vault_ds" {
+			depends_on = [ciphertrust_oci_acl.user_acl]
+			filters = {
+				name = ciphertrust_oci_vault.vault.name
+			}
 		}`
 
 	modifyPlanAclConfig := `
@@ -138,6 +148,19 @@ func TestCckmOCIAcl(t *testing.T) {
 			actions  = ["view", "keycreate", "keydelete"]
 		}`
 
+	// emptyActionsConfig is used only to verify that actions = [] is rejected at plan time.
+	emptyActionsConfig := `
+		%s
+		resource "ciphertrust_user" "user" {
+			username = "%s"
+			password = "LongPassword1234++"
+		}
+		resource "ciphertrust_oci_acl" "user_acl" {
+			vault_id = ciphertrust_oci_vault.vault.id
+			user_id  = ciphertrust_user.user.id
+			actions  = []
+		}`
+
 	dataSourceConfig := `
 		data "ciphertrust_oci_vault_list" "vault_ds" {
 			filters = {
@@ -154,6 +177,7 @@ func TestCckmOCIAcl(t *testing.T) {
 	createAclsActionsConfigStr := fmt.Sprintf(createACLsConfig, createVaultConfigStr, userName, groupName)
 	addAclActionsConfigStr := fmt.Sprintf(addAclActionsConfig, createVaultConfigStr, userName, groupName)
 	removeAclActionsConfigStr := fmt.Sprintf(removeAclActionsConfig, createVaultConfigStr, userName, groupName)
+	emptyActionsConfigStr := fmt.Sprintf(emptyActionsConfig, createVaultConfigStr, userName)
 	modifyPlanConfigStr := fmt.Sprintf(modifyPlanAclConfig, createVaultConfigStr, userName, groupName, fakeVaultID)
 	deleteAclsConfigStr := createVaultConfigStr
 	applyConfigStr := createVaultConfigStr + dataSourceConfig
@@ -200,14 +224,31 @@ func TestCckmOCIAcl(t *testing.T) {
 					resource.TestCheckResourceAttr(userACLResourceName, "actions.#", "3"),
 					resource.TestCheckResourceAttr(groupACLResourceName, "actions.#", "4"),
 					resource.TestCheckResourceAttr(vaultResourceName, "acls.#", "2"),
+					resource.TestCheckResourceAttr(vaultDatasourceName, "vaults.#", "1"),
+					resource.TestCheckResourceAttr(vaultDatasourceName, "vaults.0.acls.#", "2"),
 				),
 			},
 			{
+				// group_acl is destroyed (group removed from vault ACL); user_acl actions
+				// are reduced to view-only. The data source confirms exactly 1 ACL remains:
+				// the user, not the group.
 				Config: removeAclActionsConfigStr,
 				Check: resource.ComposeTestCheckFunc(
+					resource.TestCheckResourceAttrSet(userACLResourceName, "id"),
 					resource.TestCheckResourceAttr(userACLResourceName, "actions.#", "1"),
-					resource.TestCheckResourceAttr(groupACLResourceName, "actions.#", "3"),
+					resource.TestCheckResourceAttr(vaultDatasourceName, "vaults.#", "1"),
+					resource.TestCheckResourceAttr(vaultDatasourceName, "vaults.0.acls.#", "1"),
+					resource.TestCheckResourceAttrSet(vaultDatasourceName, "vaults.0.acls.0.user_id"),
+					resource.TestCheckResourceAttr(vaultDatasourceName, "vaults.0.acls.0.group", ""),
 				),
+			},
+			{
+				// Verify that actions = [] is rejected at plan time by the schema validator.
+				// An empty action set would remove the user from the vault ACL entirely;
+				// deleting the resource is the correct way to remove all permissions.
+				Config:      emptyActionsConfigStr,
+				PlanOnly:    true,
+				ExpectError: regexp.MustCompile(`at least 1`),
 			},
 			{
 				// Verify ModifyPlan fires an error when vault_id is changed on an existing ACL.

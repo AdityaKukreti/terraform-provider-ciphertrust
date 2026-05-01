@@ -20,6 +20,11 @@ const (
 	awsKeyNamePrefix    = "tf-aws-"
 	awsPolicyUserPrefix = "arn:aws:iam::556782317223:user/"
 	awsPolicyRolePrefix = "arn:aws:iam::556782317223:role/"
+
+	// cmKeyUsageCryptoOps is the CM key usage_mask that allows Sign (1), Verify (2),
+	// Encrypt (4), Decrypt (8), Wrap Key (16), and Unwrap Key (32). Used for AES
+	// source keys in CCKM BYOK and XKS key tests.
+	cmKeyUsageCryptoOps = 63
 )
 
 var (
@@ -92,11 +97,12 @@ func initCckmAwsTest(timeout ...int) (string, bool) {
 			]
 		}
 		locals {
-			alias   = "%s"
-			cmKeyName = "%s"
+			alias             = "%s"
+			cmKeyName         = "%s"
+			cm_key_usage_mask = %d
 		}`
 	uid := "tf-" + uuid.New().String()[:8]
-	awsConnectionResource := fmt.Sprintf(awsConfig, operationTimeout, uid, uid, uid, uid)
+	awsConnectionResource := fmt.Sprintf(awsConfig, operationTimeout, uid, uid, uid, uid, cmKeyUsageCryptoOps)
 	return awsConnectionResource, true
 }
 
@@ -795,9 +801,9 @@ func TestCckmAWSKeyMultiRegionNative(t *testing.T) {
 			},
 			{
 				Config: updateResources,
-				Check: resource.ComposeTestCheckFunc(
-					// On return of the API the replicated key the previous primary key will be a replica (primary_region) - sometimes
-					//resource.TestCheckResourceAttr(keyResource, "multi_region_key_type", "PRIMARY"),
+				Check:  resource.ComposeTestCheckFunc(
+				// On return of the API the replicated key the previous primary key will be a replica (primary_region) - sometimes
+				//resource.TestCheckResourceAttr(keyResource, "multi_region_key_type", "PRIMARY"),
 				),
 			},
 		},

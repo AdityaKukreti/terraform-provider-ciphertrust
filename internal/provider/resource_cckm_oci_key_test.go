@@ -32,6 +32,7 @@ func initCckmOCITest(t *testing.T) string {
 		locals {
 			vault_ocid          = "%s"
 			region              = "%s"
+			cm_key_usage_mask   = %d
 		}
 		resource "ciphertrust_oci_connection" "oci_connection" {
 			key_file = <<-EOT
@@ -49,7 +50,7 @@ func initCckmOCITest(t *testing.T) string {
 			region        = local.region
 		}`
 	resourceStr := fmt.Sprintf(config,
-		vaultOCID, region, keyFile, name, pubKeyFP, region, tenancyOCID, userOCID)
+		vaultOCID, region, cmKeyUsageCryptoOps, keyFile, name, pubKeyFP, region, tenancyOCID, userOCID)
 	return resourceStr
 }
 

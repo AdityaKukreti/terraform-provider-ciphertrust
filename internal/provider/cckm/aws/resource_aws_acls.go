@@ -11,6 +11,7 @@ import (
 	"github.com/ThalesGroup/terraform-provider-ciphertrust/internal/provider/cckm/utils"
 	"github.com/ThalesGroup/terraform-provider-ciphertrust/internal/provider/common"
 	"github.com/google/uuid"
+	"github.com/hashicorp/terraform-plugin-framework-validators/setvalidator"
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
@@ -95,9 +96,11 @@ const awsACLTable = `The following table lists the accepted values:
 |Link (Custom Key Store)          |  keystorelink                 | Permission to link Custom key store to AWS. |
 |Bulk operation                   |  keybulkoperation             | Permission to perform bulk job operations. |
 
-Note: It's not necessary to add any view permissions as they will be automatically added.
+It's not necessary to add any view permissions as they will be automatically added.
 
-For backwards compatibility the deprecated "view" permission will be automatically converted to 'viewnative' and 'viewbyok' permissions.`
+To remove a user or group from the KMS ACL entirely, delete the resource.
+
+For backwards compatibility the deprecated 'view' permission will be automatically converted to 'viewnative' and 'viewbyok' permissions.`
 
 func (r *resourceCCKMAWSAcl) Configure(_ context.Context, req resource.ConfigureRequest, resp *resource.ConfigureResponse) {
 	if req.ProviderData == nil {
@@ -122,6 +125,7 @@ func (r *resourceCCKMAWSAcl) Schema(_ context.Context, _ resource.SchemaRequest,
 				Required:            true,
 				ElementType:         types.StringType,
 				MarkdownDescription: "(Updatable) " + awsACLTable,
+				Validators:          []validator.Set{setvalidator.SizeAtLeast(1)},
 			},
 			"kms_actions": schema.SetAttribute{
 				Computed:    true,

@@ -61,6 +61,76 @@ func cleanupCckmOCIVaults() {
 	}
 }
 
+// TestCckmOCIMinimalConfig verifies that a resource configuration containing only
+// the minimal required attributes is accepted and applied without error for every
+// OCI CCKM resource type: native key + key version, BYOK key + BYOK key version,
+// and vault ACL. A RefreshState step confirms there is no post-apply plan drift.
+func TestCckmOCIMinimalConfig(t *testing.T) {
+	connectionResource := initCckmOCITest(t)
+
+	keyConfig := `
+		resource "ciphertrust_oci_key" "native_key" {
+			oci_key_params = {
+				algorithm       = "RSA"
+				compartment_id  = ciphertrust_oci_vault.vault.compartment_id
+				length          = 256
+				protection_mode = "SOFTWARE"
+			}
+			name  = "%s"
+			vault = ciphertrust_oci_vault.vault.id
+		}
+		resource "ciphertrust_oci_key_version" "native_version" {
+			cckm_key_id = ciphertrust_oci_key.native_key.id
+		}
+		resource "ciphertrust_cm_key" "cm_key" {
+			name       = "%s"
+			algorithm  = "AES"
+			usage_mask = local.cm_key_usage_mask
+		}
+		resource "ciphertrust_oci_byok_key" "byok_key" {
+			name = "%s"
+			oci_key_params = {
+				compartment_id  = ciphertrust_oci_vault.vault.compartment_id
+				protection_mode = "SOFTWARE"
+			}
+			source_key_id   = ciphertrust_cm_key.cm_key.id
+			source_key_tier = "local"
+			vault           = ciphertrust_oci_vault.vault.id
+		}
+		resource "ciphertrust_oci_byok_key_version" "byok_version" {
+			cckm_key_id   = ciphertrust_oci_byok_key.byok_key.id
+			source_key_id = ciphertrust_cm_key.cm_key.id
+		}
+		resource "ciphertrust_groups" "acl_group" {
+			name = "%s"
+		}
+		resource "ciphertrust_oci_acl" "acl" {
+			vault_id = ciphertrust_oci_vault.vault.id
+			group    = ciphertrust_groups.acl_group.id
+			actions  = ["view"]
+		}`
+
+	fullConfig := connectionResource + fmt.Sprintf(keyConfig,
+		"tf-"+uuid.New().String()[:8],
+		"tf-"+uuid.New().String()[:8],
+		"tf-"+uuid.New().String()[:8],
+		"tf-"+uuid.New().String()[:8],
+	)
+
+	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { cleanupCckmOCIVaults() },
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		Steps: []resource.TestStep{
+			{
+				Config: fullConfig,
+			},
+			{
+				RefreshState: true,
+			},
+		},
+	})
+}
+
 func TestCckmOCIVault(t *testing.T) {
 
 	ociKeyFile := os.Getenv("CCKM_OCI_KEY_FILE")

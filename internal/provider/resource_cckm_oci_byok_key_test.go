@@ -62,7 +62,7 @@ func TestCckmOCIKeysAndVersionsBYOK(t *testing.T) {
 		resource "ciphertrust_cm_key" "cm_aes_key" {
 			name         = local.cm_key_name
 			algorithm    = "AES"
-			usage_mask   = 60
+			usage_mask   = local.cm_key_usage_mask
 		}
 
 		# Create a byok OCI key
@@ -107,7 +107,7 @@ func TestCckmOCIKeysAndVersionsBYOK(t *testing.T) {
 		resource "ciphertrust_cm_key" "cm_key_version" {
 			name      = local.cm_key_version_name
 			algorithm = "AES"
-			usage_mask = 60
+			usage_mask = local.cm_key_usage_mask
 		}
 
 		# Add a byok version to the key
@@ -176,7 +176,7 @@ func TestCckmOCIKeysAndVersionsBYOK(t *testing.T) {
 		resource "ciphertrust_cm_key" "cm_aes_key" {
 			name         = local.cm_key_name
 			algorithm    = "AES"
-			usage_mask   = 60
+			usage_mask   = local.cm_key_usage_mask
 		}
 
 		# Create a byok OCI key
@@ -219,7 +219,7 @@ func TestCckmOCIKeysAndVersionsBYOK(t *testing.T) {
 		resource "ciphertrust_cm_key" "cm_key_version" {
 			name      = local.cm_key_version_name
 			algorithm = "AES"
-			usage_mask = 60
+			usage_mask = local.cm_key_usage_mask
 		}
 
 		# Add a byok version to the key
@@ -247,7 +247,7 @@ func TestCckmOCIKeysAndVersionsBYOK(t *testing.T) {
 		resource "ciphertrust_cm_key" "cm_aes_key" {
 			name         = local.cm_key_name
 			algorithm    = "AES"
-			usage_mask   = 60
+			usage_mask   = local.cm_key_usage_mask
 		}
 
 		# Create a byok OCI key
@@ -266,7 +266,7 @@ func TestCckmOCIKeysAndVersionsBYOK(t *testing.T) {
 		resource "ciphertrust_cm_key" "cm_key_version" {
 			name      = local.cm_key_version_name
 			algorithm = "AES"
-			usage_mask = 60
+			usage_mask = local.cm_key_usage_mask
 		}
 
 		# Add a byok version to the key

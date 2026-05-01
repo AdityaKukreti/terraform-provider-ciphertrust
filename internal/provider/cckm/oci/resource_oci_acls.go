@@ -12,6 +12,7 @@ import (
 	"github.com/ThalesGroup/terraform-provider-ciphertrust/internal/provider/cckm/utils"
 	"github.com/ThalesGroup/terraform-provider-ciphertrust/internal/provider/common"
 	"github.com/google/uuid"
+	"github.com/hashicorp/terraform-plugin-framework-validators/setvalidator"
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/path"
@@ -73,7 +74,9 @@ const ociACLTable = `The following table lists the accepted values:
 | Delete  (HYOK Key)              |  hyokkeydelete         | Permission to delete an OCI HYOK key (applicable only to unlinked key). |
 | Rotate  (HYOK Key)              |  hyokkeyrotate         | Permission to rotate a HYOK key in CM. |
 
-The "view" or "viewhyokkey" permissions must be included with key or "hyok key" actions respectively.`
+The 'view' or 'viewhyokkey' permissions must be included with 'key' or 'hyok key' actions respectively.
+
+To remove a user or group from the vault ACL entirely, delete the resource.`
 
 func (r *resourceCCKMOCIAcl) Configure(_ context.Context, req resource.ConfigureRequest, resp *resource.ConfigureResponse) {
 	if req.ProviderData == nil {
@@ -98,6 +101,7 @@ func (r *resourceCCKMOCIAcl) Schema(_ context.Context, _ resource.SchemaRequest,
 				Required:            true,
 				ElementType:         types.StringType,
 				MarkdownDescription: "(Updatable) " + ociACLTable,
+				Validators:          []validator.Set{setvalidator.SizeAtLeast(1)},
 			},
 			"group": schema.StringAttribute{
 				Optional:    true,
