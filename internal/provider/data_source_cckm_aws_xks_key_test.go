@@ -20,7 +20,7 @@ func TestCckmAWSDataSourceXksKey(t *testing.T) {
 		resource "ciphertrust_cm_key" "cm_aes_key" {
 			name         = "%s"
 			algorithm    = "AES"
-			usage_mask   = 60
+			usage_mask   = local.cm_key_usage_mask
 			unexportable = true
 			undeletable  = true
 			remove_from_state_on_destroy = true

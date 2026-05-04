@@ -26,12 +26,16 @@ resource "ciphertrust_aws_key_rotation" "rotate" {
 
 ### Required
 
-- `key_id` (String) A CipherTrust Manager AWS key resource ID. Changing this value forces a new rotation on the new key (this resource will be destroyed and recreated).
+- `key_id` (String) A CipherTrust Manager AWS key resource ID.
 
 ### Read-Only
 
 - `id` (String) AWS region, AWS key identifier and a unique ID separated by backslashes.
 - `status` (String) Status of the request to rotate key material.
+
+### Updates
+
+Attributes not marked as `(Updatable)` cannot be modified after resource creation. To change these attributes, the resource must be recreated.
 
 ## Import
 

@@ -207,7 +207,7 @@ Optional:
 - `max_credentials` (Number) Max number of credentials that can be associated with custom key store (min value 2. max value 20). **Required** field for a custom key store of type EXTERNAL_KEY_STORE.
 - `mtls_enabled` (Boolean) (Updatable) Set it to true to enable tls client-side certificate verification  -  where CipherTrust manager authenticates the AWS KMS client. +Default value is false.
 - `partition_id` (String) ID of Luna HSM partition. **Required** field, if custom key store is of type EXTERNAL_KEY_STORE and source key tier is 'hsm-luna'.
-- `source_key_tier` (String) This field indicates whether to use Luna HSM (luna-hsm) or Ciphertrust Manager (local) as source for cryptographic keys in this key store. Default value is luna-hsm. The only value supported by the service is 'local'.
+- `source_key_tier` (String) Source for cryptographic keys in this key store. The only supported value is 'local' (CipherTrust Manager).
 
 Read-Only:
 
@@ -227,6 +227,10 @@ Optional:
 - `delete` (String) A string that can be [parsed as a duration](https://pkg.go.dev/time#ParseDuration) consisting of numbers and unit suffixes, such as "30s" or "2h45m". Valid time units are "s" (seconds), "m" (minutes), "h" (hours). Setting a timeout for a Delete operation is only applicable if changes are saved into state before the destroy operation occurs.
 - `read` (String) A string that can be [parsed as a duration](https://pkg.go.dev/time#ParseDuration) consisting of numbers and unit suffixes, such as "30s" or "2h45m". Valid time units are "s" (seconds), "m" (minutes), "h" (hours). Read operations occur during any refresh or planning operation when refresh is enabled.
 - `update` (String) A string that can be [parsed as a duration](https://pkg.go.dev/time#ParseDuration) consisting of numbers and unit suffixes, such as "30s" or "2h45m". Valid time units are "s" (seconds), "m" (minutes), "h" (hours).
+
+### Updates
+
+Attributes not marked as `(Updatable)` cannot be modified after resource creation. To change these attributes, the resource must be recreated.
 
 ## Import
 

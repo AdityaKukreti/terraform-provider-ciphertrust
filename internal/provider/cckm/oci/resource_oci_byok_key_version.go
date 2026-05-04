@@ -19,7 +19,9 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/int64default"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringdefault"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-log/tflog"
@@ -30,6 +32,7 @@ var (
 	_ resource.Resource                = &resourceCCKMOCIByokVersion{}
 	_ resource.ResourceWithConfigure   = &resourceCCKMOCIByokVersion{}
 	_ resource.ResourceWithImportState = &resourceCCKMOCIByokVersion{}
+	_ resource.ResourceWithModifyPlan  = &resourceCCKMOCIByokVersion{}
 )
 
 func NewResourceCCKMOCIByokVersion() resource.Resource {
@@ -80,8 +83,9 @@ func (r *resourceCCKMOCIByokVersion) Schema(_ context.Context, _ resource.Schema
 				Description: "Date/time the application was created",
 			},
 			"id": schema.StringAttribute{
-				Computed:    true,
-				Description: "The key's CipherTrust Manager resource ID.",
+				Computed:      true,
+				Description:   "The key's CipherTrust Manager resource ID.",
+				PlanModifiers: []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
 			},
 			"key_material_origin": schema.StringAttribute{
 				Computed:    true,
@@ -295,6 +299,80 @@ func (r *resourceCCKMOCIByokVersion) Read(ctx context.Context, req resource.Read
 	resp.Diagnostics.Append(resp.State.Set(ctx, state)...)
 }
 
+// Update is a no-op. OCI BYOK key versions are immutable after creation.
+// The only schema attribute that can differ between plan and state is
+// schedule_for_deletion_days, which is stored locally and applied at destroy time only.
+func (r *resourceCCKMOCIByokVersion) Update(ctx context.Context, _ resource.UpdateRequest, _ *resource.UpdateResponse) {
+	id := uuid.New().String()
+	tflog.Debug(ctx, common.MSG_METHOD_START+"[resource_oci_byok_key_version.go -> Update]["+id+"]")
+	defer tflog.Debug(ctx, common.MSG_METHOD_END+"[resource_oci_byok_key_version.go -> Update]["+id+"]")
+}
+
+// Delete schedules the OCI BYOK key version for deletion via deleteKeyVersion
+// (oci_key_version_common.go).
+// Returns a warning (not error) if:
+//   - the version is not found (404)  -  resource is removed from state
+//   - the version is the current version of the parent key  -  resource is removed from
+//     state but the version remains active in OCI until the parent key is deleted
+func (r *resourceCCKMOCIByokVersion) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
+	id := uuid.New().String()
+	tflog.Debug(ctx, common.MSG_METHOD_START+"[resource_oci_byok_key_version.go -> Delete]["+id+"]")
+	defer tflog.Debug(ctx, common.MSG_METHOD_END+"[resource_oci_byok_key_version.go -> Delete]["+id+"]")
+	var state models.BYOKKeyVersionTFSDK
+	resp.Diagnostics.Append(req.State.Get(ctx, &state)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	keyID := state.CCKMKeyID.ValueString()
+	versionID := state.ID.ValueString()
+	days := state.ScheduleForDeletionDays.ValueInt64()
+	deleteKeyVersion(ctx, id, r.client, keyID, versionID, days, &resp.Diagnostics)
+}
+
+// ModifyPlan errors at plan time if any immutable attribute is changed on an existing resource,
+// preventing silent in-place updates to fields that cannot be modified after creation.
+func (r *resourceCCKMOCIByokVersion) ModifyPlan(ctx context.Context, req resource.ModifyPlanRequest, resp *resource.ModifyPlanResponse) {
+	// Skip create and destroy operations.
+	if req.Plan.Raw.IsNull() || req.State.Raw.IsNull() {
+		return
+	}
+
+	var plan, state models.BYOKKeyVersionTFSDK
+
+	resp.Diagnostics.Append(req.Plan.Get(ctx, &plan)...)
+	resp.Diagnostics.Append(req.State.Get(ctx, &state)...)
+
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	var changed []string
+
+	if plan.CCKMKeyID != state.CCKMKeyID {
+		changed = append(changed, "cckm_key_id")
+	}
+
+	if plan.SourceKeyID != state.SourceKeyID {
+		changed = append(changed, "source_key_id")
+	}
+
+	// source_key_tier is Optional+Computed; skip when the plan value is not yet known.
+	if !plan.SourceKeyTier.IsUnknown() && plan.SourceKeyTier != state.SourceKeyTier {
+		changed = append(changed, "source_key_tier")
+	}
+
+	if len(changed) > 0 {
+		resp.Diagnostics.AddError(
+			"Immutable attribute change detected",
+			fmt.Sprintf(
+				"The following attributes cannot be modified after creation: %s. "+
+					"Delete and recreate the resource to apply these changes.",
+				strings.Join(changed, ", "),
+			),
+		)
+	}
+}
+
 // ImportState imports an OCI BYOK key version using the composite ID format: cckm_key_id.version_id.
 func (r *resourceCCKMOCIByokVersion) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
 	id := uuid.New().String()
@@ -329,36 +407,6 @@ func (r *resourceCCKMOCIByokVersion) ImportState(ctx context.Context, req resour
 	}
 	state.ScheduleForDeletionDays = types.Int64Value(scheduleForDeletionDays)
 	resp.Diagnostics.Append(resp.State.Set(ctx, state)...)
-}
-
-// Update is a no-op. OCI BYOK key versions are immutable after creation.
-// The only schema attribute that can differ between plan and state is
-// schedule_for_deletion_days, which is stored locally and applied at destroy time only.
-func (r *resourceCCKMOCIByokVersion) Update(ctx context.Context, _ resource.UpdateRequest, _ *resource.UpdateResponse) {
-	id := uuid.New().String()
-	tflog.Debug(ctx, common.MSG_METHOD_START+"[resource_oci_byok_key_version.go -> Update]["+id+"]")
-	defer tflog.Debug(ctx, common.MSG_METHOD_END+"[resource_oci_byok_key_version.go -> Update]["+id+"]")
-}
-
-// Delete schedules the OCI BYOK key version for deletion via deleteKeyVersion
-// (oci_key_version_common.go).
-// Returns a warning (not error) if:
-//   - the version is not found (404)  -  resource is removed from state
-//   - the version is the current version of the parent key  -  resource is removed from
-//     state but the version remains active in OCI until the parent key is deleted
-func (r *resourceCCKMOCIByokVersion) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
-	id := uuid.New().String()
-	tflog.Debug(ctx, common.MSG_METHOD_START+"[resource_oci_byok_key_version.go -> Delete]["+id+"]")
-	defer tflog.Debug(ctx, common.MSG_METHOD_END+"[resource_oci_byok_key_version.go -> Delete]["+id+"]")
-	var state models.BYOKKeyVersionTFSDK
-	resp.Diagnostics.Append(req.State.Get(ctx, &state)...)
-	if resp.Diagnostics.HasError() {
-		return
-	}
-	keyID := state.CCKMKeyID.ValueString()
-	versionID := state.ID.ValueString()
-	days := state.ScheduleForDeletionDays.ValueInt64()
-	deleteKeyVersion(ctx, id, r.client, keyID, versionID, days, &resp.Diagnostics)
 }
 
 // setBYOOKKeyVersionState populates the full TFSDK state for the BYOK key version resource.

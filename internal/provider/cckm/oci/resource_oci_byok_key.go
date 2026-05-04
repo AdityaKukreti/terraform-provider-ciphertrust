@@ -20,7 +20,9 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/booldefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/int64default"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringdefault"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-log/tflog"
@@ -31,6 +33,7 @@ var (
 	_ resource.Resource                = &resourceCCKMOCIByokKey{}
 	_ resource.ResourceWithConfigure   = &resourceCCKMOCIByokKey{}
 	_ resource.ResourceWithImportState = &resourceCCKMOCIByokKey{}
+	_ resource.ResourceWithModifyPlan  = &resourceCCKMOCIByokKey{}
 )
 
 const (
@@ -120,8 +123,9 @@ func (r *resourceCCKMOCIByokKey) Schema(_ context.Context, _ resource.SchemaRequ
 				},
 			},
 			"id": schema.StringAttribute{
-				Computed:    true,
-				Description: "The key's CipherTrust Manager resource ID.",
+				Computed:      true,
+				Description:   "The key's CipherTrust Manager resource ID.",
+				PlanModifiers: []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
 			},
 			"key_material_origin": schema.StringAttribute{
 				Computed:    true,
@@ -451,14 +455,6 @@ func (r *resourceCCKMOCIByokKey) Read(ctx context.Context, req resource.ReadRequ
 	resp.Diagnostics.Append(resp.State.Set(ctx, state)...)
 }
 
-// ImportState imports an existing OCI BYOK key into Terraform state using its CipherTrust Manager resource ID.
-func (r *resourceCCKMOCIByokKey) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
-	id := uuid.New().String()
-	tflog.Debug(ctx, common.MSG_METHOD_START+"[resource_oci_byok_key.go -> ImportState]["+id+"]")
-	defer tflog.Debug(ctx, common.MSG_METHOD_END+"[resource_oci_byok_key.go -> ImportState]["+id+"]")
-	resource.ImportStatePassthroughID(ctx, path.Root("id"), req, resp)
-}
-
 // Update applies changes to a BYOK key. Updatable attributes are: name, oci_key_params.compartment_id,
 // oci_key_params.freeform_tags, oci_key_params.defined_tags, enable_key, and enable_auto_rotation.
 // Attributes source_key_id, source_key_tier, vault, and oci_key_params.protection_mode are not updatable
@@ -521,6 +517,67 @@ func (r *resourceCCKMOCIByokKey) Delete(ctx context.Context, req resource.Delete
 	if resp.Diagnostics.HasError() {
 		return
 	}
+}
+
+// ModifyPlan errors at plan time if any immutable attribute is changed on an existing resource,
+// preventing silent in-place updates to fields that OCI does not allow to be modified after creation.
+func (r *resourceCCKMOCIByokKey) ModifyPlan(ctx context.Context, req resource.ModifyPlanRequest, resp *resource.ModifyPlanResponse) {
+	// Skip create and destroy operations.
+	if req.Plan.Raw.IsNull() || req.State.Raw.IsNull() {
+		return
+	}
+
+	var plan, state models.BYOKKeyTFSDK
+
+	resp.Diagnostics.Append(req.Plan.Get(ctx, &plan)...)
+	resp.Diagnostics.Append(req.State.Get(ctx, &state)...)
+
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	// Defensive nil check.
+	if plan.KeyParams == nil || state.KeyParams == nil {
+		return
+	}
+
+	var changed []string
+
+	if plan.KeyParams.ProtectionMode != state.KeyParams.ProtectionMode {
+		changed = append(changed, "oci_key_params.protection_mode")
+	}
+
+	if plan.SourceKeyIdentifier != state.SourceKeyIdentifier {
+		changed = append(changed, "source_key_id")
+	}
+
+	// source_key_tier is Optional+Computed; skip when the plan value is not yet known.
+	if !plan.SourceKeyTier.IsUnknown() && plan.SourceKeyTier != state.SourceKeyTier {
+		changed = append(changed, "source_key_tier")
+	}
+
+	if plan.Vault != state.Vault {
+		changed = append(changed, "vault")
+	}
+
+	if len(changed) > 0 {
+		resp.Diagnostics.AddError(
+			"Immutable attribute change detected",
+			fmt.Sprintf(
+				"The following attributes cannot be modified after creation: %s. "+
+					"Delete and recreate the resource to apply these changes.",
+				strings.Join(changed, ", "),
+			),
+		)
+	}
+}
+
+// ImportState imports an existing OCI BYOK key into Terraform state using its CipherTrust Manager resource ID.
+func (r *resourceCCKMOCIByokKey) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
+	id := uuid.New().String()
+	tflog.Debug(ctx, common.MSG_METHOD_START+"[resource_oci_byok_key.go -> ImportState]["+id+"]")
+	defer tflog.Debug(ctx, common.MSG_METHOD_END+"[resource_oci_byok_key.go -> ImportState]["+id+"]")
+	resource.ImportStatePassthroughID(ctx, path.Root("id"), req, resp)
 }
 
 // setByokKeyState calls setKeyState for all common key fields, then additionally sets oci_key_params.curve_id

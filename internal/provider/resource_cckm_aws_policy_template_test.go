@@ -2,6 +2,7 @@ package provider
 
 import (
 	"fmt"
+	"regexp"
 	"testing"
 
 	"github.com/google/uuid"
@@ -42,7 +43,7 @@ func TestCckmAWSPolicyTemplate(t *testing.T) {
 
 	createJsonencodePolicyConfig := `
 		resource "ciphertrust_aws_policy_template" "policy_template_ex1" {
-			kms    = ciphertrust_aws_kms.kms.id
+			kms    = %s
 			name   = "%s"
 			policy = jsonencode(
 				{
@@ -74,7 +75,8 @@ func TestCckmAWSPolicyTemplate(t *testing.T) {
 		}`
 	resourceNameEx1 := "ciphertrust_aws_policy_template.policy_template_ex1"
 	templateNameEx1 := "tf-template-" + uuid.New().String()[:8]
-	createConfigStrEx1 := fmt.Sprintf(createJsonencodePolicyConfig, templateNameEx1)
+	createConfigStrEx1 := fmt.Sprintf(createJsonencodePolicyConfig, "ciphertrust_aws_kms.kms.id", templateNameEx1)
+	modifyPlanConfigStr := awsConnectionResource + fmt.Sprintf(createJsonencodePolicyConfig, `"tf-fake-kms-id"`, templateNameEx1)
 	updateConfigStrEx1 := fmt.Sprintf(updateJsonencodePolicyConfigToUsersAndRoles, templateNameEx1, users, users, roles, roles)
 
 	createHeredocPolicyConfig := `
@@ -259,6 +261,12 @@ func TestCckmAWSPolicyTemplate(t *testing.T) {
 					resource.TestCheckResourceAttr(resourceNameEx4, "key_admins_roles.#", "2"),
 					testCheckAttributeContains(resourceNameEx4, "policy", append(keyUsers, keyRoles...), true),
 				),
+			},
+			{
+				// Verify ModifyPlan fires an error when kms is changed.
+				Config:      modifyPlanConfigStr,
+				PlanOnly:    true,
+				ExpectError: regexp.MustCompile(`Immutable attribute change detected`),
 			},
 		},
 	})

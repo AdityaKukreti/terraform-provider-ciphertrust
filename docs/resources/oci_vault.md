@@ -39,7 +39,7 @@ resource "ciphertrust_oci_vault" "vault" {
 ### Read-Only
 
 - `account` (String) The account which owns this resource.
-- `acls` (Attributes Set) (Updatable) List of ACLs that have been added to the vault. (see [below for nested schema](#nestedatt--acls))
+- `acls` (Attributes Set) List of ACLs that have been added to the vault. (see [below for nested schema](#nestedatt--acls))
 - `cloud_name` (String) CipherTrust Manager cloud name.
 - `compartment_id` (String) The compartment's OCID.
 - `compartment_name` (String) Compartment name.
@@ -78,6 +78,10 @@ Read-Only:
 
 - `tag` (String) A tag assigned to the vault.
 - `values` (Map of String) The key:value pairs to added to the tag.
+
+### Updates
+
+Attributes not marked as `(Updatable)` cannot be modified after resource creation. To change these attributes, the resource must be recreated.
 
 ## Import
 

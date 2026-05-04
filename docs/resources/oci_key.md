@@ -137,6 +137,10 @@ Read-Only:
 - `source_key_tier` (String) Source of the key used to create the version.
 - `version_id` (String) The key version's OCID
 
+### Updates
+
+Attributes not marked as `(Updatable)` cannot be modified after resource creation. To change these attributes, the resource must be recreated.
+
 ## Import
 
 A native OCI key can be imported using its CipherTrust Manager key ID. The key

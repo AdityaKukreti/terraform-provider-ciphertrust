@@ -20,6 +20,11 @@ const (
 	awsKeyNamePrefix    = "tf-aws-"
 	awsPolicyUserPrefix = "arn:aws:iam::556782317223:user/"
 	awsPolicyRolePrefix = "arn:aws:iam::556782317223:role/"
+
+	// cmKeyUsageCryptoOps is the CM key usage_mask that allows Sign (1), Verify (2),
+	// Encrypt (4), Decrypt (8), Wrap Key (16), and Unwrap Key (32). Used for AES
+	// source keys in CCKM BYOK and XKS key tests.
+	cmKeyUsageCryptoOps = 63
 )
 
 var (
@@ -92,11 +97,12 @@ func initCckmAwsTest(timeout ...int) (string, bool) {
 			]
 		}
 		locals {
-			alias   = "%s"
-			cmKeyName = "%s"
+			alias             = "%s"
+			cmKeyName         = "%s"
+			cm_key_usage_mask = %d
 		}`
 	uid := "tf-" + uuid.New().String()[:8]
-	awsConnectionResource := fmt.Sprintf(awsConfig, operationTimeout, uid, uid, uid, uid)
+	awsConnectionResource := fmt.Sprintf(awsConfig, operationTimeout, uid, uid, uid, uid, cmKeyUsageCryptoOps)
 	return awsConnectionResource, true
 }
 
@@ -248,7 +254,7 @@ func TestCckmAWSKeyNative(t *testing.T) {
 		resource "ciphertrust_aws_key" "native_key" {
 			alias        = [local.alias]
 			auto_rotate  = false
-			customer_master_key_spec = "SYMMETRIC_DEFAULT"
+			customer_master_key_spec = "%s"
 			description  = "create description"
 			enable_key   = false
 			key_usage    = "ENCRYPT_DECRYPT"
@@ -274,6 +280,8 @@ func TestCckmAWSKeyNative(t *testing.T) {
 	createKeyConfigStr := fmt.Sprintf(createKeyConfig, schedulerOneName, aliasList[0], aliasList[1], awsKeyUsers[0], awsKeyUsers[1], awsKeyRoles[0], awsKeyRoles[1])
 	updateKeyConfigStr := fmt.Sprintf(updateKeyConfig, schedulerOneName, schedulerTwoName, awsKeyPolicy)
 	updateKeyConfigStr2 := fmt.Sprintf(updateKeyConfig2, policyTemplateName)
+	updateKeyConfig3Str := fmt.Sprintf(updateKeyConfig3, "SYMMETRIC_DEFAULT")
+	modifyPlanConfigStr := fmt.Sprintf(updateKeyConfig3, "RSA_2048")
 
 	resource.Test(t, resource.TestCase{
 		PreCheck:                 func() { cleanupCckmAwsKMS() },
@@ -384,7 +392,7 @@ func TestCckmAWSKeyNative(t *testing.T) {
 				),
 			},
 			{
-				Config: awsConnectionResource + updateKeyConfig3,
+				Config: awsConnectionResource + updateKeyConfig3Str,
 				Check: resource.ComposeTestCheckFunc(
 					resource.TestCheckResourceAttr(keyResource, "alias.#", "1"),
 					resource.TestCheckResourceAttr(keyResource, "auto_rotate", "false"),
@@ -393,6 +401,12 @@ func TestCckmAWSKeyNative(t *testing.T) {
 					resource.TestCheckResourceAttrSet(keyResource, "policy"),
 					resource.TestCheckResourceAttr(keyResource, "tags.%", "0"),
 				),
+			},
+			{
+				// Verify ModifyPlan fires an error when customer_master_key_spec is changed.
+				Config:      awsConnectionResource + modifyPlanConfigStr,
+				PlanOnly:    true,
+				ExpectError: regexp.MustCompile(`Immutable attribute change detected`),
 			},
 		},
 	})
@@ -443,6 +457,9 @@ func TestCckmAWSKeyImportKeyMaterialLocal(t *testing.T) {
 	ecCmKeyName := "tf-ec_p521-" + uuid.NewString()[:]
 
 	validTo := time.Now().UTC().AddDate(0, 0, 1).Format(time.RFC3339)
+	// modifyPlanEcConfigStr uses a fake source_key_name for ec_p521 to exercise
+	// the ModifyPlan immutable-field check without making any real API calls.
+	modifyPlanEcConfigStr := awsConnectionResource + fmt.Sprintf(importKeys, aesCmKeyName, validTo, rsaCmKeyName, "tf-fake-ec-key")
 
 	resource.Test(t, resource.TestCase{
 		PreCheck:                 func() { cleanupCckmAwsKMS() },
@@ -506,6 +523,12 @@ func TestCckmAWSKeyImportKeyMaterialLocal(t *testing.T) {
 				),
 			},
 			{
+				// Verify ModifyPlan fires an error when import_key_material.source_key_name is changed.
+				Config:      modifyPlanEcConfigStr,
+				PlanOnly:    true,
+				ExpectError: regexp.MustCompile(`Immutable attribute change detected`),
+			},
+			{
 				ResourceName:            aesKeyResource,
 				ImportState:             true,
 				ImportStateVerify:       true,
@@ -549,7 +572,7 @@ func TestCckmAWSKeyUpload(t *testing.T) {
 			region  = ciphertrust_aws_kms.kms.regions[0]
 			upload_key {
 				key_expiration        = true
-				source_key_identifier = ciphertrust_cm_key.cm_key.id
+				source_key_identifier = %s
 				valid_to              = "%s"
 				source_key_tier		  = "local"
 			}
@@ -565,8 +588,8 @@ func TestCckmAWSKeyUpload(t *testing.T) {
 
 	validTo := time.Now().UTC().AddDate(0, 0, 1).Format(time.RFC3339)
 	localKeyResource := "ciphertrust_aws_key.upload_local_key"
-
-	uploadConfig := awsConnectionResource + fmt.Sprintf(uploadKeys, validTo, awsKeyPolicy)
+	uploadConfig := awsConnectionResource + fmt.Sprintf(uploadKeys, "ciphertrust_cm_key.cm_key.id", validTo, awsKeyPolicy)
+	modifyPlanConfigStr := awsConnectionResource + fmt.Sprintf(uploadKeys, `"tf-fake-key-id"`, validTo, awsKeyPolicy)
 	resource.Test(t, resource.TestCase{
 		PreCheck:                 func() { cleanupCckmAwsKMS() },
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
@@ -593,6 +616,12 @@ func TestCckmAWSKeyUpload(t *testing.T) {
 				ImportStateVerify:       true,
 				ImportStateVerifyIgnore: importStateVerifyIgnoreAwsKey,
 				ImportStateIdFunc:       getAwsKeyKeyID(localKeyResource),
+			},
+			{
+				// Verify ModifyPlan fires an error when upload_key.source_key_identifier is changed.
+				Config:      modifyPlanConfigStr,
+				PlanOnly:    true,
+				ExpectError: regexp.MustCompile(`Immutable attribute change detected`),
 			},
 		},
 	})
@@ -825,7 +854,7 @@ func TestCckmAWSKeyMultiRegionLocal(t *testing.T) {
 				region 					= ciphertrust_aws_kms.kms.regions[1]
 				replicate_key {
 					key_expiration        = true
-					key_id 				= ciphertrust_aws_key.multi_region_key.key_id
+					key_id 				= %s
 					import_key_material = true
 					valid_to              = "%s"
 				}
@@ -835,7 +864,8 @@ func TestCckmAWSKeyMultiRegionLocal(t *testing.T) {
 	replicaResource := "ciphertrust_aws_key.replica"
 	createConfigStr := awsConnectionResource + createConfig
 	validTo := time.Now().UTC().AddDate(0, 0, 1).Format(time.RFC3339)
-	replicateConfigStr := awsConnectionResource + fmt.Sprintf(replicateConfig, validTo)
+	replicateConfigStr := awsConnectionResource + fmt.Sprintf(replicateConfig, "ciphertrust_aws_key.multi_region_key.key_id", validTo)
+	modifyPlanConfigStr := awsConnectionResource + fmt.Sprintf(replicateConfig, `"tf-fake-key-id"`, validTo)
 	resource.Test(t, resource.TestCase{
 		PreCheck:                 func() { cleanupCckmAwsKMS() },
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
@@ -877,6 +907,12 @@ func TestCckmAWSKeyMultiRegionLocal(t *testing.T) {
 					resource.TestCheckResourceAttrSet(replicaResource, "id"),
 					resource.TestCheckResourceAttrSet(replicaResource, "key_id"),
 				),
+			},
+			{
+				// Verify ModifyPlan fires an error when replicate_key.key_id is changed.
+				Config:      modifyPlanConfigStr,
+				PlanOnly:    true,
+				ExpectError: regexp.MustCompile(`Immutable attribute change detected`),
 			},
 			{
 				ResourceName:            awsKeyResource,
@@ -1089,7 +1125,7 @@ func TestCckmAWSKeyImportMaterialResourceNoExpiry(t *testing.T) {
 			customer_master_key_spec = "SYMMETRIC_DEFAULT"
 		}
 		resource "ciphertrust_aws_key_import_material" "reimport" {
-			key_id = ciphertrust_aws_key.base.key_id
+			key_id = %s
 			import_key_material {
 				source_key_identifier = ciphertrust_aws_key.base.local_key_name
 				source_key_tier       = "local"
@@ -1100,13 +1136,15 @@ func TestCckmAWSKeyImportMaterialResourceNoExpiry(t *testing.T) {
 	baseKeyResource := "ciphertrust_aws_key.base"
 	reimportResource := "ciphertrust_aws_key_import_material.reimport"
 	cmKeyName := "tf-aes-" + uuid.NewString()
+	importConfigStr := awsConnectionResource + fmt.Sprintf(importConfig, cmKeyName, "ciphertrust_aws_key.base.key_id")
+	modifyPlanConfigStr := awsConnectionResource + fmt.Sprintf(importConfig, cmKeyName, `"tf-fake-key-id"`)
 
 	resource.Test(t, resource.TestCase{
 		PreCheck:                 func() { cleanupCckmAwsKMS() },
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
 		Steps: []resource.TestStep{
 			{
-				Config: awsConnectionResource + fmt.Sprintf(importConfig, cmKeyName),
+				Config: importConfigStr,
 				Check: resource.ComposeTestCheckFunc(
 					resource.TestCheckResourceAttr(baseKeyResource, "customer_master_key_spec", "SYMMETRIC_DEFAULT"),
 					resource.TestCheckResourceAttr(baseKeyResource, "key_material_origin", "cckm"),
@@ -1121,6 +1159,12 @@ func TestCckmAWSKeyImportMaterialResourceNoExpiry(t *testing.T) {
 					resource.TestCheckResourceAttr(reimportResource, "expiration_model", "KEY_MATERIAL_DOES_NOT_EXPIRE"),
 					resource.TestCheckResourceAttr(reimportResource, "valid_to", ""),
 				),
+			},
+			{
+				// Verify ModifyPlan fires an error when import_key_material.key_id is changed.
+				Config:      modifyPlanConfigStr,
+				PlanOnly:    true,
+				ExpectError: regexp.MustCompile(`Immutable attribute change detected`),
 			},
 		},
 	})

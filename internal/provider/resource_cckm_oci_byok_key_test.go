@@ -2,6 +2,7 @@ package provider
 
 import (
 	"fmt"
+	"regexp"
 	"testing"
 
 	"github.com/google/uuid"
@@ -61,7 +62,7 @@ func TestCckmOCIKeysAndVersionsBYOK(t *testing.T) {
 		resource "ciphertrust_cm_key" "cm_aes_key" {
 			name         = local.cm_key_name
 			algorithm    = "AES"
-			usage_mask   = 60
+			usage_mask   = local.cm_key_usage_mask
 		}
 
 		# Create a byok OCI key
@@ -97,7 +98,7 @@ func TestCckmOCIKeysAndVersionsBYOK(t *testing.T) {
 					hello = "english"
 				}
 			}
-			source_key_id   = ciphertrust_cm_key.cm_aes_key.id
+			source_key_id   = %s
 			source_key_tier = "local"
 			vault           = ciphertrust_oci_vault.vault.id
 		}
@@ -106,12 +107,12 @@ func TestCckmOCIKeysAndVersionsBYOK(t *testing.T) {
 		resource "ciphertrust_cm_key" "cm_key_version" {
 			name      = local.cm_key_version_name
 			algorithm = "AES"
-			usage_mask = 60
+			usage_mask = local.cm_key_usage_mask
 		}
 
 		# Add a byok version to the key
 		resource "ciphertrust_oci_byok_key_version" "byok_v1" {
-			cckm_key_id = ciphertrust_oci_byok_key.aes.id
+			cckm_key_id = %s
 			source_key_id = ciphertrust_cm_key.cm_key_version.id
 		}
 
@@ -175,7 +176,7 @@ func TestCckmOCIKeysAndVersionsBYOK(t *testing.T) {
 		resource "ciphertrust_cm_key" "cm_aes_key" {
 			name         = local.cm_key_name
 			algorithm    = "AES"
-			usage_mask   = 60
+			usage_mask   = local.cm_key_usage_mask
 		}
 
 		# Create a byok OCI key
@@ -218,7 +219,7 @@ func TestCckmOCIKeysAndVersionsBYOK(t *testing.T) {
 		resource "ciphertrust_cm_key" "cm_key_version" {
 			name      = local.cm_key_version_name
 			algorithm = "AES"
-			usage_mask = 60
+			usage_mask = local.cm_key_usage_mask
 		}
 
 		# Add a byok version to the key
@@ -246,7 +247,7 @@ func TestCckmOCIKeysAndVersionsBYOK(t *testing.T) {
 		resource "ciphertrust_cm_key" "cm_aes_key" {
 			name         = local.cm_key_name
 			algorithm    = "AES"
-			usage_mask   = 60
+			usage_mask   = local.cm_key_usage_mask
 		}
 
 		# Create a byok OCI key
@@ -265,7 +266,7 @@ func TestCckmOCIKeysAndVersionsBYOK(t *testing.T) {
 		resource "ciphertrust_cm_key" "cm_key_version" {
 			name      = local.cm_key_version_name
 			algorithm = "AES"
-			usage_mask = 60
+			usage_mask = local.cm_key_usage_mask
 		}
 
 		# Add a byok version to the key
@@ -290,9 +291,14 @@ func TestCckmOCIKeysAndVersionsBYOK(t *testing.T) {
 	keysDataSource := "data.ciphertrust_oci_key_list.keys"
 	versionDataSource := "data.ciphertrust_oci_key_version_list.versions"
 
-	createResourceStr := fmt.Sprintf(maxConfig, localsResource, connectionResource)
+	createResourceStr := fmt.Sprintf(maxConfig, localsResource, connectionResource,
+		"ciphertrust_cm_key.cm_aes_key.id", "ciphertrust_oci_byok_key.aes.id")
 	updateResourceStr := fmt.Sprintf(updateConfig, localsResource, connectionResource)
 	minResourceStr := fmt.Sprintf(minConfig, localsResource, connectionResource)
+	modifyKeyConfigStr := fmt.Sprintf(maxConfig, localsResource, connectionResource,
+		`"tf-fake-source-key-id"`, "ciphertrust_oci_byok_key.aes.id")
+	modifyVersionConfigStr := fmt.Sprintf(maxConfig, localsResource, connectionResource,
+		"ciphertrust_cm_key.cm_aes_key.id", `"tf-fake-key-id"`)
 
 	resource.Test(t, resource.TestCase{
 		PreCheck:                 func() { cleanupCckmOCIVaults() },
@@ -419,6 +425,16 @@ func TestCckmOCIKeysAndVersionsBYOK(t *testing.T) {
 					// Key version list data source
 					resource.TestCheckResourceAttr(versionDataSource, "versions.#", "4"),
 				),
+			},
+			// ModifyPlan: source_key_id changed to a fake value - expect plan-time error on byok key.
+			{
+				Config:      modifyKeyConfigStr,
+				ExpectError: regexp.MustCompile("Immutable attribute change detected"),
+			},
+			// ModifyPlan: cckm_key_id changed to a fake value - expect plan-time error on byok key version.
+			{
+				Config:      modifyVersionConfigStr,
+				ExpectError: regexp.MustCompile("Immutable attribute change detected"),
 			},
 		},
 	})

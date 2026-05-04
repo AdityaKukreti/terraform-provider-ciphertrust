@@ -3,6 +3,7 @@ package provider
 import (
 	"fmt"
 	"os"
+	"regexp"
 	"testing"
 
 	"github.com/google/uuid"
@@ -28,7 +29,7 @@ func TestCckmAWSCustomKeyStoreUnlinked(t *testing.T) {
 		resource "ciphertrust_cm_key" "cm_aes_key" {
 			name         = "%s"
 			algorithm    = "AES"
-			usage_mask   = 60
+			usage_mask   = local.cm_key_usage_mask
 			unexportable = true
 			undeletable  = true
 			remove_from_state_on_destroy = true
@@ -64,7 +65,7 @@ func TestCckmAWSCustomKeyStoreUnlinked(t *testing.T) {
 		resource "ciphertrust_cm_key" "cm_aes_key_new" {
 			name         = "%s"
 			algorithm    = "AES"
-			usage_mask   = 60
+			usage_mask   = local.cm_key_usage_mask
 			unexportable = true
 			undeletable  = true
 			remove_from_state_on_destroy = true
@@ -79,15 +80,15 @@ func TestCckmAWSCustomKeyStoreUnlinked(t *testing.T) {
 			local_hosted_params {
 				blocked = false
 				health_check_key_id = ciphertrust_cm_key.cm_aes_key_new.id
-				max_credentials = 8
+				max_credentials = %d
 				source_key_tier = "local"
 				mtls_enabled = %t
 			}
 			aws_param {
 				xks_proxy_uri_endpoint = "%s"
 				xks_proxy_connectivity = "PUBLIC_ENDPOINT"
-				custom_key_store_type = "EXTERNAL_KEY_STORE"
 				key_store_password = "%s"
+				custom_key_store_type = "%s"
 			}
 		}`
 
@@ -103,8 +104,12 @@ func TestCckmAWSCustomKeyStoreUnlinked(t *testing.T) {
 	newKeyStoreName := "tf-update-custom-key-store" + uuid.New().String()[:8]
 	newProxyURIEndpoint := "https://192.168.8.134"
 	newKeyStorePassword := "jumpedoversomething"
-	updateKeyStoreConfigStr := fmt.Sprintf(updateKeyStoreConfig, newCmKeyName, newKeyStoreName, true, false,
-		newProxyURIEndpoint, newKeyStorePassword)
+	updateKeyStoreConfigStr := fmt.Sprintf(updateKeyStoreConfig, newCmKeyName, newKeyStoreName,
+		true, 8, false, newProxyURIEndpoint, newKeyStorePassword, "EXTERNAL_KEY_STORE")
+	modifyPlanConfigStr := fmt.Sprintf(updateKeyStoreConfig, newCmKeyName, newKeyStoreName,
+		true, 8, false, newProxyURIEndpoint, newKeyStorePassword, "AWS_CLOUDHSM")
+	modifyPlanMaxCredentialsStr := fmt.Sprintf(updateKeyStoreConfig, newCmKeyName, newKeyStoreName,
+		true, 2, false, newProxyURIEndpoint, newKeyStorePassword, "EXTERNAL_KEY_STORE")
 
 	newCmKeyNameEx2 := "tf-cm-key-update-" + uuid.New().String()[:8]
 	updateKeyStoreConfigStrEx2 := fmt.Sprintf(createKeyStoreConfig, newCmKeyNameEx2, keyStoreName, false, true,
@@ -162,6 +167,18 @@ func TestCckmAWSCustomKeyStoreUnlinked(t *testing.T) {
 				),
 			},
 			{
+				// Verify ModifyPlan fires an error when aws_param.custom_key_store_type is changed.
+				Config:      awsConnectionResource + modifyPlanConfigStr,
+				PlanOnly:    true,
+				ExpectError: regexp.MustCompile(`Immutable attribute change detected`),
+			},
+			{
+				// Verify ModifyPlan fires an error when local_hosted_params.max_credentials is changed.
+				Config:      awsConnectionResource + modifyPlanMaxCredentialsStr,
+				PlanOnly:    true,
+				ExpectError: regexp.MustCompile(`Immutable attribute change detected`),
+			},
+			{
 				Config: awsConnectionResource + schedulerConfigStr + updateKeyStoreConfigStrEx2,
 				Check: resource.ComposeTestCheckFunc(
 					resource.TestCheckResourceAttrSet(keyStoreResourceName, "id"),
@@ -176,77 +193,99 @@ func TestCckmAWSCustomKeyStoreUnlinked(t *testing.T) {
 	})
 }
 
-// TestCckmAWSCustomKeyStoreEmptyAwsParams verifies that a custom key store can be
-// created without an aws_param block
-func TestCckmAWSCustomKeyStoreEmptyAwsParams(t *testing.T) {
-	t.Skip("To be done later")
+// TestCckmAWSCustomKeyStoreEmptyLocalHostedParams covers two cases:
+//  1. local_hosted_params block entirely absent - provider guard fires immediately.
+//  2. Empty local_hosted_params {} block - passes the provider guard but the API
+//     rejects the request (e.g. max_credentials not provided / below minimum).
+func TestCckmAWSCustomKeyStoreEmptyLocalHostedParams(t *testing.T) {
 	awsConnectionResource, ok := initCckmAwsTest()
 	if !ok {
 		t.Skip()
 	}
-	keyStoreConfig := `
-		resource "ciphertrust_cm_key" "cm_aes_key" {
-			name         = "%s"
-			algorithm    = "AES"
-			usage_mask   = 60
-			unexportable = true
-			undeletable  = true
-			remove_from_state_on_destroy = true
-		}
+	// Step 1: local_hosted_params block is entirely absent.
+	absentConfig := `
 		resource "ciphertrust_aws_custom_keystore" "unlinked_xks_custom_keystore" {
-			name    = "%s"
-			region  = ciphertrust_aws_kms.kms.regions[0]
-			kms     = ciphertrust_aws_kms.kms.id
-			linked_state = false
-			connect_disconnect_keystore = "DISCONNECT_KEYSTORE"
-			enable_success_audit_event = %t
-			local_hosted_params {
-				blocked = false
-				health_check_key_id = ciphertrust_cm_key.cm_aes_key.id
-				max_credentials = 8
-				source_key_tier = "local"
-				mtls_enabled = true
+			name   = "tf-test-no-local-hosted-params"
+			region = ciphertrust_aws_kms.kms.regions[0]
+			kms    = ciphertrust_aws_kms.kms.id
+			aws_param {
+				custom_key_store_type = "EXTERNAL_KEY_STORE"
 			}
 		}`
+	// Step 2: empty local_hosted_params {} block - provider guard is satisfied but
+	// the API rejects the request because no required fields (e.g. max_credentials) were set.
+	emptyBlockConfig := `
+		resource "ciphertrust_aws_custom_keystore" "unlinked_xks_custom_keystore" {
+			name   = "tf-test-empty-local-hosted-params"
+			region = ciphertrust_aws_kms.kms.regions[0]
+			kms    = ciphertrust_aws_kms.kms.id
+			aws_param {
+				custom_key_store_type = "EXTERNAL_KEY_STORE"
+			}
+			local_hosted_params {}
+		}`
 
-	cmKeyName := "tf-cm-key-" + uuid.New().String()[:8]
-	keyStoreName := "tf-custom-key-store" + uuid.New().String()[:8]
-	createKeyStoreConfigStr := fmt.Sprintf(keyStoreConfig, cmKeyName, keyStoreName, false)
-	updateKeyStoreConfigStr := fmt.Sprintf(keyStoreConfig, cmKeyName, keyStoreName, true)
-
-	keyStoreResourceName := "ciphertrust_aws_custom_keystore.unlinked_xks_custom_keystore"
 	resource.Test(t, resource.TestCase{
 		PreCheck:                 func() { cleanupCckmAwsKMS() },
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
 		Steps: []resource.TestStep{
 			{
-				Config: awsConnectionResource + createKeyStoreConfigStr,
-				Check: resource.ComposeTestCheckFunc(
-					resource.TestCheckResourceAttrSet(keyStoreResourceName, "id"),
-					resource.TestCheckResourceAttr(keyStoreResourceName, "name", keyStoreName),
-					resource.TestCheckResourceAttr(keyStoreResourceName, "enable_success_audit_event", "false"),
-					resource.TestCheckResourceAttr(keyStoreResourceName, "connect_disconnect_keystore", "DISCONNECT_KEYSTORE"),
-					resource.TestCheckResourceAttr(keyStoreResourceName, "local_hosted_params.0.mtls_enabled", "true"),
-					resource.TestCheckResourceAttr(keyStoreResourceName, "aws_param.#", "0"),
-					resource.TestCheckResourceAttr(keyStoreResourceName, "aws_param_output.custom_key_store_type", "EXTERNAL_KEY_STORE"),
-					resource.TestCheckResourceAttr(keyStoreResourceName, "aws_param_output.custom_key_store_name", keyStoreName),
-					resource.TestCheckResourceAttrSet(keyStoreResourceName, "aws_param_output.connection_state"),
-					resource.TestCheckResourceAttrSet(keyStoreResourceName, "aws_param_output.xks_proxy_connectivity"),
-					resource.TestCheckResourceAttrSet(keyStoreResourceName, "aws_param_output.xks_proxy_uri_path"),
-				),
+				// Provider guard fires - no API call made.
+				Config:      awsConnectionResource + absentConfig,
+				ExpectError: regexp.MustCompile(`Missing local_hosted_params block`),
 			},
 			{
-				Config: awsConnectionResource + updateKeyStoreConfigStr,
-				Check: resource.ComposeTestCheckFunc(
-					resource.TestCheckResourceAttrSet(keyStoreResourceName, "id"),
-					resource.TestCheckResourceAttr(keyStoreResourceName, "name", keyStoreName),
-					resource.TestCheckResourceAttr(keyStoreResourceName, "enable_success_audit_event", "true"),
-					resource.TestCheckResourceAttr(keyStoreResourceName, "aws_param.#", "0"),
-					resource.TestCheckResourceAttr(keyStoreResourceName, "aws_param_output.custom_key_store_type", "EXTERNAL_KEY_STORE"),
-					resource.TestCheckResourceAttr(keyStoreResourceName, "aws_param_output.custom_key_store_name", keyStoreName),
-					resource.TestCheckResourceAttrSet(keyStoreResourceName, "aws_param_output.connection_state"),
-					resource.TestCheckResourceAttrSet(keyStoreResourceName, "aws_param_output.xks_proxy_uri_path"),
-				),
+				// Provider guard is satisfied; API rejects (e.g. max_credentials < 2).
+				Config:      awsConnectionResource + emptyBlockConfig,
+				ExpectError: regexp.MustCompile(`Error creating AWS Custom Key Store`),
+			},
+		},
+	})
+}
+
+// TestCckmAWSCustomKeyStoreEmptyAwsParams covers two cases:
+//  1. aws_param block entirely absent - provider guard fires immediately.
+//  2. Empty aws_param {} block - Terraform schema validation rejects it because
+//     the required custom_key_store_type argument is missing.
+func TestCckmAWSCustomKeyStoreEmptyAwsParams(t *testing.T) {
+	awsConnectionResource, ok := initCckmAwsTest()
+	if !ok {
+		t.Skip()
+	}
+	// Step 1: aws_param block is entirely absent.
+	absentConfig := `
+		resource "ciphertrust_aws_custom_keystore" "unlinked_xks_custom_keystore" {
+			name    = "tf-test-no-aws-param"
+			region  = ciphertrust_aws_kms.kms.regions[0]
+			kms     = ciphertrust_aws_kms.kms.id
+		}`
+	// Step 2: empty aws_param {} block - schema validation rejects it because
+	// custom_key_store_type is a required argument inside the block.
+	emptyAwsParamConfig := `
+		resource "ciphertrust_aws_custom_keystore" "unlinked_xks_custom_keystore" {
+			name    = "tf-test-empty-aws-param"
+			region  = ciphertrust_aws_kms.kms.regions[0]
+			kms     = ciphertrust_aws_kms.kms.id
+			aws_param {}
+		}`
+
+	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { cleanupCckmAwsKMS() },
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		Steps: []resource.TestStep{
+			{
+				// Schema validation fires because custom_key_store_type is required.
+				// This step is first so it is NOT the last config used by the post-test
+				// destroy phase (aws_param {} fails schema validation even for destroy).
+				Config:      awsConnectionResource + emptyAwsParamConfig,
+				ExpectError: regexp.MustCompile(`Missing required argument`),
+			},
+			{
+				// Provider guard fires - no API call made. This config is last so it is
+				// used by the post-test destroy; it passes schema validation and the
+				// destroy is a no-op because no state was ever created.
+				Config:      awsConnectionResource + absentConfig,
+				ExpectError: regexp.MustCompile(`Missing aws_param block`),
 			},
 		},
 	})

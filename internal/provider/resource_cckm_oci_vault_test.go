@@ -3,6 +3,8 @@ package provider
 import (
 	"context"
 	"fmt"
+	"regexp"
+
 	"github.com/ThalesGroup/terraform-provider-ciphertrust/internal/provider/common"
 	"github.com/google/uuid"
 	"github.com/tidwall/gjson"
@@ -57,6 +59,76 @@ func cleanupCckmOCIVaults() {
 			fmt.Printf("cleanupCckmOCIVaults: deleted vault '%s'\n", vaultName)
 		}
 	}
+}
+
+// TestCckmOCIMinimalConfig verifies that a resource configuration containing only
+// the minimal required attributes is accepted and applied without error for every
+// OCI CCKM resource type: native key + key version, BYOK key + BYOK key version,
+// and vault ACL. A RefreshState step confirms there is no post-apply plan drift.
+func TestCckmOCIMinimalConfig(t *testing.T) {
+	connectionResource := initCckmOCITest(t)
+
+	keyConfig := `
+		resource "ciphertrust_oci_key" "native_key" {
+			oci_key_params = {
+				algorithm       = "RSA"
+				compartment_id  = ciphertrust_oci_vault.vault.compartment_id
+				length          = 256
+				protection_mode = "SOFTWARE"
+			}
+			name  = "%s"
+			vault = ciphertrust_oci_vault.vault.id
+		}
+		resource "ciphertrust_oci_key_version" "native_version" {
+			cckm_key_id = ciphertrust_oci_key.native_key.id
+		}
+		resource "ciphertrust_cm_key" "cm_key" {
+			name       = "%s"
+			algorithm  = "AES"
+			usage_mask = local.cm_key_usage_mask
+		}
+		resource "ciphertrust_oci_byok_key" "byok_key" {
+			name = "%s"
+			oci_key_params = {
+				compartment_id  = ciphertrust_oci_vault.vault.compartment_id
+				protection_mode = "SOFTWARE"
+			}
+			source_key_id   = ciphertrust_cm_key.cm_key.id
+			source_key_tier = "local"
+			vault           = ciphertrust_oci_vault.vault.id
+		}
+		resource "ciphertrust_oci_byok_key_version" "byok_version" {
+			cckm_key_id   = ciphertrust_oci_byok_key.byok_key.id
+			source_key_id = ciphertrust_cm_key.cm_key.id
+		}
+		resource "ciphertrust_groups" "acl_group" {
+			name = "%s"
+		}
+		resource "ciphertrust_oci_acl" "acl" {
+			vault_id = ciphertrust_oci_vault.vault.id
+			group    = ciphertrust_groups.acl_group.id
+			actions  = ["view"]
+		}`
+
+	fullConfig := connectionResource + fmt.Sprintf(keyConfig,
+		"tf-"+uuid.New().String()[:8],
+		"tf-"+uuid.New().String()[:8],
+		"tf-"+uuid.New().String()[:8],
+		"tf-"+uuid.New().String()[:8],
+	)
+
+	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { cleanupCckmOCIVaults() },
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		Steps: []resource.TestStep{
+			{
+				Config: fullConfig,
+			},
+			{
+				RefreshState: true,
+			},
+		},
+	})
 }
 
 func TestCckmOCIVault(t *testing.T) {
@@ -126,7 +198,7 @@ func TestCckmOCIVault(t *testing.T) {
 			region = data.ciphertrust_get_oci_regions.regions.oci_regions.0
 		}
 		resource "ciphertrust_oci_vault" "vault" {
-				region = data.ciphertrust_get_oci_regions.regions.oci_regions.0
+				region = %s
 				connection_id = ciphertrust_oci_connection.connection_two.name
 				vault_id = tolist(data.ciphertrust_get_oci_vaults.vaults.vaults)[0].vault_id
 		}
@@ -144,7 +216,13 @@ func TestCckmOCIVault(t *testing.T) {
 	name := "tf-" + uuid.New().String()[:8]
 	nameTwo := "tf-" + uuid.New().String()[:8]
 	connectionConfigStr := fmt.Sprintf(connectionConfig, ociKeyFile, name, ociPubKeyFP, ociRegion, ociTenancyOCID, ociUserOCID)
-	updateConfigStr := fmt.Sprintf(updateConfig, ociKeyFile, name, ociPubKeyFP, ociRegion, ociTenancyOCID, ociUserOCID,
+	updateConfigStr := fmt.Sprintf(updateConfig,
+		ociKeyFile, name, ociPubKeyFP, ociRegion, ociTenancyOCID, ociUserOCID,
+		"data.ciphertrust_get_oci_regions.regions.oci_regions.0",
+		ociKeyFile, nameTwo, ociPubKeyFP, ociRegion, ociTenancyOCID, ociUserOCID)
+	modifyVaultConfigStr := fmt.Sprintf(updateConfig,
+		ociKeyFile, name, ociPubKeyFP, ociRegion, ociTenancyOCID, ociUserOCID,
+		`"fake-oci-region"`,
 		ociKeyFile, nameTwo, ociPubKeyFP, ociRegion, ociTenancyOCID, ociUserOCID)
 	connectionResource := "ciphertrust_oci_connection.connection"
 	connectionTwoResource := "ciphertrust_oci_connection.connection_two"
@@ -202,6 +280,12 @@ func TestCckmOCIVault(t *testing.T) {
 			},
 			{
 				RefreshState: true,
+			},
+			// ModifyPlan: region changed to a fake value - expect plan-time error (region is immutable).
+			{
+				Config:      modifyVaultConfigStr,
+				PlanOnly:    true,
+				ExpectError: regexp.MustCompile("Immutable attribute change detected"),
 			},
 			{
 				ResourceName:      vaultResource,

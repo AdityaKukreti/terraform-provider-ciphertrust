@@ -42,12 +42,7 @@ resource "ciphertrust_aws_key_rotation" "rotate_imported_material" {
 
 ### Optional
 
-- `customer_master_key_spec` (String) Whether the KMS key contains a symmetric key or an asymmetric key pair. Valid values: SYMMETRIC_DEFAULT, RSA_2048, RSA_3072, RSA_4096, ECC_NIST_P256, ECC_NIST_P384, ECC_NIST_P521, ECC_SECG_P256K1, HMAC_224, HMAC_256, HMAC_384, HMAC_512. Default is SYMMETRIC_DEFAULT.
-- `import_key_material` (Block List) Key material parameters. (see [below for nested schema](#nestedblock--import_key_material))
-- `key_usage` (String) Specifies the intended use of the key. Options are ENCRYPT_DECRYPT, SIGN_VERIFY and GENERATE_VERIFY_MAC.Default for RSA keys is ENCRYPT_DECRYPT,default for EC keys is SIGN_VERIFY, default for symmetric keys is ENCRYPT_DECRYPT and default for HMAC keys is GENERATE_VERIFY_MAC.
-- `kms` (String) Name or ID of the KMS to be used to create the key. Required unless replicating a multi-region key.
-- `multi_region` (Boolean) Creates or identifies a multi-region key.
-- `schedule_for_deletion_days` (Number) Waiting period after the key is destroyed before the key is deleted. Only relevant when the resource is destroyed. Default is 7.
+- `import_key_material` (Block List) (Updatable) Key material parameters. Changing any field in this block triggers a re-import of key material. (see [below for nested schema](#nestedblock--import_key_material))
 
 ### Read-Only
 
@@ -56,6 +51,7 @@ resource "ciphertrust_aws_key_rotation" "rotate_imported_material" {
 - `aws_key_id` (String) AWS key ID.
 - `cloud_name` (String) AWS cloud.
 - `created_at` (String) Date the key was created.
+- `customer_master_key_spec` (String) Key specification
 - `deletion_date` (String) Date the key is scheduled for deletion.
 - `encryption_algorithms` (List of String) Encryption algorithms of an asymmetric key
 - `expiration_model` (String) Expiration model.
@@ -69,18 +65,21 @@ resource "ciphertrust_aws_key_rotation" "rotate_imported_material" {
 - `key_source` (String) Source of the key.
 - `key_state` (String) Key state.
 - `key_type` (String) Key type.
+- `key_usage` (String) Specifies the intended use of the key.
 - `key_users` (Set of String) Key users - users.
 - `key_users_roles` (Set of String) Key users - roles.
+- `kms` (String) Name or ID of the KMS to be used to create the key.
 - `kms_id` (String) ID of the KMS
 - `labels` (Map of String) A list of key:value pairs associated with the key.
 - `local_key_id` (String) CipherTrust Manager key identifier of the external key.
 - `local_key_name` (String) CipherTrust Manager key name of the external key.
+- `multi_region` (Boolean) Creates or identifies a multi-region key.
 - `multi_region_key_type` (String) Indicates if the key is the primary key or a replica key.
 - `multi_region_primary_key` (Map of String)
 - `multi_region_replica_keys` (List of Map of String)
 - `next_rotation_date` (String) Date when auto-rotation will happen next.
 - `origin` (String) AWS source of the key material.
-- `region` (String) AWS region in which to create the AWS key.
+- `region` (String) AWS region of the key.
 - `rotated_at` (String) Time when this key was rotated by a scheduled rotation job.
 - `rotated_from` (String) CipherTrust Manager key ID from of the key this key has been rotated from by a scheduled rotation job.
 - `rotated_to` (String) CipherTrust Manager key ID which this key has been rotated too by a scheduled rotation job.
@@ -94,13 +93,17 @@ resource "ciphertrust_aws_key_rotation" "rotate_imported_material" {
 
 Optional:
 
-- `import_type` (String) Options: NEW_KEY_MATERIAL, EXISTING_KEY_MATERIAL. This parameter is optional and only usable with symmetric keys. If no key material has ever been imported into the AWS key, and this parameter is omitted, the default is NEW_KEY_MATERIAL. Otherwise, the default is EXISTING_KEY_MATERIAL.
-- `key_expiration` (Boolean) Enable key material expiration. Default is false.
-- `key_material_description` (String) Specify the description for the key material.
-- `key_material_id` (String) Specify the key material id. This is applicable for re-import to symmetric keys only.
-- `source_key_identifier` (String) This parameter is optional only if the source_key_tier is local and the key is a 256 bits AES key. If key material is being re-imported, AWS only allows re-importing the same key material therefore it's necessary to provide the source key identifier of the same source key which was imported previously.
-- `source_key_tier` (String) Source of the key material. Current option is 'local' implying a CipherTrust Manager key. Default is 'local'.
-- `valid_to` (String) Date of key material expiry in UTC time in RFC3339 format. For example, 2027-07-03T14:24:00Z.
+- `import_type` (String) (Updatable) Options: NEW_KEY_MATERIAL, EXISTING_KEY_MATERIAL. This parameter is optional and only usable with symmetric keys. If no key material has ever been imported into the AWS key, and this parameter is omitted, the default is NEW_KEY_MATERIAL. Otherwise, the default is EXISTING_KEY_MATERIAL.
+- `key_expiration` (Boolean) (Updatable) Enable key material expiration. Default is false.
+- `key_material_description` (String) (Updatable) Specify the description for the key material.
+- `key_material_id` (String) (Updatable) Specify the key material id. This is applicable for re-import to symmetric keys only.
+- `source_key_identifier` (String) (Updatable) This parameter is optional only if the source_key_tier is local and the key is a 256 bits AES key. If key material is being re-imported, AWS only allows re-importing the same key material therefore it's necessary to provide the source key identifier of the same source key which was imported previously.
+- `source_key_tier` (String) (Updatable) Source of the key material. Current option is 'local' implying a CipherTrust Manager key. Default is 'local'.
+- `valid_to` (String) (Updatable) Date of key material expiry in UTC time in RFC3339 format. For example, 2027-07-03T14:24:00Z.
+
+### Updates
+
+Attributes not marked as `(Updatable)` cannot be modified after resource creation. To change these attributes, the resource must be recreated.
 
 ## Import
 
