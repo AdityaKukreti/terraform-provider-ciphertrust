@@ -512,6 +512,15 @@ func (r *resourceCMClusterNode) Read(ctx context.Context, req resource.ReadReque
 		nodeURL = "https://" + nodeURL
 	}
 	nodeClient, err := common.NewClient(ctx, id, &nodeURL, &nodeAuthDomain, &nodeDomain, &nodeUsername, &nodePassword, true, 180)
+	if err != nil && strings.Contains(err.Error(), "status: 401") {
+		// TEMPORARY: node's auth service can transiently return 401 immediately
+		// after completing a cluster join (brief post-join service restart window).
+		// Retry once after a short delay. TODO: find a cleaner fix — either expose
+		// a retry knob in NewClient or detect join completion more precisely in Create.
+		tflog.Info(ctx, fmt.Sprintf("[resource_cm_cluster_node.go -> Read][%s] Got 401 on first auth attempt; retrying after 10m (post-join transient)", id))
+		time.Sleep(10 * time.Minute)
+		nodeClient, err = common.NewClient(ctx, id, &nodeURL, &nodeAuthDomain, &nodeDomain, &nodeUsername, &nodePassword, true, 180)
+	}
 	if err != nil {
 		tflog.Debug(ctx, common.ERR_METHOD_END+err.Error()+" [resource_cm_cluster_node.go -> Read]["+id+"]")
 		resp.Diagnostics.AddError("Unable to create HTTPS client for the joining node", err.Error())
