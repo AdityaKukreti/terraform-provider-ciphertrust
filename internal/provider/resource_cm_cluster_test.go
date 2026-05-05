@@ -13,6 +13,13 @@ type clusterNode struct {
 	host, addr, public, password string
 }
 
+// printConfig prints the Terraform HCL config for a test step and returns it unchanged.
+func printConfig(t *testing.T, label, cfg string) string {
+	t.Helper()
+	fmt.Printf("\n======== %s ========\n%s\n======== END %s ========\n", label, cfg, label)
+	return cfg
+}
+
 // bareHost strips scheme and trailing slash: "https://1.2.3.4/" → "1.2.3.4".
 func bareHost(address string) string {
 	s := strings.TrimPrefix(address, "https://")
@@ -189,7 +196,7 @@ func TestResourceCMCluster(t *testing.T) {
 		Steps: []resource.TestStep{
 
 			// ── Step 1: Create 1-node cluster ────────────────────────────────
-			{Config: cfgPrimary(n1Host)},
+			{Config: printConfig(t, "Step 1: Create 1-node cluster", cfgPrimary(n1Host))},
 			{
 				RefreshState: true,
 				Check: resource.ComposeAggregateTestCheckFunc(
@@ -204,7 +211,7 @@ func TestResourceCMCluster(t *testing.T) {
 			},
 
 			// ── Step 2: Add node2 (1 → 2) ────────────────────────────────────
-			{Config: cfg2Node(n1Host, n1Public, n2, username)},
+			{Config: printConfig(t, "Step 2: Add node2 (1→2)", cfg2Node(n1Host, n1Public, n2, username))},
 			{
 				RefreshState: true,
 				Check: resource.ComposeAggregateTestCheckFunc(
@@ -219,7 +226,7 @@ func TestResourceCMCluster(t *testing.T) {
 			},
 
 			// ── Step 3: Add node3 (2 → 3) ────────────────────────────────────
-			{Config: cfg3Node(n1Host, n1Public, n2, n3, username)},
+			{Config: printConfig(t, "Step 3: Add node3 (2→3)", cfg3Node(n1Host, n1Public, n2, n3, username))},
 			{
 				RefreshState: true,
 				Check: resource.ComposeAggregateTestCheckFunc(
@@ -235,7 +242,7 @@ func TestResourceCMCluster(t *testing.T) {
 			},
 
 			// ── Step 4: Remove node2 + node3 simultaneously (3 → 1) ──────────
-			{Config: cfgPrimaryPublic(n1Host, n1Public)},
+			{Config: printConfig(t, "Step 4: Remove node2+node3 (3→1)", cfgPrimaryPublic(n1Host, n1Public))},
 			{
 				RefreshState: true,
 				Check: resource.ComposeAggregateTestCheckFunc(
@@ -245,7 +252,7 @@ func TestResourceCMCluster(t *testing.T) {
 			},
 
 			// ── Step 5: Add node2 + node3 simultaneously (1 → 3) ─────────────
-			{Config: cfg3Node(n1Host, n1Public, n2, n3, username)},
+			{Config: printConfig(t, "Step 5: Add node2+node3 (1→3)", cfg3Node(n1Host, n1Public, n2, n3, username))},
 			{
 				RefreshState: true,
 				Check: resource.ComposeAggregateTestCheckFunc(
@@ -257,7 +264,7 @@ func TestResourceCMCluster(t *testing.T) {
 			},
 
 			// ── Step 6: Remove node3 (3 → 2) ─────────────────────────────────
-			{Config: cfg2Node(n1Host, n1Public, n2, username)},
+			{Config: printConfig(t, "Step 6: Remove node3 (3→2)", cfg2Node(n1Host, n1Public, n2, username))},
 			{
 				RefreshState: true,
 				Check: resource.ComposeAggregateTestCheckFunc(
@@ -275,8 +282,9 @@ func TestResourceCMCluster(t *testing.T) {
 
 			// ── Step 7: Swap node2 → node3 (simultaneous add + remove, 2 → 2) ─
 			{
-				Config: cfgPrimaryPublic(n1Host, n1Public) +
-					cfgNodeBlock("node3", n3.host, n3.public, n1Host, n3.addr, username, n3.password),
+				Config: printConfig(t, "Step 7: Swap node2→node3 (2→2)",
+					cfgPrimaryPublic(n1Host, n1Public)+
+						cfgNodeBlock("node3", n3.host, n3.public, n1Host, n3.addr, username, n3.password)),
 			},
 			{
 				RefreshState: true,
@@ -297,8 +305,9 @@ func TestResourceCMCluster(t *testing.T) {
 
 			// ── Step 8: Update public_address of node3 (IP → DNS) ────────────
 			{
-				Config: cfgPrimaryPublic(n1Host, n1Public) +
-					cfgNodeBlock("node3", n3DNS.host, n3DNS.public, n1Host, n3DNS.addr, username, n3DNS.password),
+				Config: printConfig(t, "Step 8: Update node3 public_address (IP→DNS)",
+					cfgPrimaryPublic(n1Host, n1Public)+
+						cfgNodeBlock("node3", n3DNS.host, n3DNS.public, n1Host, n3DNS.addr, username, n3DNS.password)),
 			},
 			{
 				RefreshState: true,
@@ -312,9 +321,10 @@ func TestResourceCMCluster(t *testing.T) {
 
 			// ── Step 9: Re-add node2 — 3-node state for full-cluster destroy ──
 			{
-				Config: cfgPrimaryPublic(n1Host, n1Public) +
-					cfgNodeBlock("node2", n2.host, n2.public, n1Host, n2.addr, username, n2.password) +
-					cfgNodeBlock("node3", n3DNS.host, n3DNS.public, n1Host, n3DNS.addr, username, n3DNS.password),
+				Config: printConfig(t, "Step 9: Re-add node2 (3-node for destroy)",
+					cfgPrimaryPublic(n1Host, n1Public)+
+						cfgNodeBlock("node2", n2.host, n2.public, n1Host, n2.addr, username, n2.password)+
+						cfgNodeBlock("node3", n3DNS.host, n3DNS.public, n1Host, n3DNS.addr, username, n3DNS.password)),
 			},
 			{
 				RefreshState: true,
