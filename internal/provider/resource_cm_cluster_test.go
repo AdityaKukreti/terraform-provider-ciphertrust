@@ -7,17 +7,27 @@ import (
 	"testing"
 
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
+	"github.com/hashicorp/terraform-plugin-testing/terraform"
 )
 
 type clusterNode struct {
 	host, addr, public, password string
 }
 
-// printConfig prints the Terraform HCL config for a test step and returns it unchanged.
-func printConfig(t *testing.T, label, cfg string) string {
+// checkStep wraps check functions with step-level logging so it is always
+// clear which logical stage is being verified and whether it passed or failed.
+func checkStep(t *testing.T, label string, checks ...resource.TestCheckFunc) resource.TestCheckFunc {
 	t.Helper()
-	fmt.Printf("\n======== %s ========\n%s\n======== END %s ========\n", label, cfg, label)
-	return cfg
+	return func(s *terraform.State) error {
+		fmt.Printf("\n======== CHECK: %s ========\n", label)
+		err := resource.ComposeAggregateTestCheckFunc(checks...)(s)
+		if err != nil {
+			fmt.Printf("======== FAILED: %s ========\n%v\n", label, err)
+		} else {
+			fmt.Printf("======== PASSED: %s ========\n", label)
+		}
+		return err
+	}
 }
 
 // bareHost strips scheme and trailing slash: "https://1.2.3.4/" → "1.2.3.4".
@@ -171,8 +181,9 @@ func cfg3Node(n1Host, n1Public string, n2, n3 clusterNode, username string) stri
 //  6. Remove node3                                   → count = 2
 //  7. Swap node2 → node3 (add + remove in one apply) → count = 2
 //  8. Update public_address of node3 (IP → DNS)      → count = 2
-//  9. Re-add node2 (3-node state for destroy)         → count = 3
-//     framework destroys the full 3-node cluster
+//  9. Re-add node2 (3-node state)                    → count = 3
+//
+// 10. Destroy full 3-node cluster
 func TestResourceCMCluster(t *testing.T) {
 	n1Host, n1Public := node1Coords(t)
 	n2 := node2Coords(t)
@@ -195,11 +206,11 @@ func TestResourceCMCluster(t *testing.T) {
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
 		Steps: []resource.TestStep{
 
-			// ── Step 1: Create 1-node cluster ────────────────────────────────
-			{Config: printConfig(t, "Step 1: Create 1-node cluster", cfgPrimary(n1Host))},
+			// Step 1: Create 1-node cluster
+			{Config: cfgPrimary(n1Host)},
 			{
 				RefreshState: true,
-				Check: resource.ComposeAggregateTestCheckFunc(
+				Check: checkStep(t, "Step 1: Verify 1-node cluster",
 					resource.TestCheckResourceAttrSet("ciphertrust_cluster.primary", "id"),
 					resource.TestCheckResourceAttrSet("ciphertrust_cluster.primary", "node_id"),
 					resource.TestCheckResourceAttr("ciphertrust_cluster.primary", "local_node_host", n1Host),
@@ -210,11 +221,11 @@ func TestResourceCMCluster(t *testing.T) {
 				),
 			},
 
-			// ── Step 2: Add node2 (1 → 2) ────────────────────────────────────
-			{Config: printConfig(t, "Step 2: Add node2 (1→2)", cfg2Node(n1Host, n1Public, n2, username))},
+			// Step 2: Add node2 (1 → 2)
+			{Config: cfg2Node(n1Host, n1Public, n2, username)},
 			{
 				RefreshState: true,
-				Check: resource.ComposeAggregateTestCheckFunc(
+				Check: checkStep(t, "Step 2: Verify node2 joined (2-node)",
 					resource.TestCheckResourceAttr("ciphertrust_cluster.primary", "node_count", "2"),
 					resource.TestCheckResourceAttr("ciphertrust_cluster.primary", "status_code", "r"),
 					resource.TestCheckResourceAttrSet("ciphertrust_cluster_node.node2", "id"),
@@ -225,11 +236,11 @@ func TestResourceCMCluster(t *testing.T) {
 				),
 			},
 
-			// ── Step 3: Add node3 (2 → 3) ────────────────────────────────────
-			{Config: printConfig(t, "Step 3: Add node3 (2→3)", cfg3Node(n1Host, n1Public, n2, n3, username))},
+			// Step 3: Add node3 (2 → 3)
+			{Config: cfg3Node(n1Host, n1Public, n2, n3, username)},
 			{
 				RefreshState: true,
-				Check: resource.ComposeAggregateTestCheckFunc(
+				Check: checkStep(t, "Step 3: Verify node3 joined (3-node)",
 					resource.TestCheckResourceAttr("ciphertrust_cluster.primary", "node_count", "3"),
 					resource.TestCheckResourceAttr("ciphertrust_cluster.primary", "status_code", "r"),
 					resource.TestCheckResourceAttrSet("ciphertrust_cluster_node.node2", "id"),
@@ -241,21 +252,21 @@ func TestResourceCMCluster(t *testing.T) {
 				),
 			},
 
-			// ── Step 4: Remove node2 + node3 simultaneously (3 → 1) ──────────
-			{Config: printConfig(t, "Step 4: Remove node2+node3 (3→1)", cfgPrimaryPublic(n1Host, n1Public))},
+			// Step 4: Remove node2 + node3 simultaneously (3 → 1)
+			{Config: cfgPrimaryPublic(n1Host, n1Public)},
 			{
 				RefreshState: true,
-				Check: resource.ComposeAggregateTestCheckFunc(
+				Check: checkStep(t, "Step 4: Verify both nodes removed (1-node)",
 					resource.TestCheckResourceAttr("ciphertrust_cluster.primary", "node_count", "1"),
 					resource.TestCheckResourceAttr("ciphertrust_cluster.primary", "status_code", "r"),
 				),
 			},
 
-			// ── Step 5: Add node2 + node3 simultaneously (1 → 3) ─────────────
-			{Config: printConfig(t, "Step 5: Add node2+node3 (1→3)", cfg3Node(n1Host, n1Public, n2, n3, username))},
+			// Step 5: Add node2 + node3 simultaneously (1 → 3)
+			{Config: cfg3Node(n1Host, n1Public, n2, n3, username)},
 			{
 				RefreshState: true,
-				Check: resource.ComposeAggregateTestCheckFunc(
+				Check: checkStep(t, "Step 5: Verify both nodes joined (3-node)",
 					resource.TestCheckResourceAttr("ciphertrust_cluster.primary", "node_count", "3"),
 					resource.TestCheckResourceAttr("ciphertrust_cluster.primary", "status_code", "r"),
 					resource.TestCheckResourceAttr("ciphertrust_cluster_node.node2", "status_code", "r"),
@@ -263,11 +274,11 @@ func TestResourceCMCluster(t *testing.T) {
 				),
 			},
 
-			// ── Step 6: Remove node3 (3 → 2) ─────────────────────────────────
-			{Config: printConfig(t, "Step 6: Remove node3 (3→2)", cfg2Node(n1Host, n1Public, n2, username))},
+			// Step 6: Remove node3 (3 → 2)
+			{Config: cfg2Node(n1Host, n1Public, n2, username)},
 			{
 				RefreshState: true,
-				Check: resource.ComposeAggregateTestCheckFunc(
+				Check: checkStep(t, "Step 6: Verify node3 removed (2-node)",
 					resource.TestCheckResourceAttr("ciphertrust_cluster.primary", "node_count", "2"),
 					resource.TestCheckResourceAttr("ciphertrust_cluster.primary", "status_code", "r"),
 					resource.TestCheckResourceAttrSet("ciphertrust_cluster_node.node2", "id"),
@@ -280,15 +291,14 @@ func TestResourceCMCluster(t *testing.T) {
 				),
 			},
 
-			// ── Step 7: Swap node2 → node3 (simultaneous add + remove, 2 → 2) ─
+			// Step 7: Swap node2 → node3 (simultaneous add + remove, 2 → 2)
 			{
-				Config: printConfig(t, "Step 7: Swap node2→node3 (2→2)",
-					cfgPrimaryPublic(n1Host, n1Public)+
-						cfgNodeBlock("node3", n3.host, n3.public, n1Host, n3.addr, username, n3.password)),
+				Config: cfgPrimaryPublic(n1Host, n1Public) +
+					cfgNodeBlock("node3", n3.host, n3.public, n1Host, n3.addr, username, n3.password),
 			},
 			{
 				RefreshState: true,
-				Check: resource.ComposeAggregateTestCheckFunc(
+				Check: checkStep(t, "Step 7: Verify swap produced new node (2-node)",
 					resource.TestCheckResourceAttr("ciphertrust_cluster.primary", "node_count", "2"),
 					resource.TestCheckResourceAttr("ciphertrust_cluster.primary", "status_code", "r"),
 					resource.TestCheckResourceAttrSet("ciphertrust_cluster_node.node3", "id"),
@@ -303,15 +313,14 @@ func TestResourceCMCluster(t *testing.T) {
 				),
 			},
 
-			// ── Step 8: Update public_address of node3 (IP → DNS) ────────────
+			// Step 8: Update public_address of node3 (IP → DNS)
 			{
-				Config: printConfig(t, "Step 8: Update node3 public_address (IP→DNS)",
-					cfgPrimaryPublic(n1Host, n1Public)+
-						cfgNodeBlock("node3", n3DNS.host, n3DNS.public, n1Host, n3DNS.addr, username, n3DNS.password)),
+				Config: cfgPrimaryPublic(n1Host, n1Public) +
+					cfgNodeBlock("node3", n3DNS.host, n3DNS.public, n1Host, n3DNS.addr, username, n3DNS.password),
 			},
 			{
 				RefreshState: true,
-				Check: resource.ComposeAggregateTestCheckFunc(
+				Check: checkStep(t, "Step 8: Verify node3 public_address updated",
 					resource.TestCheckResourceAttr("ciphertrust_cluster.primary", "public_address", n1Public),
 					resource.TestCheckResourceAttr("ciphertrust_cluster.primary", "status_code", "r"),
 					resource.TestCheckResourceAttr("ciphertrust_cluster_node.node3", "public_address", n3.addr),
@@ -319,16 +328,15 @@ func TestResourceCMCluster(t *testing.T) {
 				),
 			},
 
-			// ── Step 9: Re-add node2 — 3-node state for full-cluster destroy ──
+			// Step 9: Re-add node2 — 3-node state before explicit teardown
 			{
-				Config: printConfig(t, "Step 9: Re-add node2 (3-node for destroy)",
-					cfgPrimaryPublic(n1Host, n1Public)+
-						cfgNodeBlock("node2", n2.host, n2.public, n1Host, n2.addr, username, n2.password)+
-						cfgNodeBlock("node3", n3DNS.host, n3DNS.public, n1Host, n3DNS.addr, username, n3DNS.password)),
+				Config: cfgPrimaryPublic(n1Host, n1Public) +
+					cfgNodeBlock("node2", n2.host, n2.public, n1Host, n2.addr, username, n2.password) +
+					cfgNodeBlock("node3", n3DNS.host, n3DNS.public, n1Host, n3DNS.addr, username, n3DNS.password),
 			},
 			{
 				RefreshState: true,
-				Check: resource.ComposeAggregateTestCheckFunc(
+				Check: checkStep(t, "Step 9: Verify 3-node cluster before teardown",
 					resource.TestCheckResourceAttrSet("ciphertrust_cluster.primary", "id"),
 					resource.TestCheckResourceAttr("ciphertrust_cluster.primary", "node_count", "3"),
 					resource.TestCheckResourceAttr("ciphertrust_cluster.primary", "status_code", "r"),
@@ -338,7 +346,11 @@ func TestResourceCMCluster(t *testing.T) {
 					resource.TestCheckResourceAttr("ciphertrust_cluster_node.node3", "status_code", "r"),
 				),
 			},
-			// framework destroys the 3-node cluster after the last step
+
+			// Step 10: Destroy full 3-node cluster.
+			// Applying provider-only config is equivalent to terraform destroy.
+			// Terraform plans removal of all three resources and executes them in dependency order.
+			{Config: providerConfig},
 		},
 	})
 }
