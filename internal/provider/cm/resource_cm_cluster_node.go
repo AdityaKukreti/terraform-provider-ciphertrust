@@ -23,16 +23,16 @@ import (
 
 // Node status codes returned by GET /v1/cluster on the joining node.
 const (
-	nodeStatusReady               = "r"
-	nodeStatusJoiningCreating     = "creating"
+	nodeStatusReady                = "r"
+	nodeStatusJoiningCreating      = "creating"
 	nodeStatusJoiningBootstrapping = "b"
-	nodeStatusJoiningSyncing      = "i"
-	nodeStatusJoiningCatchingUp   = "c"
-	nodeStatusJoiningCompleting   = "o"
-	nodeStatusDown                = "d"
-	nodeStatusKilled              = "k"
-	nodeStatusRemoving            = "m"
-	nodeStatusRemoved             = "v"
+	nodeStatusJoiningSyncing       = "i"
+	nodeStatusJoiningCatchingUp    = "c"
+	nodeStatusJoiningCompleting    = "o"
+	nodeStatusDown                 = "d"
+	nodeStatusKilled               = "k"
+	nodeStatusRemoving             = "m"
+	nodeStatusRemoved              = "v"
 )
 
 // nodeIsJoining returns true for any in-progress joining state.
@@ -511,26 +511,40 @@ func (r *resourceCMClusterNode) Read(ctx context.Context, req resource.ReadReque
 	if !strings.Contains(nodeURL, "://") {
 		nodeURL = "https://" + nodeURL
 	}
-	nodeClient, err := common.NewClient(ctx, id, &nodeURL, &nodeAuthDomain, &nodeDomain, &nodeUsername, &nodePassword, true, 180)
-	if err != nil && strings.Contains(err.Error(), "status: 401") {
-		// TEMPORARY: node's auth service can transiently return 401 immediately
-		// after completing a cluster join (brief post-join service restart window).
-		// Retry once after a short delay. TODO: find a cleaner fix — either expose
-		// a retry knob in NewClient or detect join completion more precisely in Create.
-		tflog.Info(ctx, fmt.Sprintf("[resource_cm_cluster_node.go -> Read][%s] Got 401 on first auth attempt; retrying after 10m (post-join transient)", id))
-		time.Sleep(10 * time.Minute)
-		nodeClient, err = common.NewClient(ctx, id, &nodeURL, &nodeAuthDomain, &nodeDomain, &nodeUsername, &nodePassword, true, 180)
+	// The node's auth service can be briefly unavailable after a cluster join even when status="r",
+	// because auth restarts independently of Raft consensus readiness.
+	const readMaxRetries = 180 // up to 30 minutes at 10s intervals
+	const readRetryInterval = 10 * time.Second
+	var (
+		nodeClient *common.Client
+		response   string
+		lastErr    error
+	)
+	for attempt := 1; attempt <= readMaxRetries; attempt++ {
+		nodeClient, lastErr = common.NewClient(ctx, id, &nodeURL, &nodeAuthDomain, &nodeDomain, &nodeUsername, &nodePassword, true, 180)
+		if lastErr != nil {
+			tflog.Info(ctx, fmt.Sprintf("[resource_cm_cluster_node.go -> Read] attempt %d/%d: NewClient failed: %s", attempt, readMaxRetries, lastErr))
+			if attempt < readMaxRetries {
+				time.Sleep(readRetryInterval)
+			}
+			continue
+		}
+		response, lastErr = nodeClient.ReadDataByParam(ctx, id, "all", common.URL_CLUSTER_INFO)
+		if lastErr != nil {
+			tflog.Info(ctx, fmt.Sprintf("[resource_cm_cluster_node.go -> Read] attempt %d/%d: ReadDataByParam failed: %s", attempt, readMaxRetries, lastErr))
+			if attempt < readMaxRetries {
+				time.Sleep(readRetryInterval)
+			}
+			continue
+		}
+		if attempt > 1 {
+			tflog.Info(ctx, fmt.Sprintf("[resource_cm_cluster_node.go -> Read] succeeded on attempt %d/%d", attempt, readMaxRetries))
+		}
+		break
 	}
-	if err != nil {
-		tflog.Debug(ctx, common.ERR_METHOD_END+err.Error()+" [resource_cm_cluster_node.go -> Read]["+id+"]")
-		resp.Diagnostics.AddError("Unable to create HTTPS client for the joining node", err.Error())
-		return
-	}
-
-	response, err := nodeClient.ReadDataByParam(ctx, id, "all", common.URL_CLUSTER_INFO)
-	if err != nil {
-		tflog.Debug(ctx, common.ERR_METHOD_END+err.Error()+" [resource_cm_cluster_node.go -> Read]["+id+"]")
-		resp.Diagnostics.AddError("Error reading cluster info from joining node", err.Error())
+	if lastErr != nil {
+		tflog.Debug(ctx, common.ERR_METHOD_END+lastErr.Error()+" [resource_cm_cluster_node.go -> Read]["+id+"]")
+		resp.Diagnostics.AddError("Error reading cluster info from joining node", lastErr.Error())
 		return
 	}
 
