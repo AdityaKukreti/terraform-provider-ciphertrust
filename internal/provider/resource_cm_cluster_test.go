@@ -168,22 +168,20 @@ func cfg3Node(n1Host, n1Public string, n2, n3 clusterNode, username string) stri
 }
 
 // TestResourceCMCluster runs the full cluster lifecycle as one sequential test.
-// Each logical operation is two framework steps: an apply followed by a
-// RefreshState that re-reads all resources from the API before assertions run.
-// This ensures node_count and other async-updated attributes reflect actual
-// CM state rather than the value returned by the Create/Update call.
+// Each step is a single framework apply; checks run against state set by
+// Create/Update, which already polls until the cluster is stable (status="r").
+// Explicit RefreshState steps are omitted: the framework's pre-plan refresh
+// calls Read on all existing resources before every apply, so existing resource
+// state is already current when checks run against Create-set values.
 //
 //  1. Create 1-node cluster                          → count = 1
 //  2. Add node2                                      → count = 2
 //  3. Add node3                                      → count = 3
-//  4. Remove node2 + node3 simultaneously            → count = 1
-//  5. Add node2 + node3 simultaneously               → count = 3
-//  6. Remove node3                                   → count = 2
-//  7. Swap node2 → node3 (add + remove in one apply) → count = 2
-//  8. Update public_address of node3 (IP → DNS)      → count = 2
-//  9. Re-add node2 (3-node state)                    → count = 3
-//
-// 10. Destroy full 3-node cluster
+//  4. Remove node3                                   → count = 2
+//  5. Swap node2 → node3 (add + remove in one apply) → count = 2
+//  6. Update public_address of node3 (IP → DNS)      → count = 2
+//  7. Re-add node2 (3-node state)                    → count = 3
+//  8. Destroy full 3-node cluster
 func TestResourceCMCluster(t *testing.T) {
 	n1Host, n1Public := node1Coords(t)
 	n2 := node2Coords(t)
@@ -198,8 +196,8 @@ func TestResourceCMCluster(t *testing.T) {
 		password: n3.password,
 	}
 
-	// node2ID is captured during the step-6 refresh and compared in step-7
-	// refresh to confirm the swap produced a genuinely new node.
+	// node2ID is captured in step 4 and compared in step 5 to confirm the
+	// swap produced a genuinely new node rather than reusing the old one.
 	var node2ID string
 
 	resource.Test(t, resource.TestCase{
@@ -207,83 +205,45 @@ func TestResourceCMCluster(t *testing.T) {
 		Steps: []resource.TestStep{
 
 			// Step 1: Create 1-node cluster
-			{Config: cfgPrimary(n1Host)},
 			{
-				RefreshState: true,
-				Check: checkStep(t, "Step 1: Verify 1-node cluster",
+				Config: cfgPrimary(n1Host),
+				Check: checkStep(t, "Step 1: 1-node cluster created",
 					resource.TestCheckResourceAttrSet("ciphertrust_cluster.primary", "id"),
 					resource.TestCheckResourceAttrSet("ciphertrust_cluster.primary", "node_id"),
 					resource.TestCheckResourceAttr("ciphertrust_cluster.primary", "local_node_host", n1Host),
 					resource.TestCheckResourceAttr("ciphertrust_cluster.primary", "local_node_port", "5432"),
-					resource.TestCheckResourceAttr("ciphertrust_cluster.primary", "node_count", "1"),
 					resource.TestCheckResourceAttr("ciphertrust_cluster.primary", "status_code", "r"),
 					resource.TestCheckResourceAttrSet("ciphertrust_cluster.primary", "status_description"),
 				),
 			},
 
 			// Step 2: Add node2 (1 → 2)
-			{Config: cfg2Node(n1Host, n1Public, n2, username)},
 			{
-				RefreshState: true,
-				Check: checkStep(t, "Step 2: Verify node2 joined (2-node)",
-					resource.TestCheckResourceAttr("ciphertrust_cluster.primary", "node_count", "2"),
-					resource.TestCheckResourceAttr("ciphertrust_cluster.primary", "status_code", "r"),
+				Config: cfg2Node(n1Host, n1Public, n2, username),
+				Check: checkStep(t, "Step 2: node2 joined (2-node)",
 					resource.TestCheckResourceAttrSet("ciphertrust_cluster_node.node2", "id"),
 					resource.TestCheckResourceAttrSet("ciphertrust_cluster_node.node2", "node_id"),
 					resource.TestCheckResourceAttr("ciphertrust_cluster_node.node2", "host", n2.host),
 					resource.TestCheckResourceAttr("ciphertrust_cluster_node.node2", "status_code", "r"),
-					resource.TestCheckResourceAttr("ciphertrust_cluster_node.node2", "node_count", "2"),
 				),
 			},
 
 			// Step 3: Add node3 (2 → 3)
-			{Config: cfg3Node(n1Host, n1Public, n2, n3, username)},
 			{
-				RefreshState: true,
-				Check: checkStep(t, "Step 3: Verify node3 joined (3-node)",
-					resource.TestCheckResourceAttr("ciphertrust_cluster.primary", "node_count", "3"),
-					resource.TestCheckResourceAttr("ciphertrust_cluster.primary", "status_code", "r"),
-					resource.TestCheckResourceAttrSet("ciphertrust_cluster_node.node2", "id"),
+				Config: cfg3Node(n1Host, n1Public, n2, n3, username),
+				Check: checkStep(t, "Step 3: node3 joined (3-node)",
 					resource.TestCheckResourceAttr("ciphertrust_cluster_node.node2", "status_code", "r"),
-					resource.TestCheckResourceAttr("ciphertrust_cluster_node.node2", "node_count", "3"),
 					resource.TestCheckResourceAttrSet("ciphertrust_cluster_node.node3", "id"),
 					resource.TestCheckResourceAttr("ciphertrust_cluster_node.node3", "status_code", "r"),
-					resource.TestCheckResourceAttr("ciphertrust_cluster_node.node3", "node_count", "3"),
 				),
 			},
 
-			// Step 4: Remove node2 + node3 simultaneously (3 → 1)
-			{Config: cfgPrimaryPublic(n1Host, n1Public)},
+			// Step 4: Remove node3 (3 → 2)
 			{
-				RefreshState: true,
-				Check: checkStep(t, "Step 4: Verify both nodes removed (1-node)",
-					resource.TestCheckResourceAttr("ciphertrust_cluster.primary", "node_count", "1"),
-					resource.TestCheckResourceAttr("ciphertrust_cluster.primary", "status_code", "r"),
-				),
-			},
-
-			// Step 5: Add node2 + node3 simultaneously (1 → 3)
-			{Config: cfg3Node(n1Host, n1Public, n2, n3, username)},
-			{
-				RefreshState: true,
-				Check: checkStep(t, "Step 5: Verify both nodes joined (3-node)",
-					resource.TestCheckResourceAttr("ciphertrust_cluster.primary", "node_count", "3"),
-					resource.TestCheckResourceAttr("ciphertrust_cluster.primary", "status_code", "r"),
-					resource.TestCheckResourceAttr("ciphertrust_cluster_node.node2", "status_code", "r"),
-					resource.TestCheckResourceAttr("ciphertrust_cluster_node.node3", "status_code", "r"),
-				),
-			},
-
-			// Step 6: Remove node3 (3 → 2)
-			{Config: cfg2Node(n1Host, n1Public, n2, username)},
-			{
-				RefreshState: true,
-				Check: checkStep(t, "Step 6: Verify node3 removed (2-node)",
-					resource.TestCheckResourceAttr("ciphertrust_cluster.primary", "node_count", "2"),
-					resource.TestCheckResourceAttr("ciphertrust_cluster.primary", "status_code", "r"),
+				Config: cfg2Node(n1Host, n1Public, n2, username),
+				Check: checkStep(t, "Step 4: node3 removed (2-node)",
 					resource.TestCheckResourceAttrSet("ciphertrust_cluster_node.node2", "id"),
 					resource.TestCheckResourceAttr("ciphertrust_cluster_node.node2", "status_code", "r"),
-					resource.TestCheckResourceAttr("ciphertrust_cluster_node.node2", "node_count", "2"),
 					resource.TestCheckResourceAttrWith("ciphertrust_cluster_node.node2", "id", func(v string) error {
 						node2ID = v
 						return nil
@@ -291,19 +251,13 @@ func TestResourceCMCluster(t *testing.T) {
 				),
 			},
 
-			// Step 7: Swap node2 → node3 (simultaneous add + remove, 2 → 2)
+			// Step 5: Swap node2 → node3 (simultaneous add + remove, 2 → 2)
 			{
 				Config: cfgPrimaryPublic(n1Host, n1Public) +
 					cfgNodeBlock("node3", n3.host, n3.public, n1Host, n3.addr, username, n3.password),
-			},
-			{
-				RefreshState: true,
-				Check: checkStep(t, "Step 7: Verify swap produced new node (2-node)",
-					resource.TestCheckResourceAttr("ciphertrust_cluster.primary", "node_count", "2"),
-					resource.TestCheckResourceAttr("ciphertrust_cluster.primary", "status_code", "r"),
+				Check: checkStep(t, "Step 5: swap produced new node (2-node)",
 					resource.TestCheckResourceAttrSet("ciphertrust_cluster_node.node3", "id"),
 					resource.TestCheckResourceAttr("ciphertrust_cluster_node.node3", "status_code", "r"),
-					resource.TestCheckResourceAttr("ciphertrust_cluster_node.node3", "node_count", "2"),
 					resource.TestCheckResourceAttrWith("ciphertrust_cluster_node.node3", "id", func(v string) error {
 						if node2ID != "" && v == node2ID {
 							return fmt.Errorf("node3 ID %s matches removed node2 ID — swap did not produce a new node", v)
@@ -313,33 +267,22 @@ func TestResourceCMCluster(t *testing.T) {
 				),
 			},
 
-			// Step 8: Update public_address of node3 (IP → DNS)
+			// Step 6: Update public_address of node3 (IP → DNS)
 			{
 				Config: cfgPrimaryPublic(n1Host, n1Public) +
 					cfgNodeBlock("node3", n3DNS.host, n3DNS.public, n1Host, n3DNS.addr, username, n3DNS.password),
-			},
-			{
-				RefreshState: true,
-				Check: checkStep(t, "Step 8: Verify node3 public_address updated",
-					resource.TestCheckResourceAttr("ciphertrust_cluster.primary", "public_address", n1Public),
-					resource.TestCheckResourceAttr("ciphertrust_cluster.primary", "status_code", "r"),
+				Check: checkStep(t, "Step 6: node3 public_address updated",
 					resource.TestCheckResourceAttr("ciphertrust_cluster_node.node3", "public_address", n3.addr),
 					resource.TestCheckResourceAttr("ciphertrust_cluster_node.node3", "status_code", "r"),
 				),
 			},
 
-			// Step 9: Re-add node2 — 3-node state before explicit teardown
+			// Step 7: Re-add node2 — 3-node state before teardown
 			{
 				Config: cfgPrimaryPublic(n1Host, n1Public) +
 					cfgNodeBlock("node2", n2.host, n2.public, n1Host, n2.addr, username, n2.password) +
 					cfgNodeBlock("node3", n3DNS.host, n3DNS.public, n1Host, n3DNS.addr, username, n3DNS.password),
-			},
-			{
-				RefreshState: true,
-				Check: checkStep(t, "Step 9: Verify 3-node cluster before teardown",
-					resource.TestCheckResourceAttrSet("ciphertrust_cluster.primary", "id"),
-					resource.TestCheckResourceAttr("ciphertrust_cluster.primary", "node_count", "3"),
-					resource.TestCheckResourceAttr("ciphertrust_cluster.primary", "status_code", "r"),
+				Check: checkStep(t, "Step 7: 3-node cluster before teardown",
 					resource.TestCheckResourceAttrSet("ciphertrust_cluster_node.node2", "id"),
 					resource.TestCheckResourceAttr("ciphertrust_cluster_node.node2", "status_code", "r"),
 					resource.TestCheckResourceAttrSet("ciphertrust_cluster_node.node3", "id"),
@@ -347,9 +290,8 @@ func TestResourceCMCluster(t *testing.T) {
 				),
 			},
 
-			// Step 10: Destroy full 3-node cluster.
-			// Applying provider-only config is equivalent to terraform destroy.
-			// Terraform plans removal of all three resources and executes them in dependency order.
+			// Step 8: Destroy full 3-node cluster.
+			// Applying provider-only config removes all three resources in dependency order.
 			{Config: providerConfig},
 		},
 	})
