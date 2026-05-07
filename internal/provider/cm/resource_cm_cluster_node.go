@@ -292,7 +292,7 @@ func (r *resourceCMClusterNode) Create(ctx context.Context, req resource.CreateR
 	// Step 3: Send the join request to the new node with the signed certificate and CA chain.
 	// Use the explicit member_host if provided, otherwise fall back to the provider's address.
 	memberHostInput := r.client.CipherTrustURL
-	if !plan.MemberHost.IsNull() && !plan.MemberHost.IsUnknown() && plan.MemberHost.ValueString() != "" {
+	if !plan.MemberHost.IsNull() && plan.MemberHost.ValueString() != "" {
 		memberHostInput = plan.MemberHost.ValueString()
 	}
 	memberHost, err := extractHost(memberHostInput)

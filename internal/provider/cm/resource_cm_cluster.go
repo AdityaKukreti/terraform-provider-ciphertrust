@@ -248,7 +248,7 @@ func (r *resourceCMCluster) Delete(ctx context.Context, req resource.DeleteReque
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Error deleting cluster",
-			"Could not delete cluster. Ensure all additional nodes have been removed first and this is the last node in the cluster. Error: "+err.Error(),
+			err.Error(),
 		)
 		return
 	}

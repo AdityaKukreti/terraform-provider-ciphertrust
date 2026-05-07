@@ -195,7 +195,7 @@ Cluster node resources cannot be imported.
 
 ## Notes
 
-- **Sequential Joins**: The provider uses an internal mutex to ensure only one node joins at a time, even with `for_each` parallel resource creation. Join operations use `blocking=false` with status polling until the node reaches ready state, preventing consensus issues and avoiding timeouts from long-running join operations
+- **Sequential Joins**: The provider uses an internal mutex to ensure only one node joins at a time, even with `for_each` parallel resource creation, preventing consensus issues during multi-node setup
 - **Consensus Retry**: The CSR signing step retries automatically if consensus is temporarily unavailable (common after recent node joins)
 - **Host Formats**: Supports bare IPs (`10.10.10.13`), bare hostnames (`cm-node-3`), FQDNs (`ec2-...`), and full URLs (`https://...`)
 - **TLS Certificates**: When using AWS EC2 or systems with FQDN-based TLS certs, use the FQDN for both `host` and `member_host`

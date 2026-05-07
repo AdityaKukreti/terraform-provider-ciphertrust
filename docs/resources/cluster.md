@@ -117,7 +117,7 @@ Cluster resources cannot be imported.
 
 ## Notes
 
-- **Sequential Node Addition**: Additional nodes should be added using `ciphertrust_cluster_node` resources with `depends_on = [ciphertrust_cluster.main]`
+- **Adding Nodes**: Use `ciphertrust_cluster_node` resources with `depends_on = [ciphertrust_cluster.main]`. Even when multiple nodes are declared, the provider joins them to the cluster one at a time.
 - **Updating Public Address**: You can update `public_address` after cluster creation by modifying the attribute and running `terraform apply`
 - **Deleting Cluster**: When running `terraform destroy`, Terraform automatically destroys all `ciphertrust_cluster_node` resources first (due to `depends_on`), then destroys the cluster resource
 - **Single Node**: This resource creates a single-node cluster. Use `ciphertrust_cluster_node` to add more nodes
