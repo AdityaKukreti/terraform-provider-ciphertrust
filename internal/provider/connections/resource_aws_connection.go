@@ -259,7 +259,7 @@ func (r *resourceCCKMAWSConnection) Create(ctx context.Context, req resource.Cre
 	if err != nil {
 		tflog.Debug(ctx, common.ERR_METHOD_END+err.Error()+" [resource_aws_connection.go -> Create]["+id+"]")
 		resp.Diagnostics.AddError(
-			"Invalid data input: CTE Process Set Creation",
+			"Invalid data input: AWS Connection Creation",
 			err.Error(),
 		)
 		return
@@ -269,8 +269,8 @@ func (r *resourceCCKMAWSConnection) Create(ctx context.Context, req resource.Cre
 	if err != nil {
 		tflog.Debug(ctx, common.ERR_METHOD_END+err.Error()+" [resource_aws_connection.go -> Create]["+id+"]")
 		resp.Diagnostics.AddError(
-			"Error creating CTE Process Set on CipherTrust Manager: ",
-			"Could not create CTE Process Set, unexpected error: "+err.Error(),
+			"Error creating AWS Connection on CipherTrust Manager: ",
+			"Could not create AWS Connection, unexpected error: "+err.Error(),
 		)
 		return
 	}
@@ -417,7 +417,7 @@ func (r *resourceCCKMAWSConnection) Update(ctx context.Context, req resource.Upd
 	if err != nil {
 		tflog.Debug(ctx, common.ERR_METHOD_END+err.Error()+" [resource_aws_connection.go -> Update]["+plan.ID.ValueString()+"]")
 		resp.Diagnostics.AddError(
-			"Invalid data input: CTE Process Set Update",
+			"Invalid data input: AWS Connection Update",
 			err.Error(),
 		)
 		return
@@ -427,8 +427,8 @@ func (r *resourceCCKMAWSConnection) Update(ctx context.Context, req resource.Upd
 	if err != nil {
 		tflog.Debug(ctx, common.ERR_METHOD_END+err.Error()+" [resource_aws_connection.go -> Update]["+plan.ID.ValueString()+"]")
 		resp.Diagnostics.AddError(
-			"Error creating CTE Process Set on CipherTrust Manager: ",
-			"Could not create CTE Process Set, unexpected error: "+err.Error(),
+			"Error updating AWS Connection on CipherTrust Manager: ",
+			"Could not update AWS Connection, unexpected error: "+err.Error(),
 		)
 		return
 	}
@@ -456,8 +456,8 @@ func (r *resourceCCKMAWSConnection) Delete(ctx context.Context, req resource.Del
 	tflog.Trace(ctx, common.MSG_METHOD_END+"[resource_aws_connection.go -> Delete]["+state.ID.ValueString()+"]["+output+"]")
 	if err != nil {
 		resp.Diagnostics.AddError(
-			"Error Deleting CTE Process Set",
-			"Could not delete CTE Process Set, unexpected error: "+err.Error(),
+			"Error Deleting AWS Connection",
+			"Could not delete AWS Connection, unexpected error: "+err.Error(),
 		)
 		return
 	}
