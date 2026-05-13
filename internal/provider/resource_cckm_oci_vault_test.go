@@ -30,13 +30,21 @@ func cleanupCckmOCIVaults() {
 	password := os.Getenv("CIPHERTRUST_PASSWORD")
 	domain := "root"
 	authDomain := "root"
-	if os.Getenv("CM_AUTH_DOMAIN") != "" {
-		authDomain = os.Getenv("CM_AUTH_DOMAIN")
+	if os.Getenv("CIPHERTRUST_AUTH_DOMAIN") != "" {
+		authDomain = os.Getenv("CIPHERTRUST_AUTH_DOMAIN")
+		domain = ""
 	}
 	if address == "" || username == "" || password == "" {
 		fmt.Println("cleanupCckmOCIVaults: CIPHERTRUST_ADDRESS, CIPHERTRUST_USERNAME and CIPHERTRUST_PASSWORD must be set, skipping cleanup")
 		return
 	}
+	//fmt.Printf("cleanupCckmOCIVaults\n")
+	//fmt.Printf("cleanupCckmAwsKMS address: %s\n", address)
+	//fmt.Printf("authDomain: %s\n", authDomain)
+	//fmt.Printf("username: %s\n", username)
+	//fmt.Printf("password: %s\n", password)
+	//fmt.Printf("domain: %s\n", domain)
+
 	ctx := context.Background()
 	client, err := common.NewClient(ctx, uuid.NewString(), &address, &authDomain, &domain, &username, &password, true, 180)
 	if err != nil {
