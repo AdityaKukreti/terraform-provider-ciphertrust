@@ -164,7 +164,12 @@ func TestCckmAWSKeyMinimalConfig(t *testing.T) {
 		}`
 
 	keyConfigStr := fmt.Sprintf(nativeKeyConfig, "tf-"+uuid.NewString()[:8], defaultPolicy, "tf-"+uuid.NewString()[:8], "tf-"+uuid.NewString()[:8])
-	customKeyStoreConfigStr := fmt.Sprintf(customKeystoreConfig, "tf-aes-"+uuid.NewString()[:8], "tf-ks-"+uuid.NewString()[:8], os.Getenv("CM_ADDRESS"))
+	// Temporary fixup for ctaas testing
+	proxyURIEndpoint := os.Getenv("CM_ADDRESS")
+	if proxyURIEndpoint == "https://ciphertrust-lab.dpondemand.io" {
+		proxyURIEndpoint = "https://xks.ciphertrust-lab.dpondemand.io"
+	}
+	customKeyStoreConfigStr := fmt.Sprintf(customKeystoreConfig, "tf-aes-"+uuid.NewString()[:8], "tf-ks-"+uuid.NewString()[:8], proxyURIEndpoint)
 	fullConfig := awsConnectionResource + keyConfigStr + customKeyStoreConfigStr
 	resource.Test(t, resource.TestCase{
 		PreCheck:                 func() { cleanupCckmAwsKMS() },

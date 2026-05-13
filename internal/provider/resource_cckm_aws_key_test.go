@@ -142,7 +142,7 @@ func TestCckmAWSKeyNative(t *testing.T) {
 			name       = "%s"
 			operation  = "cckm_key_rotation"
 			run_at     = "0 9 * * sat"
-			run_on     = "any"
+			#run_on     = "any"
 			start_date = "2026-03-07T14:24:00Z"
 		}
 		resource "ciphertrust_aws_key" "native_key" {
@@ -180,7 +180,7 @@ func TestCckmAWSKeyNative(t *testing.T) {
 			name       = "%s"
 			operation  = "cckm_key_rotation"
 			run_at     = "0 9 * * sat"
-			run_on     = "any"
+			#run_on     = "any"
 			start_date = "2026-03-07T14:24:00Z"
 		}
 		resource "ciphertrust_scheduler" "scheduler_two" {
@@ -191,7 +191,7 @@ func TestCckmAWSKeyNative(t *testing.T) {
 			name       = "%s"
 			operation  = "cckm_key_rotation"
 			run_at     = "0 9 * * sat"
-			run_on     = "any"
+			#run_on     = "any"
 			start_date = "2026-03-07T14:24:00Z"
 		}
 		resource "ciphertrust_aws_key" "native_key" {
@@ -996,7 +996,7 @@ func TestCckmAWSKeyNativeImport(t *testing.T) {
 			name       = "%s"
 			operation  = "cckm_key_rotation"
 			run_at     = "0 9 * * sat"
-			run_on     = "any"
+			#run_on     = "any"
 			start_date = "2026-03-07T14:24:00Z"
 		}
 		resource "ciphertrust_aws_key" "native_key" {

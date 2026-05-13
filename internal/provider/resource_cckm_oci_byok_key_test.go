@@ -54,7 +54,7 @@ func TestCckmOCIKeysAndVersionsBYOK(t *testing.T) {
 			name       = local.rotation_job_name
 			operation  = "cckm_key_rotation"
 			run_at     = "0 9 * * sat"
-			run_on     = "any"
+			#run_on     = "any"
 			start_date = "2026-03-07T14:24:00Z"
 		}
 
@@ -156,7 +156,7 @@ func TestCckmOCIKeysAndVersionsBYOK(t *testing.T) {
 			name       = local.rotation_job_name
 			operation  = "cckm_key_rotation"
 			run_at     = "0 9 * * sat"
-			run_on     = "any"
+			#run_on     = "any"
 			start_date = "2026-03-07T14:24:00Z"
 		}
 
@@ -168,7 +168,7 @@ func TestCckmOCIKeysAndVersionsBYOK(t *testing.T) {
 			name       = local.rotation_job_name_2
 			operation  = "cckm_key_rotation"
 			run_at     = "0 9 * * sat"
-			run_on     = "any"
+			#run_on     = "any"
 			start_date = "2026-03-07T14:24:00Z"
 		}
 
