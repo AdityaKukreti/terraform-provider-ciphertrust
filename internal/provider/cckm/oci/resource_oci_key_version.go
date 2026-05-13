@@ -245,7 +245,9 @@ func (r *resourceCCKMOCIVersion) Create(ctx context.Context, req resource.Create
 }
 
 // Read refreshes the OCI native key version state from CipherTrust Manager.
-// Returns a warning and removes the resource from state if the version is not found (404).
+// Verifies the parent key and its vault are reachable
+// Removes the resource from state only if the version is scheduled for deletion.
+// Any other failureis returned as an error.
 func (r *resourceCCKMOCIVersion) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
 	id := uuid.New().String()
 	tflog.Debug(ctx, common.MSG_METHOD_START+"[resource_oci_key_version.go -> Read]["+id+"]")
@@ -256,23 +258,20 @@ func (r *resourceCCKMOCIVersion) Read(ctx context.Context, req resource.ReadRequ
 	if resp.Diagnostics.HasError() {
 		return
 	}
+	keyID := state.CCKMKeyID.ValueString()
 	versionID := state.ID.ValueString()
 
-	keyID := state.CCKMKeyID.ValueString()
-	response, err := r.client.GetById(ctx, id, versionID, common.URL_OCI+"/keys/"+keyID+"/versions")
-	if err != nil {
-		if strings.Contains(err.Error(), notFoundError) {
-			msg := "OCI key version was not found, it will be removed from state."
-			details := utils.ApiError(msg, map[string]interface{}{"key_id": keyID, "version_id": versionID})
-			tflog.Warn(ctx, details)
-			resp.Diagnostics.AddWarning(details, "")
-			resp.State.RemoveResource(ctx)
-			return
-		}
-		msg := "Error reading OCI key version."
-		details := utils.ApiError(msg, map[string]interface{}{"error": err.Error(), "key_id": keyID, "version_id": versionID})
-		tflog.Error(ctx, details)
-		resp.Diagnostics.AddError(details, "")
+	response := getOciKeyVersion(ctx, id, r.client, keyID, versionID, "reading", &resp.Diagnostics)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	readVersionState := gjson.Get(response, "oci_key_version_params.lifecycle_state").String()
+	if readVersionState == keyStateScheduledForDeletion {
+		msg := "OCI key version is scheduled for deletion, removing from state."
+		details := utils.ApiError(msg, map[string]interface{}{"key_id": keyID, "version_id": versionID})
+		tflog.Warn(ctx, details)
+		resp.Diagnostics.AddWarning(details, "")
+		resp.State.RemoveResource(ctx)
 		return
 	}
 	setCommonKeyVersionState(ctx, response, &state, &resp.Diagnostics)
@@ -282,18 +281,53 @@ func (r *resourceCCKMOCIVersion) Read(ctx context.Context, req resource.ReadRequ
 	resp.Diagnostics.Append(resp.State.Set(ctx, state)...)
 }
 
-// Update is a no-op. OCI native key versions are immutable after creation.
-// The only schema attribute that can differ between plan and state is
-// schedule_for_deletion_days, which is stored locally and applied at destroy time only.
-func (r *resourceCCKMOCIVersion) Update(ctx context.Context, _ resource.UpdateRequest, _ *resource.UpdateResponse) {
+// Update checks the OCI key version state in CipherTrust Manager via
+// getOciKeyVersion and removes the resource from state if the version is
+// scheduled for deletion. The only schema attribute that can differ between plan and
+// state is schedule_for_deletion_days, which is stored locally and applied at destroy
+// time only; its updated value is preserved in state after the check.
+func (r *resourceCCKMOCIVersion) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
 	id := uuid.New().String()
 	tflog.Debug(ctx, common.MSG_METHOD_START+"[resource_oci_key_version.go -> Update]["+id+"]")
 	defer tflog.Debug(ctx, common.MSG_METHOD_END+"[resource_oci_key_version.go -> Update]["+id+"]")
+
+	var state models.KeyVersionTFSDK
+	resp.Diagnostics.Append(req.State.Get(ctx, &state)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	keyID := state.CCKMKeyID.ValueString()
+	versionID := state.ID.ValueString()
+
+	response := getOciKeyVersion(ctx, id, r.client, keyID, versionID, "updating", &resp.Diagnostics)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	updateVersionState := gjson.Get(response, "oci_key_version_params.lifecycle_state").String()
+	if updateVersionState == keyStateScheduledForDeletion {
+		msg := "OCI key version is scheduled for deletion, removing from state."
+		details := utils.ApiError(msg, map[string]interface{}{"key_id": keyID, "version_id": versionID})
+		tflog.Warn(ctx, details)
+		resp.Diagnostics.AddWarning(details, "")
+		resp.State.RemoveResource(ctx)
+		return
+	}
+
+	var plan models.KeyVersionTFSDK
+	resp.Diagnostics.Append(req.Plan.Get(ctx, &plan)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	setCommonKeyVersionState(ctx, response, &plan, &resp.Diagnostics)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	resp.Diagnostics.Append(resp.State.Set(ctx, plan)...)
 }
 
 // Delete schedules the OCI native key version for deletion via deleteKeyVersion
 // (oci_key_version_common.go).
-// Returns a warning (not error) if:
+// Returns a warning if:
 //   - the version is not found (404)  -  resource is removed from state
 //   - the version is the current version of the parent key  -  resource is removed from
 //     state but the version remains active in OCI until the parent key is deleted

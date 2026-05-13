@@ -549,9 +549,8 @@ func (r *resourceAWSXKSKey) Create(ctx context.Context, req resource.CreateReque
 }
 
 // Read refreshes Terraform state for an AWS XKS key by reading its current data from CipherTrust Manager.
-// If the key is no longer found (404 / notFoundError), it is silently removed from Terraform state
-// rather than returning an error, allowing Terraform to plan its recreation.
 // For unlinked keys, the description attribute is preserved from prior state rather than overwritten.
+// Returns an error if the key or key store is not reachable.
 func (r *resourceAWSXKSKey) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
 	id := uuid.New().String()
 	tflog.Debug(ctx, common.MSG_METHOD_START+"[resource_aws_xks_key.go -> Read]["+id+"]")
@@ -562,19 +561,17 @@ func (r *resourceAWSXKSKey) Read(ctx context.Context, req resource.ReadRequest, 
 		return
 	}
 	keyID := state.ID.ValueString()
-	response, err := r.client.GetById(ctx, id, keyID, common.URL_AWS_KEY)
-	if err != nil {
-		if strings.Contains(err.Error(), notFoundError) {
-			msg := "AWS XKS key was not found, it will be removed from state."
-			details := utils.ApiError(msg, map[string]interface{}{"key_id": keyID})
-			tflog.Warn(ctx, details)
-			resp.State.RemoveResource(ctx)
-			return
-		}
-		msg := "Error reading AWS XKS key."
-		details := utils.ApiError(msg, map[string]interface{}{"error": err.Error(), "key_id": keyID})
-		tflog.Error(ctx, details)
-		resp.Diagnostics.AddError(details, "")
+	response := r.getAwsXksKey(ctx, id, state.CustomKeyStoreID.ValueString(), keyID, "reading", &resp.Diagnostics)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	if gjson.Get(response, "linked_state").Bool() &&
+		gjson.Get(response, "aws_param.KeyState").String() == "PendingDeletion" {
+		msg := "AWS XKS key is pending deletion, removing from state."
+		details := utils.ApiError(msg, map[string]interface{}{"key_id": keyID})
+		tflog.Warn(ctx, details)
+		resp.Diagnostics.AddWarning(details, "")
+		resp.State.RemoveResource(ctx)
 		return
 	}
 	description := state.Description
@@ -606,6 +603,8 @@ func (r *resourceAWSXKSKey) Read(ctx context.Context, req resource.ReadRequest, 
 //	  - enable_rotation only (a CM-side operation that does not require AWS linked state)
 //	  - All other plan changes  -  description, key_policy, alias, tags, enable_key  -  are silently skipped
 //	  - description is preserved from the prior state value rather than overwritten
+//
+// Returns an error if the key or key store is not reachable.
 func (r *resourceAWSXKSKey) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
 	id := uuid.New().String()
 	tflog.Debug(ctx, common.MSG_METHOD_START+"[resource_aws_xks_key.go -> Update]["+id+"]")
@@ -613,6 +612,7 @@ func (r *resourceAWSXKSKey) Update(ctx context.Context, req resource.UpdateReque
 	var (
 		plan  AWSXKSKeyTFSDK
 		state AWSXKSKeyTFSDK
+		err   error
 	)
 	resp.Diagnostics.Append(req.Plan.Get(ctx, &plan)...)
 	if resp.Diagnostics.HasError() {
@@ -624,12 +624,17 @@ func (r *resourceAWSXKSKey) Update(ctx context.Context, req resource.UpdateReque
 	}
 	keyID := state.ID.ValueString()
 	plan.KeyID = types.StringValue(keyID)
-	response, err := r.client.GetById(ctx, id, keyID, common.URL_AWS_KEY)
-	if err != nil {
-		msg := "Error updating AWS XKS key. Failed to read key."
-		details := utils.ApiError(msg, map[string]interface{}{"error": err.Error(), "key_id": keyID})
-		tflog.Error(ctx, details)
-		resp.Diagnostics.AddError(details, "")
+	response := r.getAwsXksKey(ctx, id, state.CustomKeyStoreID.ValueString(), keyID, "updating", &resp.Diagnostics)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	if gjson.Get(response, "linked_state").Bool() &&
+		gjson.Get(response, "aws_param.KeyState").String() == "PendingDeletion" {
+		msg := "AWS XKS key is pending deletion, removing from state."
+		details := utils.ApiError(msg, map[string]interface{}{"key_id": keyID})
+		tflog.Warn(ctx, details)
+		resp.Diagnostics.AddWarning(details, "")
+		resp.State.RemoveResource(ctx)
 		return
 	}
 	if len(plan.LocalHostParams.Elements()) != 0 {
@@ -734,12 +739,11 @@ func (r *resourceAWSXKSKey) Update(ctx context.Context, req resource.UpdateReque
 	tflog.Debug(ctx, "[resource_aws_xks_key.go -> Update][response:"+redactAWSResponse(response)+"]")
 }
 
-// Delete schedules a linked AWS XKS key for deletion via the schedule-deletion API, or directly deletes
-// an unlinked key from CipherTrust Manager. In either case:
+// Delete schedules a linked AWS XKS key for deletion via the schedule-deletion API, or directly
+// deletes an unlinked key from CipherTrust Manager. In either case:
+//   - If the custom key store cannot be found or is unreachable, a hard error is returned and the key is kept in state.
+//   - If the key is not found (404), a warning is returned and the key is removed from state.
 //   - If the key is already in PendingDeletion state, a warning is returned and the key is removed from state.
-//   - If the key is not found (404 / notFoundError), a warning is returned and the key is removed from state.
-//
-// Only a hard API error from the delete call itself produces a Terraform error.
 func (r *resourceAWSXKSKey) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
 	id := uuid.New().String()
 	tflog.Debug(ctx, common.MSG_METHOD_START+"[resource_aws_xks_key.go -> Delete]["+id+"]")
@@ -750,20 +754,12 @@ func (r *resourceAWSXKSKey) Delete(ctx context.Context, req resource.DeleteReque
 		return
 	}
 	keyID := state.KeyID.ValueString()
-	response, err := r.client.GetById(ctx, id, keyID, common.URL_AWS_KEY)
-	if err != nil {
-		if strings.Contains(err.Error(), notFoundError) {
-			msg := "AWS XKS key was not found, it will be removed from state."
-			details := utils.ApiError(msg, map[string]interface{}{"key_id": keyID})
-			tflog.Warn(ctx, details)
-			resp.Diagnostics.AddWarning(details, "")
-			return
-		}
-		msg := "Error reading AWS key."
-		details := utils.ApiError(msg, map[string]interface{}{"error": err.Error(), "key_id": keyID})
-		tflog.Error(ctx, details)
-		resp.Diagnostics.AddError(details, "")
-		return
+	response := r.getAwsXksKey(ctx, id, state.CustomKeyStoreID.ValueString(), keyID, "deleting", &resp.Diagnostics)
+	if resp.Diagnostics.HasError() {
+		return // key store not found or unreachable - hard error, resource kept in state
+	}
+	if response == "" {
+		return // key not found (404) - warning already added, resource removed from state
 	}
 	if gjson.Get(response, "linked_state").Bool() {
 		keyState := gjson.Get(response, "aws_param.KeyState").String()
@@ -1061,4 +1057,40 @@ func getKeyStoreCommonAWSParams(ctx context.Context, plan *AWSKeyStoreKeyCommonT
 		awsParams.Alias = aliases[0]
 	}
 	return &awsParams
+}
+
+// getAwsXksKey fetches an AWS XKS key from CipherTrust Manager by its resource ID.
+// If keystoreID is non-empty, the custom key store is verified to exist before fetching the key;
+// a missing or unreachable key store is always a hard error regardless of opLabel.
+// A 404 on the key itself is treated according to opLabel: when opLabel is "deleting" a warning is
+// added and an empty string is returned; for any other opLabel an error is added and an empty string is returned.
+func (r *resourceAWSXKSKey) getAwsXksKey(ctx context.Context, id string, keystoreID string, keyID string, opLabel string, diags *diag.Diagnostics) string {
+	if keystoreID != "" {
+		getAwsCustomKeyStore(ctx, r.client, id, keystoreID, "reading", diags)
+		if diags.HasError() {
+			return ""
+		}
+	}
+
+	keyJSON, err := r.client.GetById(ctx, id, keyID, common.URL_AWS_KEY)
+	if err != nil {
+		if strings.Contains(err.Error(), notFoundError) {
+			msg := "AWS XKS key (" + keyID + ") was not found."
+			details := utils.ApiError(msg, map[string]interface{}{"keystore_id": keystoreID, "key_id": keyID})
+			if opLabel == "deleting" {
+				tflog.Warn(ctx, details)
+				diags.AddWarning(details, "")
+			} else {
+				tflog.Error(ctx, details)
+				diags.AddError(details, "")
+			}
+			return ""
+		}
+		msg := "Error " + opLabel + " AWS XKS key."
+		details := utils.ApiError(msg, map[string]interface{}{"error": err.Error(), "key_id": keyID})
+		tflog.Error(ctx, details)
+		diags.AddError(details, "")
+		return ""
+	}
+	return keyJSON
 }

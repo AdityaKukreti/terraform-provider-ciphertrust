@@ -419,8 +419,9 @@ func (r *resourceCCKMOCIByokKey) Create(ctx context.Context, req resource.Create
 	resp.Diagnostics.Append(resp.State.Set(ctx, plan)...)
 }
 
-// Read refreshes the resource state from the CipherTrust Manager API. If the key is not found (HTTP 404),
-// the resource is silently removed from state and a warning is emitted.
+// Read refreshes the resource state from the CipherTrust Manager API.
+// Returns an error if the vault or key is not found (HTTP 404).
+// Removes the resource from state only if the key lifecycle state is SCHEDULING_DELETION.
 func (r *resourceCCKMOCIByokKey) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
 	id := uuid.New().String()
 	tflog.Debug(ctx, common.MSG_METHOD_START+"[resource_oci_byok_key.go -> Read]["+id+"]")
@@ -433,19 +434,18 @@ func (r *resourceCCKMOCIByokKey) Read(ctx context.Context, req resource.ReadRequ
 	}
 	keyID := state.ID.ValueString()
 
-	response, err := r.client.GetById(ctx, id, keyID, common.URL_OCI+"/keys")
-	if err != nil {
-		if strings.Contains(err.Error(), notFoundError) {
-			msg := "OCI BYOK key was not found, it will be removed from state."
-			tflog.Warn(ctx, msg)
-			resp.Diagnostics.AddWarning(msg, fmt.Sprintf("key_id: %s", keyID))
-			resp.State.RemoveResource(ctx)
-			return
-		}
-		msg := "Error reading OCI BYOK key."
-		details := utils.ApiError(msg, map[string]interface{}{"error": err.Error(), "key_id": keyID})
-		tflog.Error(ctx, details)
-		resp.Diagnostics.AddError(details, "")
+	vaultID := state.Vault.ValueString()
+	response := getOciKey(ctx, id, r.client, vaultID, keyID, "reading", &resp.Diagnostics)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	readKeyState := gjson.Get(response, "oci_params.lifecycle_state").String()
+	if readKeyState == keyStateScheduledForDeletion {
+		msg := "OCI BYOK key is scheduled for deletion, removing from state."
+		details := utils.ApiError(msg, map[string]interface{}{"key_id": keyID})
+		tflog.Warn(ctx, details)
+		resp.Diagnostics.AddWarning(details, "")
+		resp.State.RemoveResource(ctx)
 		return
 	}
 	setByokKeyState(ctx, id, r.client, response, &state, &resp.Diagnostics)
@@ -476,6 +476,21 @@ func (r *resourceCCKMOCIByokKey) Update(ctx context.Context, req resource.Update
 		return
 	}
 	keyID := state.ID.ValueString()
+
+	vaultID := state.Vault.ValueString()
+	preCheckResponse := getOciKey(ctx, id, r.client, vaultID, keyID, "updating", &resp.Diagnostics)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	preCheckKeyState := gjson.Get(preCheckResponse, "oci_params.lifecycle_state").String()
+	if preCheckKeyState == keyStateScheduledForDeletion {
+		msg := "OCI BYOK key is scheduled for deletion, removing from state."
+		details := utils.ApiError(msg, map[string]interface{}{"key_id": keyID})
+		tflog.Warn(ctx, details)
+		resp.Diagnostics.AddWarning(details, "")
+		resp.State.RemoveResource(ctx)
+		return
+	}
 
 	updateKey(ctx, id, r.client, keyID, &plan.KeyCommonTFSDK, &state.KeyCommonTFSDK, &resp.Diagnostics)
 	if resp.Diagnostics.HasError() {
@@ -513,7 +528,7 @@ func (r *resourceCCKMOCIByokKey) Delete(ctx context.Context, req resource.Delete
 	keyID := state.ID.ValueString()
 
 	days := state.ScheduleForDeletionDays.ValueInt64()
-	deleteKey(ctx, id, r.client, keyID, days, &resp.Diagnostics)
+	deleteOCIKey(ctx, id, r.client, state.Vault.ValueString(), keyID, days, &resp.Diagnostics)
 	if resp.Diagnostics.HasError() {
 		return
 	}

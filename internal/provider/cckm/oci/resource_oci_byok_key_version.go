@@ -262,7 +262,8 @@ func (r *resourceCCKMOCIByokVersion) Create(ctx context.Context, req resource.Cr
 }
 
 // Read refreshes the OCI BYOK key version state from CipherTrust Manager.
-// Returns a warning and removes the resource from state if the version is not found (404).
+// Returns a warning and removes the resource from state if the version is not found (404)
+// or if the version is scheduled for deletion.
 func (r *resourceCCKMOCIByokVersion) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
 	id := uuid.New().String()
 	tflog.Debug(ctx, common.MSG_METHOD_START+"[resource_oci_byok_key_version.go -> Read]["+id+"]")
@@ -274,22 +275,19 @@ func (r *resourceCCKMOCIByokVersion) Read(ctx context.Context, req resource.Read
 		return
 	}
 	versionID := state.ID.ValueString()
-
 	keyID := state.CCKMKeyID.ValueString()
-	response, err := r.client.GetById(ctx, id, versionID, common.URL_OCI+"/keys/"+keyID+"/versions")
-	if err != nil {
-		if strings.Contains(err.Error(), notFoundError) {
-			msg := "OCI BYOK key version was not found, it will be removed from state."
-			details := utils.ApiError(msg, map[string]interface{}{"key_id": keyID, "version_id": versionID})
-			tflog.Warn(ctx, details)
-			resp.Diagnostics.AddWarning(details, "")
-			resp.State.RemoveResource(ctx)
-			return
-		}
-		msg := "Error reading OCI key version."
-		details := utils.ApiError(msg, map[string]interface{}{"error": err.Error(), "key_id": keyID, "version_id": versionID})
-		tflog.Error(ctx, details)
-		resp.Diagnostics.AddError(details, "")
+
+	response := getOciKeyVersion(ctx, id, r.client, keyID, versionID, "reading", &resp.Diagnostics)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	readVersionState := gjson.Get(response, "oci_key_version_params.lifecycle_state").String()
+	if readVersionState == keyStateScheduledForDeletion {
+		msg := "OCI BYOK key version is scheduled for deletion, removing from state."
+		details := utils.ApiError(msg, map[string]interface{}{"key_id": keyID, "version_id": versionID})
+		tflog.Warn(ctx, details)
+		resp.Diagnostics.AddWarning(details, "")
+		resp.State.RemoveResource(ctx)
 		return
 	}
 	setBYOOKKeyVersionState(ctx, response, &state, &resp.Diagnostics)
@@ -310,7 +308,7 @@ func (r *resourceCCKMOCIByokVersion) Update(ctx context.Context, _ resource.Upda
 
 // Delete schedules the OCI BYOK key version for deletion via deleteKeyVersion
 // (oci_key_version_common.go).
-// Returns a warning (not error) if:
+// Returns a warning if:
 //   - the version is not found (404)  -  resource is removed from state
 //   - the version is the current version of the parent key  -  resource is removed from
 //     state but the version remains active in OCI until the parent key is deleted

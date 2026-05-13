@@ -128,7 +128,7 @@ resource "ciphertrust_aws_cloudhsm_key" "cloudhsm_key_1" {
 - `encryption_algorithms` (List of String) Encryption algorithms of an asymmetric key
 - `expiration_model` (String) Expiration model.
 - `external_accounts` (Set of String) Other AWS accounts that have access to this key.
-- `id` (String) CloudHSM key ID.
+- `id` (String) CipherTrust Manager key ID. The legacy format '<aws-region>\<key-id>' is also accepted for backwards compatibility when migrating from beta provider versions.
 - `key_admins` (Set of String) Key administrators - users.
 - `key_admins_roles` (Set of String) Key administrators - roles.
 - `key_id` (String) CipherTrust Manager key ID.

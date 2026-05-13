@@ -175,10 +175,9 @@ func (r *resourceCCKMOCIAcl) Create(ctx context.Context, req resource.CreateRequ
 	resp.Diagnostics.Append(resp.State.Set(ctx, plan)...)
 }
 
-// Read retrieves the vault JSON via GET /oci/vaults/{id} and extracts the current acls array to
-// refresh state. If the vault is not found (HTTP 404), the ACL resource is removed from state and
-// a warning is emitted. If the specific user/group ACL entry is absent from the vault ACL list,
-// state is not modified (existing values are preserved).
+// Read retrieves the vault JSON via getOciVault and extracts the current acls array to
+// refresh state. If the specific user/group ACL entry is absent from the vault ACL list, the resource
+// is removed from state with a warning.
 func (r *resourceCCKMOCIAcl) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
 	id := uuid.New().String()
 	tflog.Debug(ctx, common.MSG_METHOD_START+"[resource_oci_acls.go -> Read]["+id+"]")
@@ -199,19 +198,8 @@ func (r *resourceCCKMOCIAcl) Read(ctx context.Context, req resource.ReadRequest,
 		return
 	}
 	state.VaultID = types.StringValue(vaultID)
-	response, err := r.client.GetById(ctx, id, vaultID, common.URL_OCI+"/vaults")
-	if err != nil {
-		if strings.Contains(err.Error(), notFoundError) {
-			msg := "OCI ACL vault was not found, ACL will be removed from state."
-			tflog.Warn(ctx, msg)
-			resp.Diagnostics.AddWarning(msg, fmt.Sprintf("vault_id: %s", vaultID))
-			resp.State.RemoveResource(ctx)
-			return
-		}
-		msg := "Error reading OCI vault."
-		details := utils.ApiError(msg, map[string]interface{}{"error": err.Error(), "vault_id": vaultID})
-		tflog.Error(ctx, details)
-		resp.Diagnostics.AddError(details, "")
+	response := getOciVault(ctx, id, r.client, vaultID, "reading", &resp.Diagnostics)
+	if resp.Diagnostics.HasError() {
 		return
 	}
 	if !acls.AclExistsInResponse(response, resourceID) {
@@ -247,12 +235,8 @@ func (r *resourceCCKMOCIAcl) Update(ctx context.Context, req resource.UpdateRequ
 	vaultID := state.VaultID.ValueString()
 	plan.ID = state.ID
 
-	response, err := r.client.GetById(ctx, id, vaultID, common.URL_OCI+"/vaults")
-	if err != nil {
-		msg := "Error reading OCI vault."
-		details := utils.ApiError(msg, map[string]interface{}{"error": err.Error(), "vault_id": vaultID, "id": resourceID})
-		tflog.Error(ctx, details)
-		resp.Diagnostics.AddError(details, "")
+	response := getOciVault(ctx, id, r.client, vaultID, "updating", &resp.Diagnostics)
+	if resp.Diagnostics.HasError() {
 		return
 	}
 	if !acls.AclExistsInResponse(response, resourceID) {
@@ -306,8 +290,7 @@ func (r *resourceCCKMOCIAcl) Update(ctx context.Context, req resource.UpdateRequ
 }
 
 // Delete revokes all currently-granted actions by calling GetUnPermittedAcl with an empty new-actions
-// slice, then applying the revocation via applyAcls. If the vault is not found (HTTP 404), the ACL is
-// already gone and the resource is removed from state with a warning.
+// slice, then applying the revocation via applyAcls.
 func (r *resourceCCKMOCIAcl) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
 	id := uuid.New().String()
 	tflog.Debug(ctx, common.MSG_METHOD_START+"[resource_oci_acls.go -> Delete]["+id+"]")
@@ -321,18 +304,8 @@ func (r *resourceCCKMOCIAcl) Delete(ctx context.Context, req resource.DeleteRequ
 	resourceID := state.ID.ValueString()
 	vaultID := state.VaultID.ValueString()
 
-	response, err := r.client.GetById(ctx, id, vaultID, common.URL_OCI+"/vaults")
-	if err != nil {
-		if strings.Contains(err.Error(), notFoundError) {
-			msg := "OCI ACL vault was not found, the ACL will be removed from state."
-			tflog.Warn(ctx, msg)
-			resp.Diagnostics.AddWarning(msg, fmt.Sprintf("vault_id: %s", vaultID))
-			return
-		}
-		msg := "Error reading OCI vault."
-		details := utils.ApiError(msg, map[string]interface{}{"error": err.Error(), "vault_id": vaultID, "id": resourceID})
-		tflog.Error(ctx, details)
-		resp.Diagnostics.AddError(details, "")
+	response := getOciVault(ctx, id, r.client, vaultID, "deleting", &resp.Diagnostics)
+	if resp.Diagnostics.HasError() || response == "" {
 		return
 	}
 	if !acls.AclExistsInResponse(response, resourceID) {

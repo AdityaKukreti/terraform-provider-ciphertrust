@@ -3,7 +3,6 @@ package cckm
 import (
 	"context"
 	"fmt"
-	"strings"
 	"time"
 
 	"github.com/ThalesGroup/terraform-provider-ciphertrust/internal/provider/cckm/utils"
@@ -98,18 +97,15 @@ func (r *resourceAWSKeyRotation) Create(ctx context.Context, req resource.Create
 		return
 	}
 
-	kid := gjson.Get(response, "aws_param.KeyID").String()
-	region := gjson.Get(response, "region").String()
-	plan.ID = types.StringValue(encodeAWSKeyTerraformResourceID(region, kid) + "\\" + uuid.NewString())
 	now := time.Now().UTC().Format("2006-01-02 15:04:05 MST")
+	plan.ID = types.StringValue(gjson.Get(response, "id").String() + "-" + now)
 	plan.Status = types.StringValue("A key material rotation request was sent to AWS on " + now + ".")
 	resp.Diagnostics.Append(resp.State.Set(ctx, plan)...)
 	tflog.Debug(ctx, "[resource_aws_key_rotation.go -> Create][response:"+redactAWSResponse(response))
 }
 
-// Read verifies the referenced AWS key still exists in CipherTrust Manager. If the underlying AWS key is
-// no longer found (HTTP 404 / "status: 404"), the rotation resource is silently removed from Terraform state
-// rather than returning an error, allowing Terraform to plan its recreation.
+// Read refreshes the Terraform state for an AWS key by fetching the latest data from CipherTrust Manager.
+// Returns an error if the KMS is not reachable
 func (r *resourceAWSKeyRotation) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
 	id := uuid.New().String()
 	tflog.Debug(ctx, common.MSG_METHOD_START+"[resource_aws_key_rotation.go -> Read]["+id+"]")
@@ -120,19 +116,17 @@ func (r *resourceAWSKeyRotation) Read(ctx context.Context, req resource.ReadRequ
 		return
 	}
 	keyID := state.KeyID.ValueString()
-	_, err := r.client.GetById(ctx, id, keyID, common.URL_AWS_KEY)
-	if err != nil {
-		if strings.Contains(err.Error(), notFoundError) {
-			msg := "AWS key no longer exists, removing rotation resource from state."
-			details := utils.ApiError(msg, map[string]interface{}{"key_id": keyID})
-			tflog.Warn(ctx, details)
-			resp.State.RemoveResource(ctx)
-			return
-		}
-		msg := "Error reading AWS key."
-		details := utils.ApiError(msg, map[string]interface{}{"error": err.Error(), "key_id": keyID})
-		tflog.Error(ctx, details)
-		resp.Diagnostics.AddError(details, "")
+	response := getAwsKey(ctx, id, r.client, "", keyID, "reading", &resp.Diagnostics)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	readKeyState := gjson.Get(response, "aws_param.KeyState").String()
+	if readKeyState == "PendingDeletion" || readKeyState == "PendingReplicaDeletion" {
+		msg := "AWS key is pending deletion, removing rotation resource from state."
+		details := utils.ApiError(msg, map[string]interface{}{"key_id": keyID})
+		tflog.Warn(ctx, details)
+		resp.Diagnostics.AddWarning(details, "")
+		resp.State.RemoveResource(ctx)
 		return
 	}
 	resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)

@@ -1091,15 +1091,11 @@ func getAwsKeyKeyID(resourceName string) resource.ImportStateIdFunc {
 		if !ok {
 			return "", fmt.Errorf("not found: " + resourceName)
 		}
-		region, ok := rs.Primary.Attributes["region"]
+		id, ok := rs.Primary.Attributes["id"]
 		if !ok {
-			return "", fmt.Errorf("region not found in state for " + resourceName)
+			return "", fmt.Errorf("id not found in state for " + resourceName)
 		}
-		kid, ok := rs.Primary.Attributes["aws_key_id"]
-		if !ok {
-			return "", fmt.Errorf("aws_key_id not found in state for " + resourceName)
-		}
-		return region + "\\" + kid, nil
+		return id, nil
 	}
 
 }

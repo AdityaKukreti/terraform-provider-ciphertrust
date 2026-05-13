@@ -2,39 +2,7 @@ package cckm
 
 import "encoding/json"
 
-// redactOCIResponse returns a version of a CipherTrust Manager OCI API response
-// JSON that is safe to write to debug logs. Sensitive fields are replaced with
-// the string "redacted". The original response string is never modified; all
-// changes are made on an in-memory copy produced by JSON round-tripping.
-//
-// Fields redacted at the top level:
-//
-//	vault_id       -- the OCI vault OCID; identifies the customer's vault in OCI
-//	tenancy        -- the OCI tenancy name; identifies the customer's tenancy
-//	wrappingkey_id -- OCID of the vault's wrapping key (vault responses only)
-//	compartment_id -- OCID of the OCI compartment (vault responses carry this at the top level;
-//	                  key responses carry it inside oci_params)
-//	freeform_tags  -- user-defined key:value pairs (vault responses carry this at the top level;
-//	                  key responses carry it inside oci_params)
-//	defined_tags   -- namespace-scoped tags (vault responses carry this at the top level;
-//	                  key responses carry it inside oci_params)
-//
-// Fields redacted inside oci_params:
-//
-//	compartment_id      -- OCID of the OCI compartment
-//	current_key_version -- OCID of the key's current version
-//	key_id              -- OCID of the key itself
-//	freeform_tags       -- user-defined key:value pairs; may contain sensitive info
-//	defined_tags        -- namespace-scoped tags; may contain sensitive info
-//
-// Fields redacted inside oci_key_version_params:
-//
-//	compartment_id -- OCID of the OCI compartment
-//	key_id         -- OCID of the parent key
-//	vault_id       -- OCID of the vault containing the key version
-//	version_id     -- OCID of the key version itself
-//	freeform_tags  -- user-defined key:value pairs; may contain sensitive info
-//	defined_tags   -- namespace-scoped tags; may contain sensitive info
+// redactOCIResponse returns a safe-to-log version of an OCI API response with sensitive fields replaced.
 func redactOCIResponse(response string) string {
 	var data map[string]interface{}
 	if err := json.Unmarshal([]byte(response), &data); err != nil {

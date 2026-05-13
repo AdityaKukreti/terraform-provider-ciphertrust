@@ -24,9 +24,6 @@ const (
 )
 
 // updateKey applies all mutable changes to an OCI key.
-// Used by resourceCCKMOCIKey and resourceCCKMOCIBYOKKey.
-// Does NOT update: algorithm, length, protection_mode, curve_id (immutable in OCI).
-// Compartment changes are applied via a separate change-compartment endpoint.
 func updateKey(ctx context.Context, id string, client *common.Client, keyID string, plan *models.KeyCommonTFSDK, state *models.KeyCommonTFSDK, diags *diag.Diagnostics) {
 	response, err := ociPostNoDataWithRetry(ctx, client, id, common.URL_OCI+"/keys/"+keyID+"/refresh")
 	if err != nil {
@@ -93,11 +90,16 @@ func updateKey(ctx context.Context, id string, client *common.Client, keyID stri
 	}
 }
 
-// deleteKey schedules an OCI key for deletion.
-// Used by resourceCCKMOCIKey and resourceCCKMOCIBYOKKey.
-// Returns a warning (not error) if the key is not found (404) or already scheduled for deletion,
-// so Terraform removes the resource from state in both cases.
-func deleteKey(ctx context.Context, id string, client *common.Client, keyID string, days int64, diags *diag.Diagnostics) {
+// deleteOCIKey schedules an OCI key for deletion.
+func deleteOCIKey(ctx context.Context, id string, client *common.Client, vaultID string, keyID string, days int64, diags *diag.Diagnostics) {
+	keyJSON := getOciKey(ctx, id, client, vaultID, keyID, "deleting", diags)
+	if diags.HasError() {
+		return // key error - resource kept in state
+	}
+	if keyJSON == "" {
+		return // key not found (404) - warning already added, Terraform removes from state
+	}
+
 	response, err := ociPostNoDataWithRetry(ctx, client, id, common.URL_OCI+"/keys/"+keyID+"/refresh")
 	if err != nil {
 		if strings.Contains(err.Error(), notFoundError) {
@@ -116,9 +118,9 @@ func deleteKey(ctx context.Context, id string, client *common.Client, keyID stri
 
 	keyState := gjson.Get(response, "oci_params.lifecycle_state").String()
 	if keyState == keyStateScheduledForDeletion {
-		msg := "The OCI key is already pending deletion."
+		msg := "OCI key is already scheduled for deletion, it will be removed from state."
 		details := utils.ApiError(msg, map[string]interface{}{"key_id": keyID})
-		tflog.Error(ctx, details)
+		tflog.Warn(ctx, details)
 		diags.AddWarning(details, "")
 		return
 	} else {
@@ -147,7 +149,66 @@ func deleteKey(ctx context.Context, id string, client *common.Client, keyID stri
 			return
 		}
 	}
-	tflog.Debug(ctx, "[oci_key_common.go -> deleteKey][response:"+redactOCIResponse(response)+"]")
+	tflog.Debug(ctx, "[oci_key_common.go -> deleteOCIKey][response:"+redactOCIResponse(response)+"]")
+}
+
+// getOciVault fetches an OCI vault by its CipherTrust Manager ID.
+func getOciVault(ctx context.Context, id string, client *common.Client, vaultID string, opLabel string, diags *diag.Diagnostics) string {
+	response, err := client.GetById(ctx, id, vaultID, common.URL_OCI+"/vaults")
+	if err != nil {
+		if strings.Contains(err.Error(), notFoundError) {
+			msg := "OCI vault (" + vaultID + ") was not found."
+			details := utils.ApiError(msg, map[string]interface{}{"vault_id": vaultID})
+			if opLabel == "deleting" {
+				tflog.Warn(ctx, details)
+				diags.AddWarning(details, "")
+			} else {
+				tflog.Error(ctx, details)
+				diags.AddError(details, "")
+			}
+			return ""
+		}
+		msg := "Error " + opLabel + " OCI vault, failed to read OCI vault."
+		details := utils.ApiError(msg, map[string]interface{}{"error": err.Error(), "vault_id": vaultID})
+		tflog.Error(ctx, details)
+		diags.AddError(details, "")
+		return ""
+	}
+	return response
+}
+
+// getOciKey fetches an OCI key by its CipherTrust Manager ID.
+// If vaultID is non-empty the vault is verified to exist first (opLabel "reading");
+// a missing vault is always a hard error. Callers that do not know the vault ID
+// at call time (e.g. getOciKeyVersion) should pass "".
+func getOciKey(ctx context.Context, id string, client *common.Client, vaultID string, keyID string, opLabel string, diags *diag.Diagnostics) string {
+	if vaultID != "" {
+		getOciVault(ctx, id, client, vaultID, "reading", diags)
+		if diags.HasError() {
+			return ""
+		}
+	}
+	response, err := client.GetById(ctx, id, keyID, common.URL_OCI+"/keys")
+	if err != nil {
+		if strings.Contains(err.Error(), notFoundError) {
+			msg := "OCI key (" + keyID + ") was not found."
+			details := utils.ApiError(msg, map[string]interface{}{"key_id": keyID})
+			if opLabel == "deleting" {
+				tflog.Warn(ctx, details)
+				diags.AddWarning(details, "")
+			} else {
+				tflog.Error(ctx, details)
+				diags.AddError(details, "")
+			}
+			return ""
+		}
+		msg := "Error " + opLabel + " OCI key."
+		details := utils.ApiError(msg, map[string]interface{}{"error": err.Error(), "key_id": keyID})
+		tflog.Error(ctx, details)
+		diags.AddError(details, "")
+		return ""
+	}
+	return response
 }
 
 // setKeyState sets the full Terraform state. Used by resourceCCKMOCIKey and resourceCCKMOCIByokKey.
@@ -280,7 +341,6 @@ func setKeyVersionSummaryState(ctx context.Context, id string, client *common.Cl
 }
 
 // patchKey sends a PATCH request to update display_name, freeform_tags, or defined_tags on an OCI key.
-// Only sends the request if at least one of those fields differs from current state.
 func patchKey(ctx context.Context, id string, client *common.Client, keyID string, plan *models.KeyCommonTFSDK, diags *diag.Diagnostics) {
 	response, err := client.GetById(ctx, id, keyID, common.URL_OCI+"/keys")
 	if err != nil {

@@ -308,16 +308,25 @@ func (d *dataSourceAWSKey) Read(ctx context.Context, req datasource.ReadRequest,
 	if state.KeyID.ValueString() != "" {
 		filters.Add("id", state.KeyID.ValueString())
 	} else if state.ID.ValueString() != "" {
-		region, kid, err := decodeAwsKeyResourceID(state.ID.ValueString())
-		if err != nil {
-			msg := "Error decoding AWS XKS key resource ID, failed to set resource state."
-			details := utils.ApiError(msg, map[string]interface{}{"error": err.Error(), "id": state.ID.ValueString()})
-			tflog.Error(ctx, details)
-			resp.Diagnostics.AddError(details, "")
-			return
+		rawID := state.ID.ValueString()
+		if strings.Contains(rawID, "\\") {
+			// Legacy region\kid format - decode and filter by region + AWS key ID.
+			region, kid, err := decodeAwsKeyResourceID(rawID)
+			if err != nil {
+				msg := "Error decoding AWS key resource ID, failed to set resource state."
+				details := utils.ApiError(msg, map[string]interface{}{"error": err.Error(), "id": rawID})
+				tflog.Error(ctx, details)
+				resp.Diagnostics.AddError(details, "")
+				return
+			}
+			if region != "" {
+				filters.Add("region", region)
+			}
+			filters.Add("keyid", kid)
+		} else {
+			// Plain CM resource UUID - use the id filter directly.
+			filters.Add("id", rawID)
 		}
-		filters.Add("region", region)
-		filters.Add("keyid", kid)
 	} else if state.ARN.ValueString() != "" {
 		arnParts := strings.Split(state.ARN.ValueString(), ":")
 		if len(arnParts) != 6 {
@@ -366,7 +375,7 @@ func (d *dataSourceAWSKey) Read(ctx context.Context, req datasource.ReadRequest,
 	kid := gjson.Get(response, "aws_param.KeyID").String()
 	region := gjson.Get(response, "region").String()
 	state.Region = types.StringValue(region)
-	state.ID = types.StringValue(encodeAWSKeyTerraformResourceID(region, kid))
+	state.ID = types.StringValue(region + "\\" + kid)
 	resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
 }
 

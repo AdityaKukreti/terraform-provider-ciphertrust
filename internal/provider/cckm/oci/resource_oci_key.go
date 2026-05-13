@@ -403,7 +403,8 @@ func (r *resourceCCKMOCIKey) Create(ctx context.Context, req resource.CreateRequ
 }
 
 // Read refreshes the OCI key state from CipherTrust Manager.
-// Returns a warning and removes the resource from state if the key is not found (404).
+// Returns an error if the vault or key is not found (404).
+// Removes the resource from state only if the key lifecycle state is SCHEDULING_DELETION.
 func (r *resourceCCKMOCIKey) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
 	id := uuid.New().String()
 	tflog.Debug(ctx, common.MSG_METHOD_START+"[resource_oci_key.go -> Read]["+id+"]")
@@ -416,20 +417,18 @@ func (r *resourceCCKMOCIKey) Read(ctx context.Context, req resource.ReadRequest,
 	}
 	keyID := state.ID.ValueString()
 
-	response, err := r.client.GetById(ctx, id, keyID, common.URL_OCI+"/keys")
-	if err != nil {
-		if strings.Contains(err.Error(), notFoundError) {
-			msg := "OCI key was not found, it will be removed from state."
-			details := utils.ApiError(msg, map[string]interface{}{"key_id": keyID})
-			tflog.Warn(ctx, details)
-			resp.Diagnostics.AddWarning(details, "")
-			resp.State.RemoveResource(ctx)
-			return
-		}
-		msg := "Error reading OCI key."
-		details := utils.ApiError(msg, map[string]interface{}{"error": err.Error(), "key_id": keyID})
-		tflog.Error(ctx, details)
-		resp.Diagnostics.AddError(details, "")
+	vaultID := state.Vault.ValueString()
+	response := getOciKey(ctx, id, r.client, vaultID, keyID, "reading", &resp.Diagnostics)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	readKeyState := gjson.Get(response, "oci_params.lifecycle_state").String()
+	if readKeyState == keyStateScheduledForDeletion {
+		msg := "OCI key is scheduled for deletion, removing from state."
+		details := utils.ApiError(msg, map[string]interface{}{"key_id": keyID})
+		tflog.Warn(ctx, details)
+		resp.Diagnostics.AddWarning(details, "")
+		resp.State.RemoveResource(ctx)
 		return
 	}
 	setKeyState(ctx, id, r.client, response, &state, &resp.Diagnostics)
@@ -460,6 +459,21 @@ func (r *resourceCCKMOCIKey) Update(ctx context.Context, req resource.UpdateRequ
 	}
 	keyID := state.ID.ValueString()
 
+	vaultID := state.Vault.ValueString()
+	preCheckResponse := getOciKey(ctx, id, r.client, vaultID, keyID, "updating", &resp.Diagnostics)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	preCheckKeyState := gjson.Get(preCheckResponse, "oci_params.lifecycle_state").String()
+	if preCheckKeyState == keyStateScheduledForDeletion {
+		msg := "OCI key is scheduled for deletion, removing from state."
+		details := utils.ApiError(msg, map[string]interface{}{"key_id": keyID})
+		tflog.Warn(ctx, details)
+		resp.Diagnostics.AddWarning(details, "")
+		resp.State.RemoveResource(ctx)
+		return
+	}
+
 	updateKey(ctx, id, r.client, keyID, &plan.KeyCommonTFSDK, &state.KeyCommonTFSDK, &resp.Diagnostics)
 	if resp.Diagnostics.HasError() {
 		return
@@ -482,7 +496,7 @@ func (r *resourceCCKMOCIKey) Update(ctx context.Context, req resource.UpdateRequ
 }
 
 // Delete schedules the OCI key for deletion via deleteKey (oci_key_common.go).
-// Returns a warning (not error) if the key is already pending deletion or not found (404),
+// Returns a warning if the key is already pending deletion or not found (404),
 // allowing Terraform to remove the resource from state cleanly.
 func (r *resourceCCKMOCIKey) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
 	id := uuid.New().String()
@@ -496,7 +510,7 @@ func (r *resourceCCKMOCIKey) Delete(ctx context.Context, req resource.DeleteRequ
 	keyID := state.ID.ValueString()
 
 	days := state.ScheduleForDeletionDays.ValueInt64()
-	deleteKey(ctx, id, r.client, keyID, days, &resp.Diagnostics)
+	deleteOCIKey(ctx, id, r.client, state.Vault.ValueString(), keyID, days, &resp.Diagnostics)
 	if resp.Diagnostics.HasError() {
 		return
 	}
