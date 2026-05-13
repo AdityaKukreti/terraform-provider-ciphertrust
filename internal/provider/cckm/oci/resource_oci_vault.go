@@ -290,8 +290,7 @@ func (r *resourceCCKMOCIVault) Create(ctx context.Context, req resource.CreateRe
 	resp.Diagnostics.Append(resp.State.Set(ctx, plan)...)
 }
 
-// Read refreshes state from GET /oci/vaults/:id. A 404 response removes the resource
-// from state and returns a warning instead of an error.
+// Read refreshes the Terraform state for an OCI vault. Uses getOciVault as a pre-flight check.
 func (r *resourceCCKMOCIVault) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
 	id := uuid.New().String()
 	tflog.Debug(ctx, common.MSG_METHOD_START+"[resource_oci_vault.go -> Read]["+id+"]")
@@ -302,36 +301,35 @@ func (r *resourceCCKMOCIVault) Read(ctx context.Context, req resource.ReadReques
 		return
 	}
 	vaultID := state.ID.ValueString()
-	response, err := r.client.GetById(ctx, id, vaultID, common.URL_OCI+"/vaults")
-	if err != nil {
-		if strings.Contains(err.Error(), notFoundError) {
-			msg := "OCI vault was not found, it will be removed from state."
-			details := utils.ApiError(msg, map[string]interface{}{"vault_id": vaultID})
-			tflog.Warn(ctx, details)
-			resp.Diagnostics.AddWarning(details, "")
-			resp.State.RemoveResource(ctx)
-			return
-		}
-		msg := "Error reading OCI vault."
-		details := utils.ApiError(msg, map[string]interface{}{"error": err.Error(), "vault_id": vaultID})
-		tflog.Error(ctx, details)
-		resp.Diagnostics.AddError(details, "")
+	// Save the prior connection value before getOciVault and setVaultState run.
+	priorConn := state.Connection.ValueString()
+	response := getOciVault(ctx, id, r.client, vaultID, "reading", &resp.Diagnostics)
+	if resp.Diagnostics.HasError() {
 		return
 	}
 	r.setVaultState(ctx, response, &state, &resp.Diagnostics)
 	if resp.Diagnostics.HasError() {
 		return
 	}
-	if state.Connection.ValueString() == "" {
-		// Don't overwrite what might be connection ID with connection name
-		state.Connection = types.StringValue(gjson.Get(response, "connection").String())
+	// Preserve the user-supplied connection_id form (name or UUID) when it resolves
+	// to the same connection that the API reports, so configs using either form do
+	// not produce spurious plan drift after every refresh.
+	// Only overwrite when the connection has genuinely changed out-of-band.
+	apiConnName := gjson.Get(response, "connection").String()
+	state.Connection = types.StringValue(apiConnName)
+	if priorConn != "" && priorConn != apiConnName {
+		connResp, connErr := r.client.GetById(ctx, id, priorConn, common.URL_OCI_CONNECTION)
+		if connErr == nil && gjson.Get(connResp, "name").String() == apiConnName {
+			// Same connection, different representation - restore the prior value so
+			// that users who specify a UUID do not see spurious drift.
+			state.Connection = types.StringValue(priorConn)
+		}
+		// else: genuine out-of-band change - keep the API name.
 	}
 	resp.Diagnostics.Append(resp.State.Set(ctx, state)...)
 }
 
-// Update patches connection_id, bucket_name, and bucket_namespace via
-// PATCH /oci/vaults/:id. All other attributes are Computed-only and cannot be
-// changed through this resource.
+// Update patches connection_id, bucket_name, and bucket_namespace via PATCH /oci/vaults/:id.
 func (r *resourceCCKMOCIVault) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
 	id := uuid.New().String()
 	tflog.Debug(ctx, common.MSG_METHOD_START+"[resource_oci_vault.go -> Update]["+id+"]")
@@ -350,12 +348,8 @@ func (r *resourceCCKMOCIVault) Update(ctx context.Context, req resource.UpdateRe
 	}
 
 	vaultID := state.ID.ValueString()
-	response, err := r.client.GetById(ctx, id, vaultID, common.URL_OCI+"/vaults")
-	if err != nil {
-		msg := "Error reading OCI vault."
-		details := utils.ApiError(msg, map[string]interface{}{"error": err.Error(), "vault_id": vaultID})
-		tflog.Error(ctx, details)
-		resp.Diagnostics.AddError(details, "")
+	response := getOciVault(ctx, id, r.client, vaultID, "updating", &resp.Diagnostics)
+	if resp.Diagnostics.HasError() {
 		return
 	}
 	if plan.Connection.ValueString() != gjson.Get(response, "connection").String() ||
@@ -389,7 +383,7 @@ func (r *resourceCCKMOCIVault) Update(ctx context.Context, req resource.UpdateRe
 			resp.Diagnostics.AddError(details, "")
 			return
 		}
-		response, err = r.client.GetById(ctx, id, vaultID, common.URL_OCI+"/vaults")
+		updatedResponse, err := r.client.GetById(ctx, id, vaultID, common.URL_OCI+"/vaults")
 		if err != nil {
 			msg := "Error reading OCI Vault."
 			details := utils.ApiError(msg, map[string]interface{}{"error": err.Error(), "vault_id": vaultID})
@@ -397,6 +391,7 @@ func (r *resourceCCKMOCIVault) Update(ctx context.Context, req resource.UpdateRe
 			resp.Diagnostics.AddError(details, "")
 			return
 		}
+		response = updatedResponse
 	}
 	tflog.Debug(ctx, "[resource_oci_vault.go -> Update][response:"+redactOCIResponse(response)+"]")
 	r.setVaultState(ctx, response, &state, &resp.Diagnostics)
@@ -407,9 +402,7 @@ func (r *resourceCCKMOCIVault) Update(ctx context.Context, req resource.UpdateRe
 	resp.Diagnostics.Append(resp.State.Set(ctx, state)...)
 }
 
-// Delete removes the vault from CipherTrust Manager. If the vault is already absent
-// (404), a warning is returned instead of an error so that
-// Terraform can still remove the resource from state.
+// Delete removes the vault from CipherTrust Manager.
 func (r *resourceCCKMOCIVault) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
 	id := uuid.New().String()
 	tflog.Debug(ctx, common.MSG_METHOD_START+"[resource_oci_vault.go -> Delete]["+id+"]")
@@ -421,19 +414,19 @@ func (r *resourceCCKMOCIVault) Delete(ctx context.Context, req resource.DeleteRe
 		return
 	}
 	vaultID := state.ID.ValueString()
+	vaultJSON := getOciVault(ctx, id, r.client, vaultID, "deleting", &resp.Diagnostics)
+	if resp.Diagnostics.HasError() {
+		return // Non-404 error - vault kept in state.
+	}
+	if vaultJSON == "" {
+		return // Vault not found (404) - warning already added, Terraform removes from state.
+	}
 	_, err := r.client.DeleteByURL(ctx, id, common.URL_OCI+"/vaults/"+vaultID)
 	if err != nil {
-		if strings.Contains(err.Error(), notFoundError) {
-			msg := "OCI vault was not found, it will be removed from state."
-			details := utils.ApiError(msg, map[string]interface{}{"vault_id": vaultID})
-			tflog.Warn(ctx, details)
-			resp.Diagnostics.AddWarning(details, "")
-		} else {
-			msg := "Error deleting OCI Vault."
-			details := utils.ApiError(msg, map[string]interface{}{"error": err.Error(), "vault_id": vaultID})
-			tflog.Error(ctx, details)
-			resp.Diagnostics.AddError(details, "")
-		}
+		msg := "Error deleting OCI vault."
+		details := utils.ApiError(msg, map[string]interface{}{"error": err.Error(), "vault_id": vaultID})
+		tflog.Error(ctx, details)
+		resp.Diagnostics.AddError(details, "")
 	}
 }
 

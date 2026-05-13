@@ -17,33 +17,59 @@ import (
 	"github.com/tidwall/gjson"
 )
 
-// deleteKeyVersion schedules an OCI key version for deletion.
-// Used by resourceCCKMOCIByokVersion and resourceCCKMOCIKeyVersion.
-// Returns a warning (not error) if:
-//   - the version is not found (404)  -  allows Terraform to remove from state
-//   - the version is already scheduled for deletion  -  allows Terraform to remove from state
-//   - the version is the current key version  -  cannot be independently deleted in OCI;
-//     a warning is emitted and the resource is removed from state
-func deleteKeyVersion(ctx context.Context, id string, client *common.Client, keyID string, versionID string, days int64, diags *diag.Diagnostics) {
+// getOciKeyVersion checks the parent key and its vault, then reads the key version.
+func getOciKeyVersion(ctx context.Context, id string, client *common.Client,
+	keyID string, versionID string, versionOpLabel string, diags *diag.Diagnostics) string {
+
+	keyJSON := getOciKey(ctx, id, client, "", keyID, "reading", diags)
+	if diags.HasError() || keyJSON == "" {
+		return "" // parent key not found or error - version kept in state
+	}
+
+	vaultID := gjson.Get(keyJSON, "cckm_vault_id").String()
+	if vaultID != "" {
+		getOciVault(ctx, id, client, vaultID, "reading", diags)
+		if diags.HasError() {
+			return "" // vault not found - hard error, version kept in state
+		}
+	}
+
 	response, err := client.GetById(ctx, id, versionID, common.URL_OCI+"/keys/"+keyID+"/versions")
 	if err != nil {
 		if strings.Contains(err.Error(), notFoundError) {
-			msg := "OCI key version was not found, it will be removed from state."
+			msg := "OCI key version (" + versionID + ") was not found."
 			details := utils.ApiError(msg, map[string]interface{}{"key_id": keyID, "version_id": versionID})
-			tflog.Warn(ctx, details)
-			diags.AddWarning(details, "")
-		} else {
-			msg := "Error reading OCI key version."
-			details := utils.ApiError(msg, map[string]interface{}{"error": err.Error(), "key_id": keyID, "version_id": versionID})
-			tflog.Error(ctx, details)
-			diags.AddError(details, "")
+			if versionOpLabel == "deleting" {
+				tflog.Warn(ctx, details)
+				diags.AddWarning(details, "")
+			} else {
+				tflog.Error(ctx, details)
+				diags.AddError(details, "")
+			}
+			return ""
 		}
-		return
+		msg := "Error " + versionOpLabel + " OCI key version."
+		details := utils.ApiError(msg, map[string]interface{}{"error": err.Error(), "key_id": keyID, "version_id": versionID})
+		tflog.Error(ctx, details)
+		diags.AddError(details, "")
+		return ""
+	}
+	return response
+}
+
+// deleteKeyVersion schedules an OCI key version for deletion.
+func deleteKeyVersion(ctx context.Context, id string, client *common.Client, keyID string, versionID string, days int64, diags *diag.Diagnostics) {
+	response := getOciKeyVersion(ctx, id, client, keyID, versionID, "deleting", diags)
+	if diags.HasError() {
+		return // parent key or vault not found - hard error, version kept in state
+	}
+	if response == "" {
+		return // version not found - warning already added, Terraform removes from state
 	}
 
 	versionState := gjson.Get(response, "oci_key_version_params.lifecycle_state").String()
 	if versionState == keyStateScheduledForDeletion {
-		msg := "The OCI key version is already pending deletion."
+		msg := "OCI key version is already scheduled for deletion, it will be removed from state."
 		details := utils.ApiError(msg, map[string]interface{}{"key_id": keyID, "version_id": versionID})
 		tflog.Warn(ctx, details)
 		diags.AddWarning(details, "")
@@ -72,8 +98,9 @@ func deleteKeyVersion(ctx context.Context, id string, client *common.Client, key
 		}
 		if strings.Contains(err.Error(), notFoundError) {
 			msg := "OCI key version was not found, it will be removed from state."
-			tflog.Warn(ctx, msg)
-			diags.AddWarning(msg, fmt.Sprintf("key_id: %s, version_id: %s", keyID, versionID))
+			details := utils.ApiError(msg, map[string]interface{}{"key_id": keyID, "version_id": versionID})
+			tflog.Warn(ctx, details)
+			diags.AddWarning(details, "")
 			return
 		}
 		msg := "Error scheduling OCI key version for deletion."
@@ -86,7 +113,6 @@ func deleteKeyVersion(ctx context.Context, id string, client *common.Client, key
 }
 
 // setCommonKeyVersionState populates shared TFSDK state fields from a raw CM API response string.
-// Used by resourceCCKMOCIKeyVersion and resourceCCKMOCIByokVersion.
 func setCommonKeyVersionState(ctx context.Context, response string, state *models.KeyVersionTFSDK, diags *diag.Diagnostics) {
 	state.Account = types.StringValue(gjson.Get(response, "account").String())
 	state.CloudName = types.StringValue(gjson.Get(response, "cloud_name").String())
@@ -147,8 +173,6 @@ func setBYOKKeyVersionParams(ctx context.Context, byokKeyVersionParams *models.D
 }
 
 // waitForKeyVersionState polls until the OCI key version reaches expectedState.
-// Used by resourceCCKMOCIByokVersion and resourceCCKMOCIKeyVersion.
-// Returns an error if the version does not reach expectedState within oci_operation_timeout.
 func waitForKeyVersionState(ctx context.Context, id string, client *common.Client, keyID string, versionID string, expectedState string, diags *diag.Diagnostics) {
 	tflog.Debug(ctx, common.MSG_METHOD_START+"[oci_key_version_common.go -> waitForKeyVersionState]["+id+"]")
 	defer tflog.Debug(ctx, common.MSG_METHOD_END+"[oci_key_version_common.go -> waitForKeyVersionState]["+id+"]")

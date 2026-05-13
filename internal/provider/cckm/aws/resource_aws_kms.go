@@ -219,25 +219,29 @@ func (r *resourceCCKMAWSKMS) Read(ctx context.Context, req resource.ReadRequest,
 		return
 	}
 	kmsID := state.ID.ValueString()
-	response, err := r.client.GetById(ctx, id, kmsID, common.URL_AWS_KMS)
-	if err != nil {
-		if strings.Contains(err.Error(), notFoundError) {
-			msg := "AWS KMS was not found, it will be removed from state."
-			details := utils.ApiError(msg, map[string]interface{}{"kms_id": kmsID})
-			tflog.Warn(ctx, details)
-			resp.Diagnostics.AddWarning(details, "")
-			resp.State.RemoveResource(ctx)
-			return
-		}
-		msg := "Error reading AWS KMS."
-		details := utils.ApiError(msg, map[string]interface{}{"error": err.Error(), "kms_id": kmsID})
-		tflog.Error(ctx, details)
-		resp.Diagnostics.AddError(details, "")
+	// Save the prior connection value before setKmsState overwrites it.
+	priorConn := state.Connection.ValueString()
+	response := getAwsKms(ctx, id, r.client, kmsID, "reading", &resp.Diagnostics)
+	if resp.Diagnostics.HasError() {
 		return
 	}
 	r.setKmsState(ctx, response, &state, &resp.Diagnostics)
 	if resp.Diagnostics.HasError() {
 		return
+	}
+	// Preserve the user-supplied aws_connection form (name or UUID) when it resolves
+	// to the same connection that the API reports, so configs using either form do
+	// not produce spurious plan drift after every refresh.
+	// Only overwrite when the connection has genuinely changed out-of-band.
+	apiConnName := gjson.Get(response, "connection").String()
+	if priorConn != "" && priorConn != apiConnName {
+		connResp, connErr := r.client.GetById(ctx, id, priorConn, common.URL_AWS_CONNECTION)
+		if connErr == nil && gjson.Get(connResp, "name").String() == apiConnName {
+			// Same connection, different representation - restore the prior value so
+			// that users who specify a UUID do not see spurious drift.
+			state.Connection = types.StringValue(priorConn)
+		}
+		// else: genuine out-of-band change - keep the API name that setKmsState set.
 	}
 	resp.Diagnostics.Append(resp.State.Set(ctx, state)...)
 }
@@ -249,9 +253,19 @@ func (r *resourceCCKMAWSKMS) Update(ctx context.Context, req resource.UpdateRequ
 	defer tflog.Debug(ctx, common.MSG_METHOD_END+"[resource_aws_kms.go -> Update]["+id+"]")
 	var (
 		plan    KMSModelTFSDK
+		state   KMSModelTFSDK
 		payload KMSModelJSON
 	)
 	resp.Diagnostics.Append(req.Plan.Get(ctx, &plan)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	resp.Diagnostics.Append(req.State.Get(ctx, &state)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	kmsID := state.ID.ValueString()
+	getAwsKms(ctx, id, r.client, kmsID, "updating", &resp.Diagnostics)
 	if resp.Diagnostics.HasError() {
 		return
 	}
@@ -269,7 +283,6 @@ func (r *resourceCCKMAWSKMS) Update(ctx context.Context, req resource.UpdateRequ
 	if plan.Connection.ValueString() != "" && plan.Connection.ValueString() != types.StringNull().ValueString() {
 		payload.Connection = common.TrimString(plan.Connection.String())
 	}
-	kmsID := plan.ID.ValueString()
 	payloadJSON, err := json.Marshal(payload)
 	if err != nil {
 		msg := "Error updating AWS KMS, invalid data input."
@@ -319,22 +332,14 @@ func (r *resourceCCKMAWSKMS) Delete(ctx context.Context, req resource.DeleteRequ
 		return
 	}
 	kmsID := state.ID.ValueString()
-	_, err := r.client.GetById(ctx, id, kmsID, common.URL_AWS_KMS)
-	if err != nil {
-		if strings.Contains(err.Error(), notFoundError) {
-			msg := "AWS KMS was not found, it will be removed from state."
-			details := utils.ApiError(msg, map[string]interface{}{"id": state.ID.ValueString()})
-			tflog.Warn(ctx, details)
-			resp.Diagnostics.AddWarning(details, "")
-		} else {
-			msg := "Error reading AWS KMS."
-			details := utils.ApiError(msg, map[string]interface{}{"error": err.Error(), "kms_id": kmsID})
-			tflog.Error(ctx, details)
-			resp.Diagnostics.AddError(details, "")
-		}
-		return
+	kmsJSON := getAwsKms(ctx, id, r.client, kmsID, "deleting", &resp.Diagnostics)
+	if resp.Diagnostics.HasError() {
+		return // Non-404 error - KMS kept in state.
 	}
-	_, err = r.client.DeleteByURL(ctx, id, common.URL_AWS_KMS+"/"+kmsID)
+	if kmsJSON == "" {
+		return // KMS not found (404) - warning already added, Terraform removes from state.
+	}
+	_, err := r.client.DeleteByURL(ctx, id, common.URL_AWS_KMS+"/"+kmsID)
 	if err != nil {
 		msg := "Error deleting AWS KMS."
 		details := utils.ApiError(msg, map[string]interface{}{"error": err.Error(), "kms_id": kmsID})
@@ -387,6 +392,36 @@ func (r *resourceCCKMAWSKMS) ImportState(ctx context.Context, req resource.Impor
 	tflog.Debug(ctx, common.MSG_METHOD_START+"[resource_aws_kms.go -> ImportState]["+id+"]")
 	defer tflog.Debug(ctx, common.MSG_METHOD_END+"[resource_aws_kms.go -> ImportState]["+id+"]")
 	resource.ImportStatePassthroughID(ctx, path.Root("id"), req, resp)
+}
+
+// getAwsKms fetches an AWS KMS registration from CipherTrust Manager by its ID.
+// On a 404: if opLabel is "deleting", a warning is added and "" is returned;
+// any other opLabel adds an error and returns "".
+// Any non-404 API error always adds an error and returns "".
+func getAwsKms(ctx context.Context, id string, client *common.Client, kmsID string, opLabel string, diags *diag.Diagnostics) string {
+	response, err := client.GetById(ctx, id, kmsID, common.URL_AWS_KMS)
+	if err != nil {
+		if strings.Contains(err.Error(), notFoundError) {
+			if opLabel == "deleting" {
+				msg := "AWS KMS (" + kmsID + ") was not found. It will be removed from state."
+				details := utils.ApiError(msg, map[string]interface{}{"kms_id": kmsID})
+				tflog.Warn(ctx, details)
+				diags.AddWarning(details, "")
+			} else {
+				msg := "AWS KMS (" + kmsID + ") was not found."
+				details := utils.ApiError(msg, map[string]interface{}{"kms_id": kmsID})
+				tflog.Error(ctx, details)
+				diags.AddError(details, "")
+			}
+			return ""
+		}
+		msg := "Error " + opLabel + " AWS KMS, failed to read AWS KMS."
+		details := utils.ApiError(msg, map[string]interface{}{"error": err.Error(), "kms_id": kmsID})
+		tflog.Error(ctx, details)
+		diags.AddError(details, "")
+		return ""
+	}
+	return response
 }
 
 // setKmsState populates the Terraform state for an AWS KMS from an API response JSON string.

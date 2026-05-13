@@ -312,9 +312,7 @@ func (r *resourceAWSKeyImportMaterial) Create(ctx context.Context, req resource.
 		return
 	}
 
-	kid := gjson.Get(response, "aws_param.KeyID").String()
-	region := gjson.Get(response, "region").String()
-	plan.ID = types.StringValue(encodeAWSKeyTerraformResourceID(region, kid))
+	plan.ID = types.StringValue(gjson.Get(response, "id").String())
 	keyID := plan.KeyID.ValueString()
 	var err error
 	response, err = r.client.GetById(ctx, id, keyID, common.URL_AWS_KEY)
@@ -333,7 +331,9 @@ func (r *resourceAWSKeyImportMaterial) Create(ctx context.Context, req resource.
 	tflog.Debug(ctx, "[resource_aws_key_import_material.go -> Create][response:"+redactAWSResponse(response))
 }
 
-// Read refreshes Terraform state for an import-material resource by reading the current AWS key from CipherTrust Manager.
+// Read refreshes Terraform state for an import-material resource by reading the current AWS key from
+// CipherTrust Manager.
+// Returns an error if the KMS is not reachable
 func (r *resourceAWSKeyImportMaterial) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
 	id := uuid.New().String()
 	tflog.Debug(ctx, common.MSG_METHOD_START+"[resource_aws_key_import_material.go -> Read]["+id+"]")
@@ -344,20 +344,17 @@ func (r *resourceAWSKeyImportMaterial) Read(ctx context.Context, req resource.Re
 		return
 	}
 	keyID := state.KeyID.ValueString()
-	response, err := r.client.GetById(ctx, id, keyID, common.URL_AWS_KEY)
-	if err != nil {
-		if strings.Contains(err.Error(), notFoundError) {
-			msg := "AWS key import material resource was not found, it will be removed from state."
-			details := utils.ApiError(msg, map[string]interface{}{"key_id": keyID})
-			tflog.Warn(ctx, details)
-			resp.Diagnostics.AddWarning(details, "")
-			resp.State.RemoveResource(ctx)
-			return
-		}
-		msg := "Error reading AWS key."
-		details := utils.ApiError(msg, map[string]interface{}{"error": err.Error(), "key_id": keyID})
-		tflog.Error(ctx, details)
-		resp.Diagnostics.AddError(details, "")
+	response := getAwsKey(ctx, id, r.client, state.KMSID.ValueString(), keyID, "reading", &resp.Diagnostics)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	readKeyState := gjson.Get(response, "aws_param.KeyState").String()
+	if readKeyState == "PendingDeletion" || readKeyState == "PendingReplicaDeletion" {
+		msg := "AWS key is pending deletion, removing from state."
+		details := utils.ApiError(msg, map[string]interface{}{"key_id": keyID})
+		tflog.Warn(ctx, details)
+		resp.Diagnostics.AddWarning(details, "")
+		resp.State.RemoveResource(ctx)
 		return
 	}
 	r.setKeyState(ctx, response, &state, &resp.Diagnostics)
@@ -374,7 +371,8 @@ func (r *resourceAWSKeyImportMaterial) Read(ctx context.Context, req resource.Re
 	}
 }
 
-// Update re-imports key material into the EXTERNAL AWS key when the plan changes.
+// Update re-imports key material into the EXTERNAL AWS key when the import_key_material block changes.
+// Returns an error if the KMS is not reachable
 func (r *resourceAWSKeyImportMaterial) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
 	id := uuid.New().String()
 	tflog.Debug(ctx, common.MSG_METHOD_START+"[resource_aws_key_import_material.go -> Update]["+id+"]")
@@ -391,14 +389,29 @@ func (r *resourceAWSKeyImportMaterial) Update(ctx context.Context, req resource.
 	if resp.Diagnostics.HasError() {
 		return
 	}
-	response := r.importKeyMaterial(ctx, id, &plan, &resp.Diagnostics)
+	keyID := state.KeyID.ValueString()
+	plan.KeyID = types.StringValue(keyID)
+	response := getAwsKey(ctx, id, r.client, state.KMSID.ValueString(), keyID, "updating", &resp.Diagnostics)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	updateKeyState := gjson.Get(response, "aws_param.KeyState").String()
+	if updateKeyState == "PendingDeletion" || updateKeyState == "PendingReplicaDeletion" {
+		msg := "AWS key is pending deletion, removing from state."
+		details := utils.ApiError(msg, map[string]interface{}{"key_id": keyID})
+		tflog.Warn(ctx, details)
+		resp.Diagnostics.AddWarning(details, "")
+		resp.State.RemoveResource(ctx)
+		return
+	}
+	response = r.importKeyMaterial(ctx, id, &plan, &resp.Diagnostics)
 	if resp.Diagnostics.HasError() {
 		return
 	}
 	r.setKeyState(ctx, response, &plan, &resp.Diagnostics)
 	if resp.Diagnostics.HasError() {
 		msg := "Error updating AWS key, failed to set resource state."
-		details := utils.ApiError(msg, map[string]interface{}{"key_id": plan.KeyID.ValueString()})
+		details := utils.ApiError(msg, map[string]interface{}{"key_id": keyID})
 		tflog.Error(ctx, details)
 		resp.Diagnostics.AddError(details, "")
 		return

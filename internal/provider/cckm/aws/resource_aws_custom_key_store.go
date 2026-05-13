@@ -570,20 +570,8 @@ func (r *resourceAWSCustomKeyStore) Read(ctx context.Context, req resource.ReadR
 	if resp.Diagnostics.HasError() {
 		return
 	}
-	response, err := r.client.GetById(ctx, id, state.ID.ValueString(), common.URL_AWS_XKS)
-	if err != nil {
-		if strings.Contains(err.Error(), notFoundError) {
-			msg := "AWS custom key store was not found, it will be removed from state."
-			details := utils.ApiError(msg, map[string]interface{}{"id": state.ID.ValueString()})
-			tflog.Warn(ctx, details)
-			resp.State.RemoveResource(ctx)
-			return
-		}
-		tflog.Debug(ctx, common.ERR_METHOD_END+err.Error()+" [resource_aws_custom_key_store.go -> Read]["+state.ID.ValueString()+"]")
-		resp.Diagnostics.AddError(
-			"Error reading AWS Custom Key Store on CipherTrust Manager: ",
-			"Could not read AWS Custom Key Store, unexpected error: "+err.Error(),
-		)
+	response := getAwsCustomKeyStore(ctx, r.client, id, state.ID.ValueString(), "reading", &resp.Diagnostics)
+	if resp.Diagnostics.HasError() {
 		return
 	}
 	r.setCustomKeyStoreState(ctx, response, &state, &state, &resp.Diagnostics)
@@ -628,6 +616,10 @@ func (r *resourceAWSCustomKeyStore) Update(ctx context.Context, req resource.Upd
 
 	var state AWSCustomKeyStoreTFSDK
 	resp.Diagnostics.Append(req.State.Get(ctx, &state)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	getAwsCustomKeyStore(ctx, r.client, id, state.ID.ValueString(), "updating", &resp.Diagnostics)
 	if resp.Diagnostics.HasError() {
 		return
 	}
@@ -967,20 +959,12 @@ func (r *resourceAWSCustomKeyStore) Delete(ctx context.Context, req resource.Del
 	ctx, cancel := context.WithTimeout(ctx, deleteTimeout)
 	defer cancel()
 
-	_, err := r.client.GetById(ctx, id, state.ID.ValueString(), common.URL_AWS_XKS)
-	if err != nil {
-		if strings.Contains(err.Error(), notFoundError) {
-			msg := "AWS custom key store was not found, it will be removed from state."
-			details := utils.ApiError(msg, map[string]interface{}{"id": state.ID.ValueString()})
-			tflog.Warn(ctx, details)
-			resp.Diagnostics.AddWarning(details, "")
-		} else {
-			msg := "Error reading AWS custom key store."
-			details := utils.ApiError(msg, map[string]interface{}{"error": err.Error(), "id": state.ID.ValueString()})
-			tflog.Error(ctx, details)
-			resp.Diagnostics.AddError(details, "")
-		}
-		return
+	keystoreJSON := getAwsCustomKeyStore(ctx, r.client, id, state.ID.ValueString(), "deleting", &resp.Diagnostics)
+	if resp.Diagnostics.HasError() {
+		return // Non-404 error - key store kept in state.
+	}
+	if keystoreJSON == "" {
+		return // Key store not found (404) - warning already added, Terraform removes from state.
 	}
 
 	url := fmt.Sprintf("%s/%s/%s", r.client.CipherTrustURL, common.URL_AWS_XKS, state.ID.ValueString())
@@ -1087,6 +1071,36 @@ func (r *resourceAWSCustomKeyStore) ImportState(ctx context.Context, req resourc
 	tflog.Debug(ctx, common.MSG_METHOD_START+"[resource_aws_custom_key_store.go -> ImportState]["+id+"]")
 	defer tflog.Debug(ctx, common.MSG_METHOD_END+"[resource_aws_custom_key_store.go -> ImportState]["+id+"]")
 	resource.ImportStatePassthroughID(ctx, path.Root("id"), req, resp)
+}
+
+// getAwsCustomKeyStore fetches an AWS custom key store from CipherTrust Manager by its ID.
+// On a 404: if op is "deleting", a warning is added and "" is returned;
+// any other op adds an error and returns "".
+// Any non-404 API error always adds an error and returns "".
+func getAwsCustomKeyStore(ctx context.Context, client *common.Client, id string, keystoreID string, op string, diags *diag.Diagnostics) string {
+	response, err := client.GetById(ctx, id, keystoreID, common.URL_AWS_XKS)
+	if err != nil {
+		if strings.Contains(err.Error(), notFoundError) {
+			if op == "deleting" {
+				msg := "AWS custom key store (" + keystoreID + ") was not found. It will be removed from state."
+				details := utils.ApiError(msg, map[string]interface{}{"id": keystoreID})
+				tflog.Warn(ctx, details)
+				diags.AddWarning(details, "")
+			} else {
+				msg := "AWS custom key store (" + keystoreID + ") was not found."
+				details := utils.ApiError(msg, map[string]interface{}{"id": keystoreID})
+				tflog.Error(ctx, details)
+				diags.AddError(details, "")
+			}
+			return ""
+		}
+		msg := "Error " + op + " AWS custom key store, failed to read custom key store."
+		details := utils.ApiError(msg, map[string]interface{}{"error": err.Error(), "id": keystoreID})
+		tflog.Error(ctx, details)
+		diags.AddError(details, "")
+		return ""
+	}
+	return response
 }
 
 // setCustomKeyStoreState populates the Terraform state for a custom key store from an API response JSON string.
