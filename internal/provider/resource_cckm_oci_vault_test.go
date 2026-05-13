@@ -5,12 +5,13 @@ import (
 	"fmt"
 	"regexp"
 
-	"github.com/ThalesGroup/terraform-provider-ciphertrust/internal/provider/common"
-	"github.com/google/uuid"
-	"github.com/tidwall/gjson"
 	"net/url"
 	"os"
 	"testing"
+
+	"github.com/ThalesGroup/terraform-provider-ciphertrust/internal/provider/common"
+	"github.com/google/uuid"
+	"github.com/tidwall/gjson"
 
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
 )
@@ -28,12 +29,16 @@ func cleanupCckmOCIVaults() {
 	username := os.Getenv("CIPHERTRUST_USERNAME")
 	password := os.Getenv("CIPHERTRUST_PASSWORD")
 	domain := "root"
+	authDomain := "root"
+	if os.Getenv("CM_AUTH_DOMAIN") != "" {
+		authDomain = os.Getenv("CM_AUTH_DOMAIN")
+	}
 	if address == "" || username == "" || password == "" {
 		fmt.Println("cleanupCckmOCIVaults: CIPHERTRUST_ADDRESS, CIPHERTRUST_USERNAME and CIPHERTRUST_PASSWORD must be set, skipping cleanup")
 		return
 	}
 	ctx := context.Background()
-	client, err := common.NewClient(ctx, uuid.NewString(), &address, &domain, &domain, &username, &password, true, 180)
+	client, err := common.NewClient(ctx, uuid.NewString(), &address, &authDomain, &domain, &username, &password, true, 180)
 	if err != nil {
 		fmt.Printf("** cleanupCckmOCIVaults: failed to create client: %s\n", err.Error())
 		return

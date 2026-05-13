@@ -3,12 +3,13 @@ package provider
 import (
 	"context"
 	"fmt"
-	"github.com/ThalesGroup/terraform-provider-ciphertrust/internal/provider/common"
-	"github.com/tidwall/gjson"
 	"net/url"
 	"os"
 	"regexp"
 	"testing"
+
+	"github.com/ThalesGroup/terraform-provider-ciphertrust/internal/provider/common"
+	"github.com/tidwall/gjson"
 
 	"github.com/google/uuid"
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
@@ -27,12 +28,16 @@ func cleanupCckmAwsKMS() {
 	username := os.Getenv("CIPHERTRUST_USERNAME")
 	password := os.Getenv("CIPHERTRUST_PASSWORD")
 	domain := "root"
+	authDomain := "root"
+	if os.Getenv("CM_AUTH_DOMAIN") != "" {
+		authDomain = os.Getenv("CM_AUTH_DOMAIN")
+	}
 	if address == "" || username == "" || password == "" {
 		fmt.Println("cleanupCckmAwsKMS: CIPHERTRUST_ADDRESS, CIPHERTRUST_USERNAME and CIPHERTRUST_PASSWORD must be set, skipping cleanup")
 		return
 	}
 	ctx := context.Background()
-	client, err := common.NewClient(ctx, uuid.NewString(), &address, &domain, &domain, &username, &password, true, 180)
+	client, err := common.NewClient(ctx, uuid.NewString(), &address, &authDomain, &domain, &username, &password, true, 180)
 	if err != nil {
 		fmt.Printf("** cleanupCckmAwsKMS: failed to create client: %s\n", err.Error())
 		return
