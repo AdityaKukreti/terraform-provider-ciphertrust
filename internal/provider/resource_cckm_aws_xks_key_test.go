@@ -73,10 +73,9 @@ func TestCckmAWSXKSUnlinkedKey(t *testing.T) {
 		}`
 	cmKeyName := "tf-cm-key-" + uuid.New().String()[:8]
 	keyStoreName := "tf-custom-key-store" + uuid.New().String()[:8]
-	// Temporary fixup for ctaas testing
 	proxyURIEndpoint := os.Getenv("CM_ADDRESS")
-	if proxyURIEndpoint == "https://ciphertrust-lab.dpondemand.io" {
-		proxyURIEndpoint = "https://xks.ciphertrust-lab.dpondemand.io"
+	if os.Getenv("CTAAS") == "true" {
+		proxyURIEndpoint = "https://xks." + proxyURIEndpoint[len("https://"):]
 	}
 	createKeyStoreConfigStr := fmt.Sprintf(createKeyStoreConfig, cmKeyName, keyStoreName, proxyURIEndpoint)
 
@@ -103,10 +102,11 @@ func TestCckmAWSXKSUnlinkedKey(t *testing.T) {
 		  name       = "%s"
 		  operation  = "cckm_key_rotation"
 		  run_at     = "0 9 * * sat"
-		  #run_on     = "any"
+		  run_on     = "any"
 		  start_date = "2025-03-07T14:24:00Z"
 		}`
 	enableRotationConfigStr := fmt.Sprintf(enableRotationConfig, enableRotationName)
+	enableRotationConfigStr = applyCTAAS(enableRotationConfigStr)
 
 	createXKSKeyConfig := `
 		resource "ciphertrust_aws_xks_key" "unlinked_cm_source_min_params" {

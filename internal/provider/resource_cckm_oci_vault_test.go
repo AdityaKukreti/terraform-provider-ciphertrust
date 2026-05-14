@@ -28,15 +28,20 @@ func cleanupCckmOCIVaults() {
 	address := os.Getenv("CIPHERTRUST_ADDRESS")
 	username := os.Getenv("CIPHERTRUST_USERNAME")
 	password := os.Getenv("CIPHERTRUST_PASSWORD")
-	domain := "root"
-	authDomain := "root"
-	if os.Getenv("CIPHERTRUST_AUTH_DOMAIN") != "" {
-		authDomain = os.Getenv("CIPHERTRUST_AUTH_DOMAIN")
-		domain = ""
-	}
 	if address == "" || username == "" || password == "" {
-		fmt.Println("cleanupCckmOCIVaults: CIPHERTRUST_ADDRESS, CIPHERTRUST_USERNAME and CIPHERTRUST_PASSWORD must be set, skipping cleanup")
+		fmt.Println("cleanupCckmAwsKMS: CIPHERTRUST_ADDRESS, CIPHERTRUST_USERNAME and CIPHERTRUST_PASSWORD must be set, skipping cleanup")
 		return
+	}
+	// When CTAAS=true, auth_domain carries the tenant name (from CIPHERTRUST_AUTH_DOMAIN)
+	// and domain must be empty - CTaaS does not use the domain field.
+	// CIPHERTRUST_DOMAIN is ignored in this mode even when set.
+	// When CTAAS is not set, the existing behavior applies: domain is read from
+	// CIPHERTRUST_DOMAIN and auth_domain from CIPHERTRUST_AUTH_DOMAIN when set,
+	// otherwise auth_domain mirrors domain.
+	var domain string
+	authDomain := os.Getenv("CIPHERTRUST_AUTH_DOMAIN")
+	if os.Getenv("CTAAS") == "false" {
+		domain = os.Getenv("CIPHERTRUST_DOMAIN")
 	}
 	//fmt.Printf("cleanupCckmOCIVaults\n")
 	//fmt.Printf("cleanupCckmAwsKMS address: %s\n", address)

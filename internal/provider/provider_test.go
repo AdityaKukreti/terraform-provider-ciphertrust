@@ -24,6 +24,7 @@ provider "ciphertrust" {
 	username = "admin"
 	password = "ChangeIt01!"
 	bootstrap = "no"
+    domain = "root"
 	auth_domain = "root"
 }
 `

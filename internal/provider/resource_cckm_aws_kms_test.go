@@ -27,21 +27,26 @@ func cleanupCckmAwsKMS() {
 	address := os.Getenv("CIPHERTRUST_ADDRESS")
 	username := os.Getenv("CIPHERTRUST_USERNAME")
 	password := os.Getenv("CIPHERTRUST_PASSWORD")
-	domain := "root"
-	authDomain := "root"
-	if os.Getenv("CIPHERTRUST_AUTH_DOMAIN") != "" {
-		authDomain = os.Getenv("CIPHERTRUST_AUTH_DOMAIN")
-		domain = ""
-	}
 	if address == "" || username == "" || password == "" {
 		fmt.Println("cleanupCckmAwsKMS: CIPHERTRUST_ADDRESS, CIPHERTRUST_USERNAME and CIPHERTRUST_PASSWORD must be set, skipping cleanup")
 		return
 	}
+	// When CTAAS=true, auth_domain carries the tenant name (from CIPHERTRUST_AUTH_DOMAIN)
+	// and domain must be empty - CTaaS does not use the domain field.
+	// CIPHERTRUST_DOMAIN is ignored in this mode even when set.
+	// When CTAAS is not set, the existing behavior applies: domain is read from
+	// CIPHERTRUST_DOMAIN and auth_domain from CIPHERTRUST_AUTH_DOMAIN when set,
+	// otherwise auth_domain mirrors domain.
+	var domain string
+	authDomain := os.Getenv("CIPHERTRUST_AUTH_DOMAIN")
+	if os.Getenv("CTAAS") == "false" {
+		domain = os.Getenv("CIPHERTRUST_DOMAIN")
+	}
 	//fmt.Printf("cleanupCckmAwsKMS\n")
 	//fmt.Printf("cleanupCckmAwsKMS address: %s\n", address)
-	//fmt.Printf("authDomain: %s\n", authDomain)
 	//fmt.Printf("username: %s\n", username)
 	//fmt.Printf("password: %s\n", password)
+	//fmt.Printf("authDomain: %s\n", authDomain)
 	//fmt.Printf("domain: %s\n", domain)
 	ctx := context.Background()
 	client, err := common.NewClient(ctx, uuid.NewString(), &address, &authDomain, &domain, &username, &password, true, 180)
@@ -164,10 +169,9 @@ func TestCckmAWSKeyMinimalConfig(t *testing.T) {
 		}`
 
 	keyConfigStr := fmt.Sprintf(nativeKeyConfig, "tf-"+uuid.NewString()[:8], defaultPolicy, "tf-"+uuid.NewString()[:8], "tf-"+uuid.NewString()[:8])
-	// Temporary fixup for ctaas testing
 	proxyURIEndpoint := os.Getenv("CM_ADDRESS")
-	if proxyURIEndpoint == "https://ciphertrust-lab.dpondemand.io" {
-		proxyURIEndpoint = "https://xks.ciphertrust-lab.dpondemand.io"
+	if os.Getenv("CTAAS") == "true" {
+		proxyURIEndpoint = "https://xks." + proxyURIEndpoint[len("https://"):]
 	}
 	customKeyStoreConfigStr := fmt.Sprintf(customKeystoreConfig, "tf-aes-"+uuid.NewString()[:8], "tf-ks-"+uuid.NewString()[:8], proxyURIEndpoint)
 	fullConfig := awsConnectionResource + keyConfigStr + customKeyStoreConfigStr

@@ -54,7 +54,7 @@ func TestCckmOCIKeysAndVersionsBYOK(t *testing.T) {
 			name       = local.rotation_job_name
 			operation  = "cckm_key_rotation"
 			run_at     = "0 9 * * sat"
-			#run_on     = "any"
+			run_on     = "any"
 			start_date = "2026-03-07T14:24:00Z"
 		}
 
@@ -156,7 +156,7 @@ func TestCckmOCIKeysAndVersionsBYOK(t *testing.T) {
 			name       = local.rotation_job_name
 			operation  = "cckm_key_rotation"
 			run_at     = "0 9 * * sat"
-			#run_on     = "any"
+			run_on     = "any"
 			start_date = "2026-03-07T14:24:00Z"
 		}
 
@@ -168,7 +168,7 @@ func TestCckmOCIKeysAndVersionsBYOK(t *testing.T) {
 			name       = local.rotation_job_name_2
 			operation  = "cckm_key_rotation"
 			run_at     = "0 9 * * sat"
-			#run_on     = "any"
+			run_on     = "any"
 			start_date = "2026-03-07T14:24:00Z"
 		}
 
@@ -291,6 +291,8 @@ func TestCckmOCIKeysAndVersionsBYOK(t *testing.T) {
 	keysDataSource := "data.ciphertrust_oci_key_list.keys"
 	versionDataSource := "data.ciphertrust_oci_key_version_list.versions"
 
+	maxConfig = applyCTAAS(maxConfig)
+	updateConfig = applyCTAAS(updateConfig)
 	createResourceStr := fmt.Sprintf(maxConfig, localsResource, connectionResource,
 		"ciphertrust_cm_key.cm_aes_key.id", "ciphertrust_oci_byok_key.aes.id")
 	updateResourceStr := fmt.Sprintf(updateConfig, localsResource, connectionResource)
