@@ -95,6 +95,9 @@ func TestCckmAWSCustomKeyStoreUnlinked(t *testing.T) {
 	cmKeyName := "tf-cm-key-" + uuid.New().String()[:8]
 	keyStoreName := "tf-custom-key-store" + uuid.New().String()[:8]
 	proxyURIEndpoint := os.Getenv("CM_ADDRESS")
+	if os.Getenv("CTAAS") == "true" {
+		proxyURIEndpoint = "https://xks." + proxyURIEndpoint[len("https://"):]
+	}
 	keyStorePassword := "thequickbrownfox"
 	vpcEndpointServiceName := "testEndpointServiceName"
 	createKeyStoreConfigStr := fmt.Sprintf(createKeyStoreConfig, cmKeyName, keyStoreName, false, true,
@@ -103,6 +106,9 @@ func TestCckmAWSCustomKeyStoreUnlinked(t *testing.T) {
 	newCmKeyName := "tf-cm-key-update-" + uuid.New().String()[:8]
 	newKeyStoreName := "tf-update-custom-key-store" + uuid.New().String()[:8]
 	newProxyURIEndpoint := "https://192.168.8.134"
+	if os.Getenv("CTAAS") == "true" {
+		newProxyURIEndpoint = proxyURIEndpoint
+	}
 	newKeyStorePassword := "jumpedoversomething"
 	updateKeyStoreConfigStr := fmt.Sprintf(updateKeyStoreConfig, newCmKeyName, newKeyStoreName,
 		true, 8, false, newProxyURIEndpoint, newKeyStorePassword, "EXTERNAL_KEY_STORE")

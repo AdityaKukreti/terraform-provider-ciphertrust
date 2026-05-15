@@ -24,6 +24,8 @@ provider "ciphertrust" {
 	username = "admin"
 	password = "ChangeIt01!"
 	bootstrap = "no"
+	domain = "root"
+	auth_domain = "root"
 }
 `
 )
@@ -51,10 +53,16 @@ const devCMVersionValue = 9999
 // The result is cached after the first successful call so that multiple tests in
 // the same run do not repeat the API round-trip.
 //
-// Returns 0 if the version cannot be determined due to a connection or parse error.
+// Returns devCMVersionValue if the version cannot be determined due to a connection
+// or parse error.
 func getCipherTrustVersion() int {
 	if cipherTrustVersion != 0 {
 		fmt.Printf("Test System Version: %d\n", cipherTrustVersion)
+		return cipherTrustVersion
+	}
+	cipherTrustVersion = devCMVersionValue
+	if os.Getenv("CTAAS") == "true" {
+		fmt.Printf("CTAAS is true, returning %d\n", cipherTrustVersion)
 		return cipherTrustVersion
 	}
 	var (
@@ -72,20 +80,20 @@ func getCipherTrustVersion() int {
 	}
 	client, err = common.NewClient(context.Background(), uuid.NewString(), &address, &domain, &domain, &username, &password, true, 180)
 	if err != nil {
-		fmt.Printf("** Failed to create client, returning 0. err: %s\n", err.Error())
-		return 0
+		fmt.Printf("** Failed to create client, returning %d. err: %s\n", cipherTrustVersion, err.Error())
+		return cipherTrustVersion
 	}
 	response, err = client.GetById(context.Background(), "", "", common.URL_SYSTEMINFO)
 	if err != nil {
-		fmt.Printf("** Failed get system info, returning 0.  err: %s\n", err.Error())
-		return 0
+		fmt.Printf("** Failed get system info, returning %d. err: %s\n", cipherTrustVersion, err.Error())
+		return cipherTrustVersion
 	}
 
 	version := gjson.Get(response, "version").String()
 	fmt.Printf("SysInfo Version: %v\n", version)
 	if version == "" {
-		fmt.Println("** System version is empty, returning 0")
-		return 0
+		fmt.Printf("** System version is empty, returning %d\n", cipherTrustVersion)
+		return cipherTrustVersion
 	}
 	if version == "Development" {
 		fmt.Printf("** System version is Development, returning %d\n", devCMVersionValue)
@@ -93,13 +101,13 @@ func getCipherTrustVersion() int {
 	}
 	versions := strings.Split(version, ".")
 	if len(versions) < 2 {
-		fmt.Printf("** Unable to determine system version from '%s', returning 0\n", version)
-		return 0
+		fmt.Printf("** Unable to determine system version from '%s', returning %d\n", version, cipherTrustVersion)
+		return cipherTrustVersion
 	}
 	cipherTrustVersion, err = strconv.Atoi(versions[0] + versions[1])
 	if err != nil {
-		fmt.Printf("** Failed to convert %s to int, returning 0. Error: %s\n", versions[0]+versions[1], err.Error())
-		return 0
+		fmt.Printf("** Failed to convert %s to int, returning %d. Error: %s\n", versions[0]+versions[1], devCMVersionValue, err.Error())
+		return devCMVersionValue
 	}
 	fmt.Printf("Test System Version: %d\n", cipherTrustVersion)
 	return cipherTrustVersion

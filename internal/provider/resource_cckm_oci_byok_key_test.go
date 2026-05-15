@@ -291,6 +291,8 @@ func TestCckmOCIKeysAndVersionsBYOK(t *testing.T) {
 	keysDataSource := "data.ciphertrust_oci_key_list.keys"
 	versionDataSource := "data.ciphertrust_oci_key_version_list.versions"
 
+	maxConfig = applyCTAAS(maxConfig)
+	updateConfig = applyCTAAS(updateConfig)
 	createResourceStr := fmt.Sprintf(maxConfig, localsResource, connectionResource,
 		"ciphertrust_cm_key.cm_aes_key.id", "ciphertrust_oci_byok_key.aes.id")
 	updateResourceStr := fmt.Sprintf(updateConfig, localsResource, connectionResource)

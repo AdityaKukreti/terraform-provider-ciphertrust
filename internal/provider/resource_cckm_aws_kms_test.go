@@ -3,12 +3,13 @@ package provider
 import (
 	"context"
 	"fmt"
-	"github.com/ThalesGroup/terraform-provider-ciphertrust/internal/provider/common"
-	"github.com/tidwall/gjson"
 	"net/url"
 	"os"
 	"regexp"
 	"testing"
+
+	"github.com/ThalesGroup/terraform-provider-ciphertrust/internal/provider/common"
+	"github.com/tidwall/gjson"
 
 	"github.com/google/uuid"
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
@@ -26,13 +27,23 @@ func cleanupCckmAwsKMS() {
 	address := os.Getenv("CIPHERTRUST_ADDRESS")
 	username := os.Getenv("CIPHERTRUST_USERNAME")
 	password := os.Getenv("CIPHERTRUST_PASSWORD")
-	domain := "root"
 	if address == "" || username == "" || password == "" {
 		fmt.Println("cleanupCckmAwsKMS: CIPHERTRUST_ADDRESS, CIPHERTRUST_USERNAME and CIPHERTRUST_PASSWORD must be set, skipping cleanup")
 		return
 	}
+	// When CTAAS=true, auth_domain carries the tenant name (from CIPHERTRUST_AUTH_DOMAIN)
+	// and domain must be empty - CTaaS does not use the domain field.
+	// CIPHERTRUST_DOMAIN is ignored in this mode even when set.
+	// When CTAAS is not set, the existing behavior applies: domain is read from
+	// CIPHERTRUST_DOMAIN and auth_domain from CIPHERTRUST_AUTH_DOMAIN when set,
+	// otherwise auth_domain mirrors domain.
+	var domain string
+	authDomain := os.Getenv("CIPHERTRUST_AUTH_DOMAIN")
+	if os.Getenv("CTAAS") == "false" {
+		domain = os.Getenv("CIPHERTRUST_DOMAIN")
+	}
 	ctx := context.Background()
-	client, err := common.NewClient(ctx, uuid.NewString(), &address, &domain, &domain, &username, &password, true, 180)
+	client, err := common.NewClient(ctx, uuid.NewString(), &address, &authDomain, &domain, &username, &password, true, 180)
 	if err != nil {
 		fmt.Printf("** cleanupCckmAwsKMS: failed to create client: %s\n", err.Error())
 		return
@@ -152,7 +163,11 @@ func TestCckmAWSKeyMinimalConfig(t *testing.T) {
 		}`
 
 	keyConfigStr := fmt.Sprintf(nativeKeyConfig, "tf-"+uuid.NewString()[:8], defaultPolicy, "tf-"+uuid.NewString()[:8], "tf-"+uuid.NewString()[:8])
-	customKeyStoreConfigStr := fmt.Sprintf(customKeystoreConfig, "tf-aes-"+uuid.NewString()[:8], "tf-ks-"+uuid.NewString()[:8], os.Getenv("CM_ADDRESS"))
+	proxyURIEndpoint := os.Getenv("CM_ADDRESS")
+	if os.Getenv("CTAAS") == "true" {
+		proxyURIEndpoint = "https://xks." + proxyURIEndpoint[len("https://"):]
+	}
+	customKeyStoreConfigStr := fmt.Sprintf(customKeystoreConfig, "tf-aes-"+uuid.NewString()[:8], "tf-ks-"+uuid.NewString()[:8], proxyURIEndpoint)
 	fullConfig := awsConnectionResource + keyConfigStr + customKeyStoreConfigStr
 	resource.Test(t, resource.TestCase{
 		PreCheck:                 func() { cleanupCckmAwsKMS() },
