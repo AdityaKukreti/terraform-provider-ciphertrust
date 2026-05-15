@@ -26,9 +26,6 @@ func (c *Client) SignIn(ctx context.Context, uuid string) (*AuthResponse, error)
 		return nil, err
 	}
 
-	b, _ := json.MarshalIndent(c.AuthData, "", "\t")
-	tflog.Info(ctx, fmt.Sprintf("SARAH c.AuthData: %s", b))
-
 	req, err := http.NewRequest("POST", fmt.Sprintf("%s/%s", c.CipherTrustURL, URL_SIGNIN), strings.NewReader(string(rb)))
 
 	if err != nil {

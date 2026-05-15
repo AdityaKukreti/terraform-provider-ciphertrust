@@ -43,13 +43,6 @@ func cleanupCckmOCIVaults() {
 	if os.Getenv("CTAAS") == "false" {
 		domain = os.Getenv("CIPHERTRUST_DOMAIN")
 	}
-	//fmt.Printf("cleanupCckmOCIVaults\n")
-	//fmt.Printf("cleanupCckmAwsKMS address: %s\n", address)
-	//fmt.Printf("authDomain: %s\n", authDomain)
-	//fmt.Printf("username: %s\n", username)
-	//fmt.Printf("password: %s\n", password)
-	//fmt.Printf("domain: %s\n", domain)
-
 	ctx := context.Background()
 	client, err := common.NewClient(ctx, uuid.NewString(), &address, &authDomain, &domain, &username, &password, true, 180)
 	if err != nil {
