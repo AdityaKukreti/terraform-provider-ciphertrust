@@ -23,6 +23,7 @@ const (
 	URL_LDT_GROUP_COMM_SVC    = "api/v1/transparent-encryption/ldtgroupcommservice"
 	URL_NEW_CLUSTER           = "api/v1/cluster/new"
 	URL_CREATE_CSR            = "api/v1/cluster/csr"
+	URL_NODES                 = "api/v1/nodes"
 	URL_SIGN_CERT             = "api/v1/nodes"
 	URL_CLUSTER_JOIN          = "api/v1/cluster/join"
 	URL_CLUSTER_INFO          = "api/v1/cluster"

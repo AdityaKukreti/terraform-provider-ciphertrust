@@ -1,76 +1,169 @@
-# Terraform Configuration for CipherTrust Provider
-
-# This configuration demonstrates the creation of a Cluster of CipherTrust Manager nodes
-# with the CipherTrust provider for primary and secondary nodes, including setting up cluster details.
+# Terraform Configuration for CipherTrust Cluster Management
+#
+# This example demonstrates cluster creation workflow:
+# 1. Create a single-node cluster using ciphertrust_cluster resource
+# 2. Add additional nodes using ciphertrust_cluster_node resources
 
 terraform {
-  # Define the required providers for the configuration
   required_providers {
-    # CipherTrust provider for managing CipherTrust resources
     ciphertrust = {
-      # The source of the provider
-      source = "ThalesGroup/CipherTrust"
-      # Version of the provider to use
+      source  = "ThalesGroup/CipherTrust"
       version = "1.0.0-pre3"
     }
   }
 }
 
-# Configure the CipherTrust provider for authentication
+# Configure the CipherTrust provider
+# The provider points to the initial cluster node
 provider "ciphertrust" {
-	# The address of the CipherTrust appliance (replace with the actual address)
-  address = "https://10.10.10.10"
-
-  # Username for authenticating with the CipherTrust appliance
+  address  = "https://10.10.10.11"
   username = "admin"
-
-  # Password for authenticating with the CipherTrust appliance
   password = "ChangeMe101!"
 }
 
-# Add a resource of type CM Cluster with three nodes
-# Node 10.10.10.11 is the original node in the cluster
-# Nodes 10.10.10.12 and 10.10.10.13 are nodes looking to join the cluster
-resource "ciphertrust_cluster" "cluster_info" {
-  # List of CipherTrust Manager nodes to be added to cluster
-  # Original = true would mean that this node is originally in cluster
-  # or new cluster operation will happen on this node
-	nodes = [
-		{
-			host = "10.10.10.11"
-			port = 5432
-			original = true
-			public_address = "10.10.10.11"
-			credentials = {
-				username = "admin"
-				password = "ChangeMe101!"
-			}
-		},
-		{
-			host = "10.10.10.12"
-			port = 5432
-			original = false
-			public_address = "10.10.10.12"
-			credentials = {
-				username = "admin"
-				password = "ChangeMe102!"
-			}
-		},
-		{
-			host = "10.10.10.13"
-			port = 5432
-			original = false
-			public_address = "10.10.10.13"
-			credentials = {
-				username = "admin"
-				password = "ChangeMe103!"
-			}
-		}
-	]
+# Step 1: Initialize the cluster on the main node
+# This creates a single-node cluster that additional nodes can join
+resource "ciphertrust_cluster" "main" {
+  local_node_host = "10.10.10.11"  # Hostname/IP of this node
+  local_node_port = 5432            # Port (defaults to 5432)
+  public_address  = "10.10.10.11"  # Public IP/FQDN for remote connectors (updatable)
 }
 
-# Output the unique ID of the created CM Cluster
-output "cluster_id" {
-    # The value will be the ID of the CM Cluster resource
-    value = ciphertrust_cluster.cluster_info.id
+# Step 2: Define additional nodes to join the cluster
+# Using locals makes it easy to add/remove nodes
+#
+# IMPORTANT - Choosing IP Addresses:
+# ==================================
+#
+# host: Must be reachable by:
+#   1. Terraform (to connect and run API calls)
+#   2. The node itself (for self-validation)
+#   3. Other cluster members (for cluster communication)
+#
+# Recommended values for 'host':
+#   - On-premises/Single network: Use private IPs or hostnames
+#     Example: host = "10.10.10.12"
+#
+#   - AWS EC2 (Terraform inside VPC): Use private IPs
+#     Example: host = "172.30.100.184"
+#
+#   - AWS EC2 (Terraform outside VPC): Use FQDNs (NOT public IPs)
+#     Example: host = "ec2-44-200-204-237.compute-1.amazonaws.com"
+#     Why: EC2 instances cannot reach their own public IPs (no hairpin NAT)
+#          FQDNs resolve to private IPs from inside VPC, public IPs from outside
+#
+# public_address: Used by external connectors/applications to reach this node
+#   - Can be public IP, public FQDN, or load balancer address
+#   - Example: public_address = "44.200.204.237"
+#
+locals {
+  additional_nodes = {
+    "node2" = {
+      host           = "10.10.10.12"      # Private IP/hostname (on-premises) or FQDN (AWS)
+      public_address = "10.10.10.12"      # Public IP/FQDN for external access
+      password       = "ChangeMe102!"
+    }
+    "node3" = {
+      host           = "10.10.10.13"
+      public_address = "10.10.10.13"
+      password       = "ChangeMe103!"
+    }
+  }
+
+  # AWS EC2 Example (Terraform outside VPC - use FQDNs):
+  # additional_nodes = {
+  #   "node2" = {
+  #     host           = "ec2-44-200-204-237.compute-1.amazonaws.com"  # FQDN
+  #     public_address = "44.200.204.237"                              # Public IP
+  #     password       = "Ssl12345#"
+  #   }
+  # }
+
+  # AWS EC2 Example (Terraform inside VPC - use private IPs):
+  # additional_nodes = {
+  #   "node2" = {
+  #     host           = "172.30.100.184"   # Private IP
+  #     public_address = "44.200.204.237"   # Public IP
+  #     password       = "Ssl12345#"
+  #   }
+  # }
 }
+
+# Step 3: Add additional nodes to the cluster
+# The for_each creates a separate resource for each node
+# depends_on ensures cluster exists before adding nodes
+# Each node waits until the previous join completes
+resource "ciphertrust_cluster_node" "nodes" {
+  for_each   = local.additional_nodes
+  depends_on = [ciphertrust_cluster.main]
+
+  host           = each.value.host
+  port           = 5432
+  public_address = each.value.public_address  # Updatable
+
+  # member_host: Existing cluster member to sign CSR and coordinate join
+  # Can be any node already in the cluster (not necessarily the first node)
+  # Must be reachable by: (1) Terraform, (2) the joining node
+  # Use same addressing strategy as 'host' field:
+  #   - On-premises/VPC: Private IP (e.g., "10.10.10.11" or "172.30.100.183")
+  #   - AWS (Terraform outside): FQDN (e.g., "ec2-3-239-247-150.compute-1.amazonaws.com")
+  member_host = "10.10.10.11"
+  member_port = 5432
+
+  # Credentials for the new node
+  credentials = {
+    username = "admin"
+    password = each.value.password
+  }
+}
+
+# Outputs
+output "cluster_id" {
+  description = "The cluster node ID"
+  value       = ciphertrust_cluster.main.id
+}
+
+output "cluster_node_count" {
+  description = "Total nodes in cluster"
+  value       = ciphertrust_cluster.main.node_count
+}
+
+output "cluster_status" {
+  description = "Cluster status"
+  value       = ciphertrust_cluster.main.status_description
+}
+
+output "additional_node_ids" {
+  description = "Node IDs of additional cluster members"
+  value       = { for k, v in ciphertrust_cluster_node.nodes : k => v.node_id }
+}
+
+# Usage Examples:
+# ================
+
+# To add a 4th node:
+# -----------------
+# Just add to locals.additional_nodes:
+# "node4" = {
+#   host           = "10.10.10.14"
+#   public_address = "10.10.10.14"
+#   password       = "ChangeMe104!"
+# }
+# Then run: terraform apply
+
+# To remove node3:
+# ----------------
+# Remove "node3" from locals.additional_nodes
+# Then run: terraform apply
+
+# To update a node's public address:
+# -----------------------------------
+# Change public_address in locals.additional_nodes or in cluster.main
+# Then run: terraform apply
+
+# To destroy the entire cluster:
+# -------------------------------
+# Run: terraform destroy
+# Terraform will automatically:
+# 1. Remove all additional nodes first (due to depends_on)
+# 2. Then destroy the main cluster resource

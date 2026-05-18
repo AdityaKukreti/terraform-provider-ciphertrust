@@ -505,19 +505,23 @@ type CMDomainJSON struct {
 type CMInterfaceMetadataNAETFSDK struct {
 	MaskSystemGroups types.Bool `tfsdk:"mask_system_groups"`
 }
+
 type CMInterfaceMetadataTFSDK struct {
 	NAE *CMInterfaceMetadataNAETFSDK `tfsdk:"nae"`
 }
+
 type CMInterfacTrustedCAsTFSDK struct {
 	External []types.String `tfsdk:"external"`
 	Local    []types.String `tfsdk:"local"`
 }
+
 type CMInterfacCertificateTFSDK struct {
 	CertChain types.String `tfsdk:"certificate_chain"`
 	Generate  types.Bool   `tfsdk:"generate"`
 	Format    types.String `tfsdk:"format"`
 	Password  types.String `tfsdk:"password"`
 }
+
 type NamesParamsTFSDK struct {
 	C  types.String `tfsdk:"c"`
 	L  types.String `tfsdk:"l"`
@@ -525,6 +529,7 @@ type NamesParamsTFSDK struct {
 	OU types.String `tfsdk:"ou"`
 	ST types.String `tfsdk:"st"`
 }
+
 type CMInterfaceLocalAutogenAttrTFSDK struct {
 	CN          types.String       `tfsdk:"cn"`
 	DNSNames    []types.String     `tfsdk:"dns_names"`
@@ -533,10 +538,12 @@ type CMInterfaceLocalAutogenAttrTFSDK struct {
 	Names       []NamesParamsTFSDK `tfsdk:"names"`
 	UID         types.String       `tfsdk:"uid"`
 }
+
 type TLSCiphersTFSDK struct {
 	CipherSuite types.String `tfsdk:"cipher_suite"`
 	Enabled     types.Bool   `tfsdk:"enabled"`
 }
+
 type CMInterfaceTFSDK struct {
 	ID                      types.String                      `tfsdk:"id"`
 	Port                    types.Int64                       `tfsdk:"port"`
@@ -564,22 +571,27 @@ type CMInterfaceTFSDK struct {
 	CreatedAt               types.String                      `tfsdk:"created_at"`
 	UpdatedAt               types.String                      `tfsdk:"updated_at"`
 }
+
 type CMInterfaceMetadataNAEJSON struct {
 	MaskSystemGroups bool `json:"mask_system_groups"`
 }
+
 type CMInterfaceMetadataJSON struct {
 	NAE CMInterfaceMetadataNAEJSON `json:"nae"`
 }
+
 type CMInterfacTrustedCAsJSON struct {
 	External []string `json:"external"`
 	Local    []string `json:"local"`
 }
+
 type CMInterfacCertificateJSON struct {
 	CertChain string `json:"certificate_chain"`
 	Generate  bool   `json:"generate"`
 	Format    string `json:"format"`
 	Password  string `json:"password"`
 }
+
 type NamesParamsJSON struct {
 	C  string `json:"C"`
 	L  string `json:"L"`
@@ -587,6 +599,7 @@ type NamesParamsJSON struct {
 	OU string `json:"OU"`
 	ST string `json:"ST"`
 }
+
 type CMInterfaceLocalAutogenAttrJSON struct {
 	CN          string            `json:"cn"`
 	DNSNames    []string          `json:"dns_names"`
@@ -595,10 +608,12 @@ type CMInterfaceLocalAutogenAttrJSON struct {
 	Names       []NamesParamsJSON `json:"names"`
 	UID         string            `json:"uid"`
 }
+
 type TLSCiphersJSON struct {
 	CipherSuite string `json:"cipher_suite"`
 	Enabled     bool   `json:"enabled"`
 }
+
 type CMInterfaceJSON struct {
 	ID                      string                          `json:"id,omitempty"`
 	Port                    int64                           `json:"port"`
@@ -640,6 +655,7 @@ type CMLicenseTFSDK struct {
 	LicenseCount          types.Int64  `tfsdk:"license_count"`
 	TrialSecondsRemaining types.String `tfsdk:"trial_seconds_remaining"`
 }
+
 type CMLicenseJSON struct {
 	ID                    string `json:"id"`
 	License               string `json:"license"`
@@ -660,6 +676,7 @@ type CMNTPTFSDK struct {
 	Key     types.String `tfsdk:"key"`
 	KeyType types.String `tfsdk:"key_type"`
 }
+
 type CMNTPJSON struct {
 	ID      string `json:"id"`
 	Host    string `json:"host"`
@@ -668,12 +685,14 @@ type CMNTPJSON struct {
 }
 
 type CMClusterNodeCredsTFSDK struct {
+	Address     types.String `tfsdk:"address"`
 	Username    types.String `tfsdk:"username"`
 	Password    types.String `tfsdk:"password"`
 	Domain      types.String `tfsdk:"domain"`
 	AuthDomain  types.String `tfsdk:"auth_domain"`
 	NoSSLVerify types.Bool   `tfsdk:"no_ssl_verify"`
 }
+
 type CMClusterNodeTFSDK struct {
 	Host          types.String             `tfsdk:"host"`
 	Original      types.Bool               `tfsdk:"original"`
@@ -681,20 +700,25 @@ type CMClusterNodeTFSDK struct {
 	PublicAddress types.String             `tfsdk:"public_address"`
 	Creds         *CMClusterNodeCredsTFSDK `tfsdk:"credentials"`
 }
+
 type CMClusterTFSDK struct {
-	ID                types.String         `tfsdk:"id"`
-	Nodes             []CMClusterNodeTFSDK `tfsdk:"nodes"`
-	NodeCount         types.Int64          `tfsdk:"node_count"`
-	NodeId            types.String         `tfsdk:"node_id"`
-	StatusCode        types.String         `tfsdk:"status_code"`
-	StatusDescription types.String         `tfsdk:"status_description"`
+	ID                types.String `tfsdk:"id"`
+	LocalNodeHost     types.String `tfsdk:"local_node_host"`
+	LocalNodePort     types.Int64  `tfsdk:"local_node_port"`
+	PublicAddress     types.String `tfsdk:"public_address"`
+	NodeCount         types.Int64  `tfsdk:"node_count"`
+	NodeId            types.String `tfsdk:"node_id"`
+	StatusCode        types.String `tfsdk:"status_code"`
+	StatusDescription types.String `tfsdk:"status_description"`
 }
+
 type CMClusterNodeJSON struct {
 	Host          string `json:"host"`
 	Original      bool   `json:"original"`
 	Port          int64  `json:"port"`
 	PublicAddress string `json:"public_address"`
 }
+
 type CMClusterJSON struct {
 	ID                string              `json:"id"`
 	Nodes             []CMClusterNodeJSON `json:"nodes"`
@@ -703,21 +727,25 @@ type CMClusterJSON struct {
 	StatusCode        string              `json:"status_code"`
 	StatusDescription string              `json:"status_description"`
 }
+
 type NewCMClusterNodeJSON struct {
 	LocalNodeHost string `json:"localNodeHost"`
 	LocalNodePort int64  `json:"localNodePort"`
 	PublicAddress string `json:"publicAddress"`
 }
+
 type NewCSRJSON struct {
 	LocalNodeHost string `json:"localNodeHost"`
 	PublicAddress string `json:"publicAddress"`
 }
+
 type SignRequestJSON struct {
 	CSR                string `json:"csr"`
 	NewNodeHost        string `json:"newNodeHost"`
 	PublicAddress      string `json:"publicAddress"`
 	SharedHSMPartition bool   `json:"shared_hsm_partition"`
 }
+
 type JoinClusterJSON struct {
 	CAChain                string `json:"cachain"`
 	Cert                   string `json:"cert"`
@@ -730,6 +758,20 @@ type JoinClusterJSON struct {
 	MemberNodePort         int64  `json:"memberNodePort"`
 }
 
+type CMAddClusterNodeTFSDK struct {
+	ID                types.String             `tfsdk:"id"`
+	Host              types.String             `tfsdk:"host"`
+	Port              types.Int64              `tfsdk:"port"`
+	PublicAddress     types.String             `tfsdk:"public_address"`
+	Creds             *CMClusterNodeCredsTFSDK `tfsdk:"credentials"`
+	MemberHost        types.String             `tfsdk:"member_host"`
+	MemberPort        types.Int64              `tfsdk:"member_port"`
+	NodeId            types.String             `tfsdk:"node_id"`
+	NodeCount         types.Int64              `tfsdk:"node_count"`
+	StatusCode        types.String             `tfsdk:"status_code"`
+	StatusDescription types.String             `tfsdk:"status_description"`
+}
+
 type CMTrialLicenseTFSDK struct {
 	ID            types.String `tfsdk:"id"`
 	Status        types.String `tfsdk:"status"`
@@ -738,6 +780,7 @@ type CMTrialLicenseTFSDK struct {
 	ActivatedAt   types.String `tfsdk:"activated_at"`
 	DeactivatedAt types.String `tfsdk:"deactivated_at"`
 }
+
 type CMTrialLicenseJSON struct {
 	ID            string `json:"id"`
 	Status        string `json:"status"`
@@ -783,6 +826,7 @@ type CCKMRotationAwsParamsJSON struct {
 	RetainAlias    bool `json:"retain_alias"`
 	RotateMaterial bool `json:"rotate_material"`
 }
+
 type CCKMKeyRotationParamsJSON struct {
 	CloudName                 string  `json:"cloud_name"`
 	Expiration                *string `json:"expiration"`
@@ -840,6 +884,7 @@ type DatabaseBackupParamsJSON struct {
 	DoSCP          bool                `json:"do_scp,"`
 	Connection     string              `json:"connection,"`
 }
+
 type BackupFilterJSON struct {
 	ResourceType  string      `json:"resourceType"`
 	ResourceQuery interface{} `json:"resourceQuery"`
@@ -928,6 +973,7 @@ type CMPolicyConditionTFSDK struct {
 	Path   types.String   `tfsdk:"path"`
 	Values []types.String `tfsdk:"values"`
 }
+
 type CMPolicyTFSDK struct {
 	ID                        types.String             `tfsdk:"id"`
 	Actions                   []types.String           `tfsdk:"actions"`
@@ -941,12 +987,14 @@ type CMPolicyTFSDK struct {
 	Account                   types.String             `tfsdk:"account"`
 	CreatedAt                 types.String             `tfsdk:"created_at"`
 }
+
 type CMPolicyConditionJSON struct {
 	Negate bool     `json:"negate"`
 	Op     string   `json:"op"`
 	Path   string   `json:"path"`
 	Values []string `json:"values"`
 }
+
 type CMPolicyJSON struct {
 	ID                        string                  `json:"id"`
 	Actions                   []string                `json:"actions"`
@@ -1049,27 +1097,33 @@ type CMPasswordPolicyJSON struct {
 	PasswordHistoryThreshold      int64   `json:"password_history_threshold"`
 	PasswordLifetime              int64   `json:"password_lifetime"`
 }
+
 type CMLogForwardersESOrLokiParamsTFSDK struct {
 	ActivityKMIP       types.String `tfsdk:"activity_kmip"`
 	ActivityNAE        types.String `tfsdk:"activity_nae"`
 	ClientAuditRecords types.String `tfsdk:"client_audit_records"`
 	ServerAuditRecords types.String `tfsdk:"server_audit_records"`
 }
+
 type CMLogForwardersESTFSDK struct {
 	Indices *CMLogForwardersESOrLokiParamsTFSDK `tfsdk:"indices"`
 }
+
 type CMLogForwardersLokiTFSDK struct {
 	Labels *CMLogForwardersESOrLokiParamsTFSDK `tfsdk:"labels"`
 }
+
 type CMLogForwardersSyslogParamsTFSDK struct {
 	ActivityKMIP       types.Bool `tfsdk:"activity_kmip"`
 	ActivityNAE        types.Bool `tfsdk:"activity_nae"`
 	ClientAuditRecords types.Bool `tfsdk:"client_audit_records"`
 	ServerAuditRecords types.Bool `tfsdk:"server_audit_records"`
 }
+
 type CMLogForwardersSyslogTFSDK struct {
 	SyslogParams *CMLogForwardersSyslogParamsTFSDK `tfsdk:"syslog_params"`
 }
+
 type CMLogForwardersTFSDK struct {
 	ID                  types.String                `tfsdk:"id"`
 	ConnectionID        types.String                `tfsdk:"connection_id"`
@@ -1082,27 +1136,33 @@ type CMLogForwardersTFSDK struct {
 	CreatedAt           types.String                `tfsdk:"created_at"`
 	UpdatedAt           types.String                `tfsdk:"updated_at"`
 }
+
 type CMLogForwardersESOrLokiParamsJSON struct {
 	ActivityKMIP       string `json:"activity_kmip"`
 	ActivityNAE        string `json:"activity_nae"`
 	ClientAuditRecords string `json:"client_audit_records"`
 	ServerAuditRecords string `json:"server_audit_records"`
 }
+
 type CMLogForwardersESJSON struct {
 	Indices *CMLogForwardersESOrLokiParamsJSON `json:"indices"`
 }
+
 type CMLogForwardersLokiJSON struct {
 	Labels *CMLogForwardersESOrLokiParamsJSON `json:"labels"`
 }
+
 type CMLogForwardersSyslogParamsJSON struct {
 	ActivityKMIP       bool `json:"activity_kmip"`
 	ActivityNAE        bool `json:"activity_nae"`
 	ClientAuditRecords bool `json:"client_audit_records"`
 	ServerAuditRecords bool `json:"server_audit_records"`
 }
+
 type CMLogForwardersSyslogJSON struct {
 	SyslogParams *CMLogForwardersSyslogParamsJSON `json:"syslog_params"`
 }
+
 type CMLogForwardersJSON struct {
 	ID                  string                     `json:"id"`
 	ConnectionID        string                     `json:"connection_id"`
