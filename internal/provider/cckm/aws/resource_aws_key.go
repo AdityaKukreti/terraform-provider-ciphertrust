@@ -68,6 +68,7 @@ const (
 	disabledKeyException                 = "DisabledException"
 	notMultiRegionPrimaryException       = "is not a multi-Region primary key"
 	notFoundError                        = "status: 404"
+	replicaKeyCreatingException          = "is creating"
 )
 
 func NewResourceAWSKey() resource.Resource {
@@ -1490,11 +1491,11 @@ func (r *resourceAWSKey) replicateKey(ctx context.Context, id string, plan *AWSK
 		dg = diag.Diagnostics{}
 		replicaRegion := plan.Region.ValueString()
 		r.importKeyMaterialToReplica(ctx, id, &replicateKeyPlan, replicaKeyID, replicaRegion, &dg)
-		if dg.HasError() {
-			for _, d := range dg {
-				diags.AddWarning(d.Summary(), d.Detail())
-			}
-			return ""
+		// Import failure is a warning only - the replica key was created and must be saved to
+		// state. Falling through to the final GetById ensures Terraform receives consistent
+		// state values (region, alias, etc.) even when the import step did not succeed.
+		for _, d := range dg {
+			diags.AddWarning(d.Summary(), d.Detail())
 		}
 	}
 	dg = diag.Diagnostics{}
@@ -1748,6 +1749,41 @@ func (r *resourceAWSKey) importKeyMaterialToReplica(ctx context.Context, id stri
 		return
 	}
 	response, err = r.client.PostDataV2(ctx, id, common.URL_AWS_KEY+"/"+replicaKeyID+"/import-material", payloadJSON)
+	if err != nil && strings.Contains(err.Error(), replicaKeyCreatingException) {
+		// AWS sometimes reports the replica key as still "creating" even after waitForReplication
+		// confirmed it left that state. Retry with the same polling interval until the key accepts
+		// the import-material call or the operation timeout is exhausted.
+		tflog.Info(ctx, fmt.Sprintf("[resource_aws_key.go -> importKeyMaterialToReplica] replica key still creating, retrying import: %s", err.Error()))
+		retryTicker := time.NewTicker(time.Duration(longAwsKeyOpSleep) * time.Second)
+		defer retryTicker.Stop()
+		retryDeadline := time.Now().Add(time.Duration(r.client.CCKMConfig.AwsOperationTimeout) * time.Second)
+		tStartRetry := time.Now()
+		for range retryTicker.C {
+			if time.Now().After(retryDeadline) {
+				break
+			}
+			if time.Since(tStartRetry).Seconds() > refreshTokenSeconds {
+				if err = r.client.RefreshToken(ctx, id); err != nil {
+					msg := "Error replicating AWS key. Error refreshing authentication token while importing key material."
+					details := utils.ApiError(msg, map[string]interface{}{
+						"error":          err.Error(),
+						"primary_key_id": primaryKeyID,
+						"replica_key_id": replicaKeyID,
+						"region":         replicaRegion,
+					})
+					tflog.Error(ctx, details)
+					diags.AddError(details, "")
+					return
+				}
+				tStartRetry = time.Now()
+			}
+			response, err = r.client.PostDataV2(ctx, id, common.URL_AWS_KEY+"/"+replicaKeyID+"/import-material", payloadJSON)
+			if err == nil || !strings.Contains(err.Error(), replicaKeyCreatingException) {
+				break
+			}
+			tflog.Info(ctx, fmt.Sprintf("[resource_aws_key.go -> importKeyMaterialToReplica] replica key still creating, retrying: %s", err.Error()))
+		}
+	}
 	if err != nil {
 		msg := "Error replicating AWS key, failed to import key material."
 		details := utils.ApiError(msg, map[string]interface{}{
