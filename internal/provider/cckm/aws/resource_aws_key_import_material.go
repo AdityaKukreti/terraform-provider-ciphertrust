@@ -59,7 +59,10 @@ func (r *resourceAWSKeyImportMaterial) Configure(_ context.Context, req resource
 
 func (r *resourceAWSKeyImportMaterial) Schema(_ context.Context, _ resource.SchemaRequest, resp *resource.SchemaResponse) {
 	resp.Schema = schema.Schema{
-		Description: "Use this resource to import or re-import key material to an AWS EXTERNAL key.",
+		Description: "Use this resource to import or re-import key material to an AWS EXTERNAL key. " +
+			"If the KMS is not found during refresh, the resource is preserved in state until the KMS is recovered. " +
+			"If the AWS key is not found but the KMS is reachable, an error is returned. " +
+			"Use 'terraform state rm' to remove this resource from state if the key no longer exists.",
 		Attributes: map[string]schema.Attribute{
 			"id": schema.StringAttribute{
 				Computed:    true,
@@ -344,8 +347,13 @@ func (r *resourceAWSKeyImportMaterial) Read(ctx context.Context, req resource.Re
 		return
 	}
 	keyID := state.KeyID.ValueString()
-	response := getAwsKey(ctx, id, r.client, state.KMSID.ValueString(), keyID, "reading", &resp.Diagnostics)
+	response, preserveState := getAwsKey(ctx, id, r.client, state.KMSID.ValueString(), keyID, "reading", &resp.Diagnostics)
 	if resp.Diagnostics.HasError() {
+		return
+	}
+	if preserveState {
+		// KMS not found - key is hidden. Keep existing state unchanged until KMS is recovered.
+		resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
 		return
 	}
 	readKeyState := gjson.Get(response, "aws_param.KeyState").String()
@@ -391,7 +399,7 @@ func (r *resourceAWSKeyImportMaterial) Update(ctx context.Context, req resource.
 	}
 	keyID := state.KeyID.ValueString()
 	plan.KeyID = types.StringValue(keyID)
-	response := getAwsKey(ctx, id, r.client, state.KMSID.ValueString(), keyID, "updating", &resp.Diagnostics)
+	response, _ := getAwsKey(ctx, id, r.client, state.KMSID.ValueString(), keyID, "updating", &resp.Diagnostics)
 	if resp.Diagnostics.HasError() {
 		return
 	}

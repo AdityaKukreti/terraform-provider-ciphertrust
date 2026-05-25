@@ -57,7 +57,8 @@ func (r *resourceCCKMAWSKMS) Configure(_ context.Context, req resource.Configure
 
 func (r *resourceCCKMAWSKMS) Schema(_ context.Context, _ resource.SchemaRequest, resp *resource.SchemaResponse) {
 	resp.Schema = schema.Schema{
-		Description: "Use this resource to create and manage KMS keys for AWS accounts in CipherTrust Manager.",
+		Description: "Use this resource to create and manage KMS keys for AWS accounts in CipherTrust Manager. " +
+			"If the KMS is not found during refresh it is removed from state automatically.",
 		Attributes: map[string]schema.Attribute{
 			"account": schema.StringAttribute{
 				Description: "The account which owns this resource.",
@@ -221,10 +222,23 @@ func (r *resourceCCKMAWSKMS) Read(ctx context.Context, req resource.ReadRequest,
 	kmsID := state.ID.ValueString()
 	// Save the prior connection value before setKmsState overwrites it.
 	priorConn := state.Connection.ValueString()
-	response := getAwsKms(ctx, id, r.client, kmsID, "reading", &resp.Diagnostics)
-	if resp.Diagnostics.HasError() {
+	response, err := r.client.GetById(ctx, id, kmsID, common.URL_AWS_KMS)
+	if err != nil {
+		if strings.Contains(err.Error(), notFoundError) {
+			msg := "AWS KMS was not found. It will be removed from state."
+			details := utils.ApiError(msg, map[string]interface{}{"kms_id": kmsID})
+			tflog.Warn(ctx, details)
+			resp.Diagnostics.AddWarning(details, "")
+			resp.State.RemoveResource(ctx)
+			return
+		}
+		msg := "Error reading AWS KMS."
+		details := utils.ApiError(msg, map[string]interface{}{"error": err.Error(), "kms_id": kmsID})
+		tflog.Error(ctx, details)
+		resp.Diagnostics.AddError(details, "")
 		return
 	}
+	tflog.Debug(ctx, "[resource_aws_kms.go -> Read][response:"+redactAWSResponse(response)+"]")
 	r.setKmsState(ctx, response, &state, &resp.Diagnostics)
 	if resp.Diagnostics.HasError() {
 		return
@@ -265,8 +279,19 @@ func (r *resourceCCKMAWSKMS) Update(ctx context.Context, req resource.UpdateRequ
 		return
 	}
 	kmsID := state.ID.ValueString()
-	getAwsKms(ctx, id, r.client, kmsID, "updating", &resp.Diagnostics)
-	if resp.Diagnostics.HasError() {
+	if _, kmsErr := r.client.GetById(ctx, id, kmsID, common.URL_AWS_KMS); kmsErr != nil {
+		if strings.Contains(kmsErr.Error(), notFoundError) {
+			msg := "AWS KMS was not found. It will be removed from state."
+			details := utils.ApiError(msg, map[string]interface{}{"kms_id": kmsID})
+			tflog.Warn(ctx, details)
+			resp.Diagnostics.AddWarning(details, "")
+			resp.State.RemoveResource(ctx)
+			return
+		}
+		msg := "Error updating AWS KMS, failed to read AWS KMS."
+		details := utils.ApiError(msg, map[string]interface{}{"error": kmsErr.Error(), "kms_id": kmsID})
+		tflog.Error(ctx, details)
+		resp.Diagnostics.AddError(details, "")
 		return
 	}
 	payload.Regions = make([]string, 0, len(plan.Regions.Elements()))
@@ -332,12 +357,19 @@ func (r *resourceCCKMAWSKMS) Delete(ctx context.Context, req resource.DeleteRequ
 		return
 	}
 	kmsID := state.ID.ValueString()
-	kmsJSON := getAwsKms(ctx, id, r.client, kmsID, "deleting", &resp.Diagnostics)
-	if resp.Diagnostics.HasError() {
-		return // Non-404 error - KMS kept in state.
-	}
-	if kmsJSON == "" {
-		return // KMS not found (404) - warning already added, Terraform removes from state.
+	if _, kmsErr := r.client.GetById(ctx, id, kmsID, common.URL_AWS_KMS); kmsErr != nil {
+		if strings.Contains(kmsErr.Error(), notFoundError) {
+			msg := "AWS KMS was not found. It will be removed from state."
+			details := utils.ApiError(msg, map[string]interface{}{"kms_id": kmsID})
+			tflog.Warn(ctx, details)
+			resp.Diagnostics.AddWarning(details, "")
+			return // Terraform removes from state when Delete returns without error.
+		}
+		msg := "Error deleting AWS KMS, failed to read AWS KMS."
+		details := utils.ApiError(msg, map[string]interface{}{"error": kmsErr.Error(), "kms_id": kmsID})
+		tflog.Error(ctx, details)
+		resp.Diagnostics.AddError(details, "")
+		return
 	}
 	_, err := r.client.DeleteByURL(ctx, id, common.URL_AWS_KMS+"/"+kmsID)
 	if err != nil {
@@ -392,36 +424,6 @@ func (r *resourceCCKMAWSKMS) ImportState(ctx context.Context, req resource.Impor
 	tflog.Debug(ctx, common.MSG_METHOD_START+"[resource_aws_kms.go -> ImportState]["+id+"]")
 	defer tflog.Debug(ctx, common.MSG_METHOD_END+"[resource_aws_kms.go -> ImportState]["+id+"]")
 	resource.ImportStatePassthroughID(ctx, path.Root("id"), req, resp)
-}
-
-// getAwsKms fetches an AWS KMS registration from CipherTrust Manager by its ID.
-// On a 404: if opLabel is "deleting", a warning is added and "" is returned;
-// any other opLabel adds an error and returns "".
-// Any non-404 API error always adds an error and returns "".
-func getAwsKms(ctx context.Context, id string, client *common.Client, kmsID string, opLabel string, diags *diag.Diagnostics) string {
-	response, err := client.GetById(ctx, id, kmsID, common.URL_AWS_KMS)
-	if err != nil {
-		if strings.Contains(err.Error(), notFoundError) {
-			if opLabel == "deleting" {
-				msg := "AWS KMS (" + kmsID + ") was not found. It will be removed from state."
-				details := utils.ApiError(msg, map[string]interface{}{"kms_id": kmsID})
-				tflog.Warn(ctx, details)
-				diags.AddWarning(details, "")
-			} else {
-				msg := "AWS KMS (" + kmsID + ") was not found."
-				details := utils.ApiError(msg, map[string]interface{}{"kms_id": kmsID})
-				tflog.Error(ctx, details)
-				diags.AddError(details, "")
-			}
-			return ""
-		}
-		msg := "Error " + opLabel + " AWS KMS, failed to read AWS KMS."
-		details := utils.ApiError(msg, map[string]interface{}{"error": err.Error(), "kms_id": kmsID})
-		tflog.Error(ctx, details)
-		diags.AddError(details, "")
-		return ""
-	}
-	return response
 }
 
 // setKmsState populates the Terraform state for an AWS KMS from an API response JSON string.

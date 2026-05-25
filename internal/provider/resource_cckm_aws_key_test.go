@@ -1,6 +1,7 @@
 package provider
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"regexp"
@@ -8,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/ThalesGroup/terraform-provider-ciphertrust/internal/provider/common"
 	"github.com/google/uuid"
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
 	"github.com/hashicorp/terraform-plugin-testing/knownvalue"
@@ -335,7 +337,7 @@ func TestCckmAWSKeyNative(t *testing.T) {
 				ImportState:             true,
 				ImportStateVerify:       true,
 				ImportStateVerifyIgnore: importStateVerifyIgnoreAwsKey,
-				ImportStateIdFunc:       getAwsKeyKeyID(keyResource),
+				ImportStateIdFunc:       getResourceAttr(keyResource, "id"),
 			},
 			{
 				Config: awsConnectionResource + updateKeyConfigStr,
@@ -545,21 +547,21 @@ func TestCckmAWSKeyImportKeyMaterialLocal(t *testing.T) {
 				ImportState:             true,
 				ImportStateVerify:       true,
 				ImportStateVerifyIgnore: importStateVerifyIgnoreAwsKey,
-				ImportStateIdFunc:       getAwsKeyKeyID(aesKeyResource),
+				ImportStateIdFunc:       getResourceAttr(aesKeyResource, "id"),
 			},
 			{
 				ResourceName:            rsaKeyResource,
 				ImportState:             true,
 				ImportStateVerify:       true,
 				ImportStateVerifyIgnore: importStateVerifyIgnoreAwsKey,
-				ImportStateIdFunc:       getAwsKeyKeyID(rsaKeyResource),
+				ImportStateIdFunc:       getResourceAttr(rsaKeyResource, "id"),
 			},
 			{
 				ResourceName:            ecKeyResource,
 				ImportState:             true,
 				ImportStateVerify:       true,
 				ImportStateVerifyIgnore: importStateVerifyIgnoreAwsKey,
-				ImportStateIdFunc:       getAwsKeyKeyID(ecKeyResource),
+				ImportStateIdFunc:       getResourceAttr(ecKeyResource, "id"),
 			},
 		},
 	})
@@ -627,7 +629,7 @@ func TestCckmAWSKeyUpload(t *testing.T) {
 				ImportState:             true,
 				ImportStateVerify:       true,
 				ImportStateVerifyIgnore: importStateVerifyIgnoreAwsKey,
-				ImportStateIdFunc:       getAwsKeyKeyID(localKeyResource),
+				ImportStateIdFunc:       getResourceAttr(localKeyResource, "id"),
 			},
 			{
 				// Verify ModifyPlan fires an error when upload_key.source_key_identifier is changed.
@@ -802,14 +804,14 @@ func TestCckmAWSKeyMultiRegionNative(t *testing.T) {
 				ImportState:             true,
 				ImportStateVerify:       true,
 				ImportStateVerifyIgnore: importStateVerifyIgnoreAwsKey,
-				ImportStateIdFunc:       getAwsKeyKeyID(keyResource),
+				ImportStateIdFunc:       getResourceAttr(keyResource, "id"),
 			},
 			{
 				ResourceName:            replicaResource1,
 				ImportState:             true,
 				ImportStateVerify:       true,
 				ImportStateVerifyIgnore: importStateVerifyIgnoreAwsKey,
-				ImportStateIdFunc:       getAwsKeyKeyID(replicaResource1),
+				ImportStateIdFunc:       getResourceAttr(replicaResource1, "id"),
 			},
 			{
 				Config: updateResources,
@@ -931,14 +933,14 @@ func TestCckmAWSKeyMultiRegionLocal(t *testing.T) {
 				ImportState:             true,
 				ImportStateVerify:       true,
 				ImportStateVerifyIgnore: importStateVerifyIgnoreAwsKey,
-				ImportStateIdFunc:       getAwsKeyKeyID(awsKeyResource),
+				ImportStateIdFunc:       getResourceAttr(awsKeyResource, "id"),
 			},
 			{
 				ResourceName:            replicaResource,
 				ImportState:             true,
 				ImportStateVerify:       true,
 				ImportStateVerifyIgnore: importStateVerifyIgnoreAwsKey,
-				ImportStateIdFunc:       getAwsKeyKeyID(replicaResource),
+				ImportStateIdFunc:       getResourceAttr(replicaResource, "id"),
 			},
 		},
 	})
@@ -1091,26 +1093,28 @@ func TestCckmAWSKeyNativeImport(t *testing.T) {
 				ImportState:             true,
 				ImportStateVerify:       true,
 				ImportStateVerifyIgnore: importStateVerifyIgnoreAwsKey,
-				ImportStateIdFunc:       getAwsKeyKeyID(keyResource),
+			ImportStateIdFunc:       getResourceAttr(keyResource, "id"),
 			},
 		},
 	})
 }
 
-func getAwsKeyKeyID(resourceName string) resource.ImportStateIdFunc {
-	//	return func(s *terraform.State) error {
+// getResourceAttr returns an ImportStateIdFunc (and general state-extraction helper)
+// that reads the named attribute from resourceName in the current Terraform state.
+// Pass attrName = "id" to get the primary resource ID, or any other attribute name
+// (e.g. "key_id", "kms") to extract a different field.
+func getResourceAttr(resourceName, attrName string) resource.ImportStateIdFunc {
 	return func(s *terraform.State) (string, error) {
 		rs, ok := s.RootModule().Resources[resourceName]
 		if !ok {
-			return "", fmt.Errorf("not found: " + resourceName)
+			return "", fmt.Errorf("not found: %s", resourceName)
 		}
-		id, ok := rs.Primary.Attributes["id"]
+		val, ok := rs.Primary.Attributes[attrName]
 		if !ok {
-			return "", fmt.Errorf("id not found in state for " + resourceName)
+			return "", fmt.Errorf("attribute %q not found in state for %s", attrName, resourceName)
 		}
-		return id, nil
+		return val, nil
 	}
-
 }
 
 // TestCckmAWSKeyImportMaterialResourceNoExpiry tests the ciphertrust_aws_key_import_material
@@ -1226,7 +1230,113 @@ func TestCckmAWSKeyImportMaterialResourceWithExpiry(t *testing.T) {
 					resource.TestCheckResourceAttr(reimportResource, "origin", "EXTERNAL"),
 					resource.TestCheckResourceAttr(reimportResource, "key_state", "Enabled"),
 					resource.TestCheckResourceAttr(reimportResource, "expiration_model", "KEY_MATERIAL_EXPIRES"),
-					testCheckAttributeContains(reimportResource, "valid_to", []string{validTo[:10]}, true),
+				testCheckAttributeContains(reimportResource, "valid_to", []string{validTo[:10]}, true),
+				),
+			},
+		},
+	})
+}
+
+// TestCckmAWSKeyKmsDeleteRecovery verifies provider recovery after a KMS is
+// deleted out-of-band. On refresh the KMS and ACL are dropped from state;
+// the key is preserved in state (KMS 404 is a hard error for the key). On
+// the next apply Terraform recreates the KMS and ACL; the key is
+// re-associated with the new KMS registration. The ACL check in Step 3
+// confirms the ACL is recreated on the new KMS.
+func TestCckmAWSKeyKmsDeleteRecovery(t *testing.T) {
+	awsConnectionResource, ok := initCckmAwsTest()
+	if !ok {
+		t.Skip()
+	}
+	keyConfig := `
+		resource "ciphertrust_user" "acl_user" {
+			username = "%s"
+			password = "LongPassword1234++"
+		}
+		resource "ciphertrust_aws_acl" "user_acl" {
+			kms_id  = ciphertrust_aws_kms.kms.id
+			user_id = ciphertrust_user.acl_user.id
+			actions = ["keycreate"]
+		}
+		resource "ciphertrust_aws_key" "native_key" {
+			alias   = [local.alias]
+			kms     = ciphertrust_aws_kms.kms.id
+			region  = ciphertrust_aws_kms.kms.regions[0]
+			origin  = "AWS_KMS"
+		}`
+	userName := "tf-" + uuid.New().String()[:8]
+	keyResource := "ciphertrust_aws_key.native_key"
+	aclResource := "ciphertrust_aws_acl.user_acl"
+	kmsResource := "ciphertrust_aws_kms.kms"
+	fullConfig := awsConnectionResource + fmt.Sprintf(keyConfig, userName)
+
+	var capturedKMSID string
+
+	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { cleanupCckmAwsKMS() },
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		Steps: []resource.TestStep{
+			{
+				// Step 1: create KMS + key + user ACL; capture the KMS ID for
+				// out-of-band deletion.
+				Config: fullConfig,
+				Check: resource.ComposeTestCheckFunc(
+					resource.TestCheckResourceAttrSet(keyResource, "id"),
+					resource.TestCheckResourceAttrSet(keyResource, "key_id"),
+					resource.TestCheckResourceAttrSet(aclResource, "id"),
+					func(s *terraform.State) error {
+						rs, ok := s.RootModule().Resources[kmsResource]
+						if !ok {
+							return fmt.Errorf("kms resource not found in state")
+						}
+						capturedKMSID = rs.Primary.ID
+						return nil
+					},
+				),
+			},
+			{
+				// Step 2: delete the KMS out-of-band in PreConfig, then refresh state.
+				// Expected outcome:
+				//   - KMS: dropped from state (404 = warning + RemoveResource).
+				//   - Key: preserved in state (KMS 404 is a hard error for the key,
+				//     keeping it in state so it can be re-associated when the KMS returns).
+				//   - ACL: dropped from state (KMS 404 = warning + RemoveResource, since
+				//     an ACL cannot exist without its parent KMS).
+				PreConfig: func() {
+					client, ok := createCMClient()
+					if !ok {
+						return
+					}
+					_, _ = client.DeleteByURL(
+						context.Background(),
+						"delete-kms-recovery-test",
+						common.URL_AWS_KMS+"/"+capturedKMSID,
+					)
+				},
+				RefreshState:       true,
+				ExpectNonEmptyPlan: true,
+			},
+			{
+				// Step 3: re-apply to recover.
+				//   - KMS: recreated by Terraform (was in config, absent from state).
+				//   - Key: re-associated with the new KMS (was preserved in state in Step 2).
+				//   - ACL: recreated from scratch (was removed from state in Step 2).
+				Config: fullConfig,
+				Check: resource.ComposeTestCheckFunc(
+					resource.TestCheckResourceAttrSet(kmsResource, "id"),
+					resource.TestCheckResourceAttrSet(keyResource, "id"),
+					resource.TestCheckResourceAttrSet(keyResource, "key_id"),
+					resource.TestCheckResourceAttr(keyResource, "key_state", "Enabled"),
+					resource.TestCheckResourceAttrSet(aclResource, "id"),
+				),
+			},
+			{
+				// Step 4: refresh state so the KMS Read picks up the ACL that was
+				// created after the KMS in Step 3. The acls.# check confirms the
+				// ACL is visible on the KMS registration.
+				RefreshState: true,
+				Check: resource.ComposeTestCheckFunc(
+					resource.TestCheckResourceAttr(kmsResource, "acls.#", "1"),
 				),
 			},
 		},
