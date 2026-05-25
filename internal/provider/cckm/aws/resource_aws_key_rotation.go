@@ -57,6 +57,8 @@ func (r *resourceAWSKeyRotation) Schema(_ context.Context, _ resource.SchemaRequ
 			"This is only applicable to single or multi-region native symmetric keys. " +
 			"This resource will only submit the request to AWS and AWS will rotate the key-material asynchronously. " +
 			"Use the aws_key_rotation_list datasource to view key material rotation history of EXTERNAL SYMMETRIC_DEFAULT keys. " +
+			"If the AWS key is not found in CipherTrust Manager during refresh, an error is returned. " +
+			"Use 'terraform state rm' to remove this resource from state if the key no longer exists. " +
 			"\n\n\n\nNote: This resource and the datasource are only available for CipherTrust Manager version 2.20 and greater.",
 		Attributes: map[string]schema.Attribute{
 			"id": schema.StringAttribute{
@@ -105,7 +107,7 @@ func (r *resourceAWSKeyRotation) Create(ctx context.Context, req resource.Create
 }
 
 // Read refreshes the Terraform state for an AWS key by fetching the latest data from CipherTrust Manager.
-// Returns an error if the KMS is not reachable
+// Returns an error if the key is not found (no kms_id is tracked by this resource, so preserveState is never set).
 func (r *resourceAWSKeyRotation) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
 	id := uuid.New().String()
 	tflog.Debug(ctx, common.MSG_METHOD_START+"[resource_aws_key_rotation.go -> Read]["+id+"]")
@@ -116,7 +118,7 @@ func (r *resourceAWSKeyRotation) Read(ctx context.Context, req resource.ReadRequ
 		return
 	}
 	keyID := state.KeyID.ValueString()
-	response := getAwsKey(ctx, id, r.client, "", keyID, "reading", &resp.Diagnostics)
+	response, _ := getAwsKey(ctx, id, r.client, "", keyID, "reading", &resp.Diagnostics)
 	if resp.Diagnostics.HasError() {
 		return
 	}

@@ -100,7 +100,9 @@ func (r *resourceAWSKey) Configure(_ context.Context, req resource.ConfigureRequ
 
 func (r *resourceAWSKey) Schema(_ context.Context, _ resource.SchemaRequest, resp *resource.SchemaResponse) {
 	resp.Schema = schema.Schema{
-		Description: "Use this resource to create and manage AWS keys in CipherTrust Manager.",
+		Description: "Use this resource to create and manage AWS keys in CipherTrust Manager. " +
+			"If the KMS is not found during refresh the key is kept in state (it is hidden in CipherTrust Manager until the KMS is recovered). " +
+			"A key pending deletion is removed from state automatically on refresh, as it is already being deleted.",
 		Attributes: map[string]schema.Attribute{
 			"id": schema.StringAttribute{
 				Computed:    true,
@@ -172,7 +174,7 @@ func (r *resourceAWSKey) Schema(_ context.Context, _ resource.SchemaRequest, res
 			"kms": schema.StringAttribute{
 				Optional:    true,
 				Computed:    true,
-				Description: "Name or ID of the KMS to be used to create the key. Required unless replicating a multi-region key.",
+				Description: "Name of the KMS to be used to create the key. Required unless replicating a multi-region key. For backwards compatibility the KMS ID is also accepted.",
 			},
 			"multi_region": schema.BoolAttribute{
 				Optional:    true,
@@ -626,7 +628,11 @@ func (r *resourceAWSKey) Create(ctx context.Context, req resource.CreateRequest,
 }
 
 // Read refreshes the Terraform state for an AWS key by fetching the latest data from CipherTrust Manager.
-// Returns an error if the key or KMS is not reachable
+// If the key is not found and the KMS is also not found, the existing state is preserved with a warning
+// so that recovery (recreating the KMS) is possible without manual state surgery.
+// If the key is found but has gone=true (its region was removed from the KMS regions list), a warning
+// is added and state is still updated - the key exists but all key operations will fail until the region
+// is restored to the KMS.
 func (r *resourceAWSKey) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
 	id := uuid.New().String()
 	tflog.Debug(ctx, common.MSG_METHOD_START+"[resource_aws_key.go -> Read]["+id+"]")
@@ -636,9 +642,20 @@ func (r *resourceAWSKey) Read(ctx context.Context, req resource.ReadRequest, res
 	if resp.Diagnostics.HasError() {
 		return
 	}
-	response := getAwsKey(ctx, id, r.client, state.KMSID.ValueString(), state.ID.ValueString(), "reading", &resp.Diagnostics)
+	response, preserveState := getAwsKey(ctx, id, r.client, state.KMSID.ValueString(), state.ID.ValueString(), "reading", &resp.Diagnostics)
 	if resp.Diagnostics.HasError() {
 		return
+	}
+	if preserveState {
+		// KMS not found - key is hidden. Keep existing state unchanged until KMS is recovered.
+		resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
+		return
+	}
+	if gjson.Get(response, "gone").Bool() {
+		msg := "AWS key is gone - its region is not in the KMS regions list. Key operations will fail until the region is restored to the KMS."
+		details := utils.ApiError(msg, map[string]interface{}{"key_id": state.KeyID.ValueString()})
+		tflog.Warn(ctx, details)
+		resp.Diagnostics.AddWarning(details, "")
 	}
 	readKeyState := gjson.Get(response, "aws_param.KeyState").String()
 	if readKeyState == "PendingDeletion" || readKeyState == "PendingReplicaDeletion" {
@@ -678,7 +695,7 @@ func (r *resourceAWSKey) Update(ctx context.Context, req resource.UpdateRequest,
 
 	keyID := state.KeyID.ValueString()
 	plan.KeyID = types.StringValue(keyID)
-	response := getAwsKey(ctx, id, r.client, state.KMSID.ValueString(), keyID, "updating", &resp.Diagnostics)
+	response, _ := getAwsKey(ctx, id, r.client, state.KMSID.ValueString(), keyID, "updating", &resp.Diagnostics)
 	if resp.Diagnostics.HasError() {
 		return
 	}
@@ -773,7 +790,8 @@ func (r *resourceAWSKey) Update(ctx context.Context, req resource.UpdateRequest,
 }
 
 // Delete schedules an AWS key for deletion via the schedule-deletion API. In either case:
-//   - If the KMS cannot be found or is unreachable, a hard error is returned and the key is kept in state.
+//   - If the KMS is not found (404), a warning is added and the key is removed from state.
+//   - If the KMS has a non-404 error, a hard error is returned and the key is kept in state.
 //   - If the key is not found (404), a warning is returned and the key is removed from state.
 //   - If the key is already in PendingDeletion or PendingReplicaDeletion state, a warning is returned and the key is removed from state.
 func (r *resourceAWSKey) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
@@ -786,7 +804,7 @@ func (r *resourceAWSKey) Delete(ctx context.Context, req resource.DeleteRequest,
 		return
 	}
 	keyID := state.KeyID.ValueString()
-	response := getAwsKey(ctx, id, r.client, state.KMSID.ValueString(), keyID, "deleting", &resp.Diagnostics)
+	response, _ := getAwsKey(ctx, id, r.client, state.KMSID.ValueString(), keyID, "deleting", &resp.Diagnostics)
 	if resp.Diagnostics.HasError() {
 		return // KMS not found or unreachable - hard error, resource kept in state
 	}
@@ -839,6 +857,7 @@ func (r *resourceAWSKey) ModifyPlan(ctx context.Context, req resource.ModifyPlan
 		return
 	}
 
+
 	var plan, state AWSKeyTFSDK
 
 	resp.Diagnostics.Append(req.Plan.Get(ctx, &plan)...)
@@ -883,9 +902,26 @@ func (r *resourceAWSKey) ModifyPlan(ctx context.Context, req resource.ModifyPlan
 		changed = append(changed, "key_usage")
 	}
 
+	id := uuid.NewString()
 	if !plan.KMS.IsNull() && !plan.KMS.IsUnknown() &&
 		plan.KMS != state.KMS {
-		changed = append(changed, "kms")
+		kmsID := state.KMSID.ValueString()
+		if plan.KMS.ValueString() == kmsID {
+			// plan.KMS already matches state.KMSID - the kms attribute in state is stale
+			// (e.g. the KMS was deleted and a new one re-imported with the same name). The
+			// key is already associated with the KMS the user has configured, so this is not
+			// an immutable change - allow it without error.
+		} else if kmsID != "" {
+			_, err := r.client.GetById(ctx, id, kmsID, common.URL_AWS_KMS)
+			if err != nil && strings.Contains(err.Error(), notFoundError) {
+				msg := "Previous AWS KMS was not found, allowing update."
+				details := utils.ApiError(msg, map[string]interface{}{"kms_id": kmsID})
+				tflog.Warn(ctx, details)
+				resp.Diagnostics.AddWarning(details, "")
+			} else {
+				changed = append(changed, "kms")
+			}
+		}
 	}
 
 	if !plan.MultiRegion.IsNull() && !plan.MultiRegion.IsUnknown() &&
@@ -997,6 +1033,7 @@ func (r *resourceAWSKey) setKeyState(ctx context.Context, response string, state
 	tflog.Debug(ctx, "[resource_aws_key.go -> setKeyState][response:"+redactAWSResponse(response))
 	setCommonKeyState(ctx, response, &state.AWSKeyCommonTFSDK, diags)
 	setCommonKeyStateEx(ctx, response, &state.AWSKeyCommonTFSDK, diags)
+	state.AutoRotate = types.BoolValue(gjson.Get(response, "aws_param.KeyRotationEnabled").Bool())
 	if gjson.Get(response, "aws_param.RotationPeriodInDays").Exists() {
 		state.AutoRotationPeriodInDays = types.Int64Value(gjson.Get(response, "aws_param.RotationPeriodInDays").Int())
 	} else {
@@ -2716,89 +2753,152 @@ func (r *resourceAWSKey) createKeyMaterial(ctx context.Context, id string, impor
 	return response
 }
 
-// getAwsKey fetches an AWS key from CipherTrust Manager by its resource ID.
-// If kmsID is non-empty, the KMS is verified to exist before fetching the key;
-// a missing or unreachable KMS is always a hard error regardless of opLabel.
-// If keyID has no backslash (new format - CM resource UUID), the key is fetched directly by ID.
-// If keyID has a backslash (legacy region\aws-key-id format), the key is fetched via list query.
-// A 404 on the key itself is treated according to opLabel: when opLabel is "deleting" a warning is
-// added and an empty string is returned; for any other opLabel an error is added and an empty string is returned.
-func getAwsKey(ctx context.Context, id string, client *common.Client, kmsID string, keyID string, opLabel string, diags *diag.Diagnostics) string {
-	if kmsID != "" {
-		getAwsKms(ctx, id, client, kmsID, "reading", diags)
-		if diags.HasError() {
-			return ""
-		}
+// getAwsKey fetches an AWS key from CipherTrust Manager by its CM resource UUID (new format).
+// Returns (keyJSON, false) on success.
+// If the key is not found (404):
+//   - opLabel "deleting": warning added, ("", false) returned - resource will be removed from state.
+//   - opLabel "reading" + KMS 404: warning added, ("", true) returned - caller should preserve state.
+//   - opLabel "reading" + KMS reachable error: error added, ("", false) returned.
+//   - other opLabels + kmsID set: KMS is checked for a specific error; error added, ("", false) returned.
+//   - kmsID empty: generic error added, ("", false) returned.
+//
+// A non-404 key error is always a hard error. ("", false) is returned.
+// Keys stored in the legacy region\aws-key-id format are handled by getAwsLegacyKey.
+func getAwsKey(ctx context.Context, id string, client *common.Client, kmsID string, keyID string, opLabel string, diags *diag.Diagnostics) (string, bool) {
+	if strings.Contains(keyID, "\\") {
+		return getAwsLegacyKey(ctx, id, client, kmsID, keyID, opLabel, diags)
 	}
-	if !strings.Contains(keyID, "\\") {
-		// New format: keyID is the CM resource UUID. Fetch directly.
-		keyJSON, err := client.GetById(ctx, id, keyID, common.URL_AWS_KEY)
-		if err != nil {
-			msg := "Error reading AWS key."
-			details := utils.ApiError(msg, map[string]interface{}{"error": err.Error(), "key_id": keyID})
-			if strings.Contains(err.Error(), notFoundError) {
-				if opLabel == "deleting" {
-					msg = "AWS key (" + keyID + ") was not found. It will be removed from state."
-					details = utils.ApiError(msg, map[string]interface{}{"key_id": keyID})
-					tflog.Warn(ctx, details)
-					diags.AddWarning(details, "")
+	keyJSON, err := client.GetById(ctx, id, keyID, common.URL_AWS_KEY)
+	if err != nil {
+		if strings.Contains(err.Error(), notFoundError) {
+			if opLabel == "deleting" {
+				msg := "AWS key was not found. It will be removed from state."
+				details := utils.ApiError(msg, map[string]interface{}{"key_id": keyID})
+				tflog.Warn(ctx, details)
+				diags.AddWarning(details, "")
+			} else if kmsID != "" {
+				_, kmsErr := client.GetById(ctx, id, kmsID, common.URL_AWS_KMS)
+				if kmsErr != nil {
+					if strings.Contains(kmsErr.Error(), notFoundError) {
+						if opLabel == "reading" {
+							// KMS gone - key is hidden. Signal caller to preserve existing state.
+							msg := "AWS KMS was not found while reading AWS key. Key state preserved until KMS is recovered."
+							details := utils.ApiError(msg, map[string]interface{}{"kms_id": kmsID, "key_id": keyID})
+							tflog.Warn(ctx, details)
+							diags.AddWarning(details, "")
+							return "", true
+						}
+						msg := "AWS KMS was not found while " + opLabel + " AWS key."
+						details := utils.ApiError(msg, map[string]interface{}{"kms_id": kmsID, "key_id": keyID})
+						tflog.Error(ctx, details)
+						diags.AddError(details, "")
+					} else {
+						msg := "Error reading AWS KMS while " + opLabel + " AWS key."
+						details := utils.ApiError(msg, map[string]interface{}{"kms_id": kmsID, "key_id": keyID, "error": kmsErr.Error()})
+						tflog.Error(ctx, details)
+						diags.AddError(details, "")
+					}
 				} else {
-					msg = "AWS key (" + keyID + ") was not found."
-					details = utils.ApiError(msg, map[string]interface{}{"key_id": keyID})
+					// KMS is reachable but the key is gone - use terraform state rm to remove.
+					msg := "AWS key was not found in CipherTrust Manager while " + opLabel + ". Use terraform state rm to remove this resource from state if the key no longer exists."
+					details := utils.ApiError(msg, map[string]interface{}{"kms_id": kmsID, "key_id": keyID})
 					tflog.Error(ctx, details)
 					diags.AddError(details, "")
 				}
-				return ""
+			} else {
+				msg := "AWS key was not found while " + opLabel + "."
+				details := utils.ApiError(msg, map[string]interface{}{"key_id": keyID})
+				tflog.Error(ctx, details)
+				diags.AddError(details, "")
 			}
-			tflog.Error(ctx, details)
-			diags.AddError(details, "")
-			return ""
+			return "", false
 		}
-		return keyJSON
+		msg := "Error " + opLabel + " AWS key."
+		details := utils.ApiError(msg, map[string]interface{}{"error": err.Error(), "key_id": keyID})
+		tflog.Error(ctx, details)
+		diags.AddError(details, "")
+		return "", false
 	}
-	// Legacy format: region\aws-key-id. Use list query for backwards compatibility.
+	return keyJSON, false
+}
+
+// getAwsLegacyKey fetches an AWS key using the legacy region\aws-key-id format via a list query.
+// Kept for backwards compatibility when migrating from beta provider versions.
+// The same opLabel/kmsID/preserveState semantics as getAwsKey apply when no key is found.
+func getAwsLegacyKey(ctx context.Context, id string, client *common.Client, kmsID string, keyID string, opLabel string, diags *diag.Diagnostics) (string, bool) {
 	region, kid, err := decodeAwsKeyResourceID(keyID)
 	if err != nil {
 		diags.AddError("Failed to decode key ID "+keyID+".", err.Error())
-		return ""
+		return "", false
 	}
 	filters := url.Values{}
 	filters.Add("keyid", kid)
 	filters.Add("region", region)
 	response, err := client.ListWithFilters(ctx, id, common.URL_AWS_KEY, filters)
 	if err != nil {
-		msg := "Failed to read AWS key."
+		msg := "Error " + opLabel + " AWS key, failed to list key."
 		details := utils.ApiError(msg, map[string]interface{}{"error": err.Error(), "kid": kid, "region": region})
 		tflog.Error(ctx, details)
 		diags.AddError(details, "")
-		return ""
+		return "", false
 	}
 	total := gjson.Get(response, "total").Int()
 	if total == 0 {
-		msg := "AWS key was not found."
-		details := utils.ApiError(msg, map[string]interface{}{"kid": kid, "region": region})
 		if opLabel == "deleting" {
+			msg := "AWS key was not found. It will be removed from state."
+			details := utils.ApiError(msg, map[string]interface{}{"kid": kid, "region": region})
 			tflog.Warn(ctx, details)
 			diags.AddWarning(details, "")
+		} else if kmsID != "" {
+			_, kmsErr := client.GetById(ctx, id, kmsID, common.URL_AWS_KMS)
+			if kmsErr != nil {
+				if strings.Contains(kmsErr.Error(), notFoundError) {
+					if opLabel == "reading" {
+						// KMS gone - key is hidden. Signal caller to preserve existing state.
+						msg := "AWS KMS was not found while reading AWS key. Key state preserved until KMS is recovered."
+						details := utils.ApiError(msg, map[string]interface{}{"kms_id": kmsID, "kid": kid, "region": region})
+						tflog.Warn(ctx, details)
+						diags.AddWarning(details, "")
+						return "", true
+					}
+					msg := "AWS KMS was not found while " + opLabel + " AWS key."
+					details := utils.ApiError(msg, map[string]interface{}{"kms_id": kmsID, "kid": kid, "region": region})
+					tflog.Error(ctx, details)
+					diags.AddError(details, "")
+				} else {
+					msg := "Error reading AWS KMS while " + opLabel + " AWS key."
+					details := utils.ApiError(msg, map[string]interface{}{"kms_id": kmsID, "kid": kid, "region": region, "error": kmsErr.Error()})
+					tflog.Error(ctx, details)
+					diags.AddError(details, "")
+				}
+			} else {
+				// KMS is reachable but the key is gone - use terraform state rm to remove.
+				msg := "AWS key was not found in CipherTrust Manager while " + opLabel + ". Use terraform state rm to remove this resource from state if the key no longer exists."
+				details := utils.ApiError(msg, map[string]interface{}{"kms_id": kmsID, "kid": kid, "region": region})
+				tflog.Error(ctx, details)
+				diags.AddError(details, "")
+			}
 		} else {
+			msg := "AWS key was not found while " + opLabel + "."
+			details := utils.ApiError(msg, map[string]interface{}{"kid": kid, "region": region})
 			tflog.Error(ctx, details)
 			diags.AddError(details, "")
 		}
-		return ""
+		return "", false
 	}
 	if total != 1 {
-		msg := "Error reading AWS key, failed to list just one key."
+		msg := "Error " + opLabel + " AWS key, list returned more than one result."
 		details := utils.ApiError(msg, map[string]interface{}{"kid": kid, "region": region})
 		tflog.Error(ctx, details)
 		diags.AddError(details, "")
-		return ""
+		return "", false
 	}
 	resources := gjson.Get(response, "resources").Array()
 	var keyJSON string
 	for _, keyResourceJSON := range resources {
 		keyJSON = keyResourceJSON.Raw
 	}
-	return keyJSON
+	return keyJSON, false
 }
 
 // removeKeyPolicyTemplateTag removes the policy template tag (cckm_policy_template_id) from an AWS key

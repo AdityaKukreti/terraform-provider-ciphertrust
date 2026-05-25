@@ -244,3 +244,33 @@ func testAccListResources() resource.TestCheckFunc {
 		return nil
 	}
 }
+
+// createCMClient constructs a common.Client from the standard CIPHERTRUST_*
+// environment variables. Returns the client and true on success, or nil and
+// false when any required variable is missing or the client cannot be created.
+// The caller is responsible for logging any skip/error message.
+//
+// When CTAAS=true the auth_domain is read from CIPHERTRUST_AUTH_DOMAIN and
+// domain is left empty (CTaaS does not use the domain field). Otherwise both
+// domain and auth_domain are read from CIPHERTRUST_DOMAIN and
+// CIPHERTRUST_AUTH_DOMAIN respectively.
+func createCMClient() (*common.Client, bool) {
+	address := os.Getenv("CIPHERTRUST_ADDRESS")
+	username := os.Getenv("CIPHERTRUST_USERNAME")
+	password := os.Getenv("CIPHERTRUST_PASSWORD")
+	if address == "" || username == "" || password == "" {
+		fmt.Println("createCMClient: CIPHERTRUST_ADDRESS, CIPHERTRUST_USERNAME and CIPHERTRUST_PASSWORD must be set")
+		return nil, false
+	}
+	var domain string
+	authDomain := os.Getenv("CIPHERTRUST_AUTH_DOMAIN")
+	if os.Getenv("CTAAS") != "true" {
+		domain = os.Getenv("CIPHERTRUST_DOMAIN")
+	}
+	client, err := common.NewClient(context.Background(), uuid.NewString(), &address, &authDomain, &domain, &username, &password, true, 180)
+	if err != nil {
+		fmt.Printf("createCMClient: failed to create client: %s\n", err.Error())
+		return nil, false
+	}
+	return client, true
+}
