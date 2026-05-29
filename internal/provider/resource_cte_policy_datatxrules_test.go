@@ -62,7 +62,7 @@ resource "ciphertrust_cte_policy_data_tx_rule" "datatx" {
 }
 `,
 				Check: resource.ComposeAggregateTestCheckFunc(
-					resource.TestCheckResourceAttrSet("ciphertrust_cte_policy_data_tx_rule.datatx", "rule_id"),
+					resource.TestCheckResourceAttrSet("ciphertrust_cte_policy_data_tx_rule.datatx", "rule.id"),
 				),
 			},
 			// Delete testing automatically occurs in TestCase

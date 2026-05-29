@@ -11,7 +11,9 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/booldefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringdefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
@@ -43,23 +45,27 @@ func (r *resourceCTEPolicySecurityRule) Schema(_ context.Context, _ resource.Sch
 				Required:    true,
 				Description: "ID of the parent policy in which Security Rule need to be added",
 			},
-			"rule_id": schema.StringAttribute{
-				Computed:    true,
-				Description: "ID of the Security Rule created in the parent policy",
-				PlanModifiers: []planmodifier.String{
-					stringplanmodifier.UseStateForUnknown(),
-				},
-			},
-			"order_number": schema.Int64Attribute{
-				Optional:    true,
-				Description: "Precedence order of the rule in the parent policy.",
-			},
+
 			"rule": schema.SingleNestedAttribute{
 				Optional:    true,
 				Description: "Security Rule to be updated in the parent policy.",
 				Attributes: map[string]schema.Attribute{
+					"id": schema.StringAttribute{
+						Computed:    true,
+						Description: "Identifier of the security rule.",
+						PlanModifiers: []planmodifier.String{
+							stringplanmodifier.UseStateForUnknown(),
+						},
+					},
+					"order_number": schema.Int64Attribute{
+						Optional:    true,
+						Computed:    true,
+						Description: "Precedence order of the rule in the parent policy.",
+					},
 					"action": schema.StringAttribute{
 						Optional:    true,
+						Computed:    true,
+						Default:     stringdefault.StaticString("all_ops"),
 						Description: "Actions applicable to the rule. Examples of actions are read, write, all_ops, and key_op.",
 						Validators: []validator.String{
 							stringvalidator.OneOf([]string{"read", "write", "all_ops", "key_op"}...),
@@ -71,30 +77,44 @@ func (r *resourceCTEPolicySecurityRule) Schema(_ context.Context, _ resource.Sch
 					},
 					"exclude_process_set": schema.BoolAttribute{
 						Optional:    true,
+						Computed:    true,
+						Default:     booldefault.StaticBool(false),
 						Description: "Process set to exclude. Supported for Standard, LDT and IDT policies.",
 					},
 					"exclude_resource_set": schema.BoolAttribute{
 						Optional:    true,
+						Computed:    true,
+						Default:     booldefault.StaticBool(false),
 						Description: "Resource set to exclude. Supported for Standard, LDT and IDT policies.",
 					},
 					"exclude_user_set": schema.BoolAttribute{
 						Optional:    true,
+						Computed:    true,
+						Default:     booldefault.StaticBool(false),
 						Description: "User set to exclude. Supported for Standard, LDT and IDT policies.",
 					},
 					"partial_match": schema.BoolAttribute{
 						Optional:    true,
+						Computed:    true,
+						Default:     booldefault.StaticBool(false),
 						Description: "Whether to allow partial match operations. By default, it is enabled. Supported for Standard, LDT and IDT policies.",
 					},
 					"process_set_id": schema.StringAttribute{
 						Optional:    true,
+						Computed:    true,
+						Default:     stringdefault.StaticString(""),
 						Description: "ID of the process set to link to the policy.",
 					},
 					"resource_set_id": schema.StringAttribute{
 						Optional:    true,
+						Computed:    true,
+						Default:     stringdefault.StaticString(""),
 						Description: "ID of the resource set to link to the policy. Supported for Standard, LDT and IDT policies.",
 					},
 					"user_set_id": schema.StringAttribute{
 						Optional:    true,
+						Computed:    true,
+						Default:     stringdefault.StaticString(""),
 						Description: "ID of the user set to link to the policy.",
 					},
 				},
@@ -156,12 +176,11 @@ func (r *resourceCTEPolicySecurityRule) Create(ctx context.Context, req resource
 		return
 	}
 
-	response, err := r.client.PostData(
+	response, err := r.client.PostDataV2(
 		ctx,
 		id,
 		common.URL_CTE_POLICY+"/"+plan.CTEClientPolicyID.ValueString()+"/securityrules",
-		payloadJSON,
-		"id")
+		payloadJSON)
 	if err != nil {
 		tflog.Debug(ctx, common.ERR_METHOD_END+err.Error()+" [resource_cte_policy_securityrules.go -> Create]["+id+"]")
 		resp.Diagnostics.AddError(
@@ -170,8 +189,13 @@ func (r *resourceCTEPolicySecurityRule) Create(ctx context.Context, req resource
 		)
 		return
 	}
-
-	plan.SecurityRuleID = types.StringValue(response)
+	var newRule SecurityRuleJSON
+	if err := json.Unmarshal([]byte(response), &newRule); err != nil {
+		resp.Diagnostics.AddError("Error parsing new security rule response", err.Error())
+		return
+	}
+	plan.SecurityRule.ID = types.StringValue(newRule.ID)
+	plan.SecurityRule.OrderNumber = types.Int64Value(*newRule.OrderNumber)
 
 	tflog.Trace(ctx, common.MSG_METHOD_END+"[resource_cte_policy_securityrules.go -> Create]["+id+"]")
 	diags = resp.State.Set(ctx, plan)
@@ -192,27 +216,54 @@ func (r *resourceCTEPolicySecurityRule) Read(ctx context.Context, req resource.R
 	if resp.Diagnostics.HasError() {
 		return
 	}
-	_, err := r.client.GetById(ctx, id, state.SecurityRuleID.ValueString(), common.URL_CTE_POLICY+"/"+state.CTEClientPolicyID.ValueString()+"/securityrules")
-	if err != nil {
+
+	response, err := r.client.GetById(
+		ctx,
+		id,
+		state.SecurityRule.ID.ValueString(),
+		common.URL_CTE_POLICY+"/"+state.CTEClientPolicyID.ValueString()+"/securityrules",
+	)
+
+	if response == "" {
+		resp.State.RemoveResource(ctx)
+		return
+	}
+
+	var apiResp SecurityRuleJSON
+	if err = json.Unmarshal([]byte(response), &apiResp); err != nil {
 		tflog.Debug(ctx, common.ERR_METHOD_END+err.Error()+" [resource_cte_policy_securityrules.go -> Read]["+id+"]")
 		resp.Diagnostics.AddError(
-			"Error reading Security Key Rule on CipherTrust Manager: ",
-			"Could not read Security Key Rule id : ,"+state.SecurityRuleID.ValueString()+err.Error(),
+			"Error parsing CTE Policy Security Rule response",
+			err.Error(),
 		)
 		return
 	}
 
-	tflog.Trace(ctx, common.MSG_METHOD_END+"[resource_cte_policy_securityrules.go -> Read]["+id+"]")
-	resp.Diagnostics.Append(diags...)
-	if resp.Diagnostics.HasError() {
-		return
+	// Refresh all mutable rule fields
+	state.SecurityRule = SecurityRuleTFSDK{
+		OrderNumber:        types.Int64Value(*apiResp.OrderNumber),
+		ID:                 types.StringValue(apiResp.ID),
+		Action:             types.StringValue(apiResp.Action),
+		Effect:             types.StringValue(apiResp.Effect),
+		PartialMatch:       types.BoolValue(apiResp.PartialMatch),
+		UserSetID:          types.StringValue(apiResp.UserSetID),
+		ExcludeUserSet:     types.BoolValue(apiResp.ExcludeUserSet),
+		ProcessSetID:       types.StringValue(apiResp.ProcessSetID),
+		ExcludeProcessSet:  types.BoolValue(apiResp.ExcludeProcessSet),
+		ResourceSetID:      types.StringValue(apiResp.ResourceSetID),
+		ExcludeResourceSet: types.BoolValue(apiResp.ExcludeResourceSet),
 	}
+
+	tflog.Trace(ctx, common.MSG_METHOD_END+"[resource_cte_policy_securityrules.go -> Read]["+id+"]")
+	diags = resp.State.Set(ctx, state)
+	resp.Diagnostics.Append(diags...)
+
 }
 
 // Update updates the resource and sets the updated Terraform state on success.
 func (r *resourceCTEPolicySecurityRule) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
 	var plan CTEPolicyAddSecurityRuleTFSDK
-	var payload SecurityRuleUpdateJSON
+	var payload SecurityRuleJSON
 
 	diags := req.Plan.Get(ctx, &plan)
 	resp.Diagnostics.Append(diags...)
@@ -247,13 +298,14 @@ func (r *resourceCTEPolicySecurityRule) Update(ctx context.Context, req resource
 	if plan.SecurityRule.UserSetID.ValueString() != "" && plan.SecurityRule.UserSetID.ValueString() != types.StringNull().ValueString() {
 		payload.UserSetID = string(plan.SecurityRule.UserSetID.ValueString())
 	}
-	if plan.OrderNumber.ValueInt64() != types.Int64Null().ValueInt64() {
-		payload.OrderNumber = int64(plan.OrderNumber.ValueInt64())
+	if !plan.SecurityRule.OrderNumber.IsNull() && !plan.SecurityRule.OrderNumber.IsUnknown() {
+		OrderNumber := plan.SecurityRule.OrderNumber.ValueInt64()
+		payload.OrderNumber = &OrderNumber
 	}
 
 	payloadJSON, err := json.Marshal(payload)
 	if err != nil {
-		tflog.Debug(ctx, common.ERR_METHOD_END+err.Error()+" [resource_cte_policy_securityrules.go -> Update]["+plan.SecurityRuleID.ValueString()+"]")
+		tflog.Debug(ctx, common.ERR_METHOD_END+err.Error()+" [resource_cte_policy_securityrules.go -> Update]["+plan.SecurityRule.ID.ValueString()+"]")
 		resp.Diagnostics.AddError(
 			"Invalid data input: CTE Policy Security Rule Update",
 			err.Error(),
@@ -261,21 +313,27 @@ func (r *resourceCTEPolicySecurityRule) Update(ctx context.Context, req resource
 		return
 	}
 
-	response, err := r.client.UpdateData(
+	response, err := r.client.UpdateDataV2(
 		ctx,
-		plan.SecurityRuleID.ValueString(),
+		plan.SecurityRule.ID.ValueString(),
 		common.URL_CTE_POLICY+"/"+plan.CTEClientPolicyID.ValueString()+"/securityrules",
 		payloadJSON,
-		"id")
+	)
 	if err != nil {
-		tflog.Debug(ctx, common.ERR_METHOD_END+err.Error()+" [resource_cte_policy_securityrules.go -> Update]["+plan.SecurityRuleID.ValueString()+"]")
+		tflog.Debug(ctx, common.ERR_METHOD_END+err.Error()+" [resource_cte_policy_securityrules.go -> Update]["+plan.SecurityRule.ID.ValueString()+"]")
 		resp.Diagnostics.AddError(
 			"Error updating CTE Policy Security Rule on CipherTrust Manager: ",
 			"Could not update CTE Policy Security Rule, unexpected error: "+err.Error(),
 		)
 		return
 	}
-	plan.SecurityRuleID = types.StringValue(response)
+	var updatedRule SecurityRuleJSON
+	if err := json.Unmarshal([]byte(response), &updatedRule); err != nil {
+		resp.Diagnostics.AddError("Error parsing updated security rule response", err.Error())
+		return
+	}
+	plan.SecurityRule.ID = types.StringValue(updatedRule.ID)
+	plan.SecurityRule.OrderNumber = types.Int64Value(*updatedRule.OrderNumber)
 	diags = resp.State.Set(ctx, plan)
 	resp.Diagnostics.Append(diags...)
 	if resp.Diagnostics.HasError() {
@@ -294,9 +352,9 @@ func (r *resourceCTEPolicySecurityRule) Delete(ctx context.Context, req resource
 	}
 
 	// Delete existing order
-	url := fmt.Sprintf("%s/%s/%s/%s/%s", r.client.CipherTrustURL, common.URL_CTE_POLICY, state.CTEClientPolicyID.ValueString(), "securityrules", state.SecurityRuleID.ValueString())
+	url := fmt.Sprintf("%s/%s/%s/%s/%s", r.client.CipherTrustURL, common.URL_CTE_POLICY, state.CTEClientPolicyID.ValueString(), "securityrules", state.SecurityRule.ID.ValueString())
 	output, err := r.client.DeleteByID(ctx, "DELETE", state.CTEClientPolicyID.ValueString(), url, nil)
-	tflog.Trace(ctx, common.MSG_METHOD_END+"[resource_cte_policy_securityrules.go -> Delete]["+state.SecurityRuleID.ValueString()+"]["+output+"]")
+	tflog.Trace(ctx, common.MSG_METHOD_END+"[resource_cte_policy_securityrules.go -> Delete]["+state.SecurityRule.ID.ValueString()+"]["+output+"]")
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Error Deleting CTE Policy Security Rule",

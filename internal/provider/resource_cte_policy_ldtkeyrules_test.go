@@ -50,7 +50,7 @@ resource "ciphertrust_cte_policy" "ldt_policy" {
     }
 
     transformation_key = {
-      key_id   = ciphertrust_cm_key.key1.id
+      key_id   = ciphertrust_cm_key.key1.name
       key_type = ""
     }
   }]
@@ -131,7 +131,7 @@ resource "ciphertrust_cte_policy" "ldt_policy" {
     }
 
     transformation_key = {
-      key_id   = ciphertrust_cm_key.key1.id
+      key_id   = ciphertrust_cm_key.key1.name
       key_type = ""
     }
   }]
@@ -147,10 +147,10 @@ resource "ciphertrust_cte_policy_ldtkey_rule" "ldt_rule" {
   policy_id = ciphertrust_cte_policy.ldt_policy.id
 
 
-  rule = [{
+  rule = {
     is_exclusion_rule = false
 
-    resource_set_id = ciphertrust_cte_resource_set.rs2.id
+    resource_set_id = ciphertrust_cte_resource_set.rs2.name
 
     current_key = {
       key_id   = "clear_key"
@@ -158,14 +158,14 @@ resource "ciphertrust_cte_policy_ldtkey_rule" "ldt_rule" {
     }
 
     transformation_key = {
-      key_id   = ciphertrust_cm_key.key2.id
+      key_id   = ciphertrust_cm_key.key2.name
       key_type = ""
     }
-  }]
+  }
 }
 `,
 				Check: resource.ComposeAggregateTestCheckFunc(
-					resource.TestCheckResourceAttrSet("ciphertrust_cte_policy_ldtkey_rule.ldt_rule", "rule_id"),
+					resource.TestCheckResourceAttrSet("ciphertrust_cte_policy_ldtkey_rule.ldt_rule", "rule.id"),
 				),
 			},
 			// Delete testing automatically occurs in TestCase
