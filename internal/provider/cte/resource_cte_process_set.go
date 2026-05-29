@@ -75,14 +75,6 @@ func (r *resourceCTEProcessSet) Schema(_ context.Context, _ resource.SchemaReque
 				Computed:    true,
 				Default:     stringdefault.StaticString(""),
 			},
-			// "created_at": schema.StringAttribute{
-			// 	Description: "Date/time the application was created",
-			// 	Computed:    true,
-			// },
-			// "updated_at": schema.StringAttribute{
-			// 	Description: "Date/time the application was updated",
-			// 	Computed:    true,
-			// },
 			"name": schema.StringAttribute{
 				Description: "Name of the ProcessSet",
 				Required:    true,
@@ -203,8 +195,6 @@ func (r *resourceCTEProcessSet) Create(ctx context.Context, req resource.CreateR
 	plan.Account = types.StringValue(gjson.Get(response, "account").String())
 	plan.DevAccount = types.StringValue(gjson.Get(response, "devAccount").String())
 	plan.Application = types.StringValue(gjson.Get(response, "application").String())
-	// plan.CreatedAt = types.StringValue(gjson.Get(response, "createdAt").String())
-	// plan.UpdatedAt = types.StringValue(gjson.Get(response, "updatedAt").String())
 
 	tflog.Trace(ctx, common.MSG_METHOD_END+"[resource_cm_process_set.go -> Create]["+id+"]")
 	diags = resp.State.Set(ctx, plan)
@@ -257,8 +247,6 @@ func (r *resourceCTEProcessSet) Read(ctx context.Context, req resource.ReadReque
 	state.Account = types.StringValue(gjson.Get(response, "account").String())
 	state.DevAccount = types.StringValue(gjson.Get(response, "devAccount").String())
 	state.Application = types.StringValue(gjson.Get(response, "application").String())
-	// state.CreatedAt = types.StringValue(gjson.Get(response, "createdAt").String())
-	// state.UpdatedAt = types.StringValue(gjson.Get(response, "updatedAt").String())
 	state.Name = types.StringValue(gjson.Get(response, "name").String())
 	state.Description = types.StringValue(gjson.Get(response, "description").String())
 
@@ -331,8 +319,6 @@ func (r *resourceCTEProcessSet) Update(ctx context.Context, req resource.UpdateR
 	plan.Account = types.StringValue(gjson.Get(response, "account").String())
 	plan.DevAccount = types.StringValue(gjson.Get(response, "devAccount").String())
 	plan.Application = types.StringValue(gjson.Get(response, "application").String())
-	// plan.CreatedAt = types.StringValue(gjson.Get(response, "createdAt").String())
-	// plan.UpdatedAt = types.StringValue(gjson.Get(response, "updatedAt").String())
 	diags = resp.State.Set(ctx, plan)
 	resp.Diagnostics.Append(diags...)
 	if resp.Diagnostics.HasError() {

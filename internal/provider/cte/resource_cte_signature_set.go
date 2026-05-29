@@ -74,14 +74,6 @@ func (r *resourceCTESignatureSet) Schema(_ context.Context, _ resource.SchemaReq
 				Description: "The application this resource belongs to.",
 				Computed:    true,
 			},
-			// "created_at": schema.StringAttribute{
-			// 	Description: "Date/time the application was created",
-			// 	Computed:    true,
-			// },
-			// "updated_at": schema.StringAttribute{
-			// 	Description: "Date/time the application was updated",
-			// 	Computed:    true,
-			// },
 			"name": schema.StringAttribute{
 				Description: "Name of the signature set.",
 				Required:    true,
@@ -173,8 +165,6 @@ func (r *resourceCTESignatureSet) Create(ctx context.Context, req resource.Creat
 	plan.Account = types.StringValue(gjson.Get(response, "account").String())
 	plan.DevAccount = types.StringValue(gjson.Get(response, "devAccount").String())
 	plan.Application = types.StringValue(gjson.Get(response, "application").String())
-	// plan.CreatedAt = types.StringValue(gjson.Get(response, "createdAt").String())
-	// plan.UpdatedAt = types.StringValue(gjson.Get(response, "updatedAt").String())
 
 	tflog.Trace(ctx, common.MSG_METHOD_END+"[resource_cm_signature_set.go -> Create]["+id+"]")
 	diags = resp.State.Set(ctx, plan)
@@ -334,8 +324,6 @@ func (r *resourceCTESignatureSet) Update(ctx context.Context, req resource.Updat
 	plan.Account = types.StringValue(gjson.Get(response, "account").String())
 	plan.DevAccount = types.StringValue(gjson.Get(response, "devAccount").String())
 	plan.Application = types.StringValue(gjson.Get(response, "application").String())
-	// plan.CreatedAt = types.StringValue(gjson.Get(response, "createdAt").String())
-	// plan.UpdatedAt = types.StringValue(gjson.Get(response, "updatedAt").String())
 	diags = resp.State.Set(ctx, plan)
 
 	resp.Diagnostics.Append(diags...)
@@ -395,8 +383,6 @@ func setCTESignatureSetState(
 	state.Account = types.StringValue(apiResp.Account)
 	state.DevAccount = types.StringValue(apiResp.DevAccount)
 	state.Application = types.StringValue(apiResp.Application)
-	// state.CreatedAt = types.StringValue(apiResp.CreatedAt)
-	// state.UpdatedAt = types.StringValue(apiResp.UpdatedAt)
 	state.Name = types.StringValue(apiResp.Name)
 	state.Type = types.StringValue(apiResp.Type)
 

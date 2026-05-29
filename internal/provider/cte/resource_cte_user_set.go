@@ -79,14 +79,6 @@ func (r *resourceCTEUserSet) Schema(_ context.Context, _ resource.SchemaRequest,
 				Computed:    true,
 				Default:     stringdefault.StaticString(""),
 			},
-			// "created_at": schema.StringAttribute{
-			// 	Description: "Date/time the application was created",
-			// 	Computed:    true,
-			// },
-			// "updated_at": schema.StringAttribute{
-			// 	Description: "Date/time the application was updated",
-			// 	Computed:    true,
-			// },
 			"name": schema.StringAttribute{
 				Description: "Name of the user set.",
 				Required:    true,
@@ -208,8 +200,6 @@ func (r *resourceCTEUserSet) Create(ctx context.Context, req resource.CreateRequ
 	plan.Account = types.StringValue(gjson.Get(response, "account").String())
 	plan.DevAccount = types.StringValue(gjson.Get(response, "devAccount").String())
 	plan.Application = types.StringValue(gjson.Get(response, "application").String())
-	// plan.CreatedAt = types.StringValue(gjson.Get(response, "createdAt").String())
-	// plan.UpdatedAt = types.StringValue(gjson.Get(response, "updatedAt").String())
 
 	tflog.Trace(ctx, common.MSG_METHOD_END+"[resource_cm_user_set.go -> Create]["+id+"]")
 	diags = resp.State.Set(ctx, plan)
@@ -270,17 +260,6 @@ func (r *resourceCTEUserSet) Read(ctx context.Context, req resource.ReadRequest,
 		common.MSG_METHOD_END+
 			"[resource_cte_user_set.go -> Read]["+id+"]",
 	)
-
-	// state.ID = types.StringValue(gjson.Get(response, "id").String())
-	// state.URI = types.StringValue(gjson.Get(response, "uri").String())
-	// state.Account = types.StringValue(gjson.Get(response, "account").String())
-	// state.DevAccount = types.StringValue(gjson.Get(response, "devAccount").String())
-	// state.Application = types.StringValue(gjson.Get(response, "application").String())
-	// state.CreatedAt = types.StringValue(gjson.Get(response, "createdAt").String())
-	// state.UpdatedAt = types.StringValue(gjson.Get(response, "updatedAt").String())
-	// state.Name = types.StringValue(gjson.Get(response, "name").String())
-	// state.Description = types.StringValue(gjson.Get(response, "description").String())
-
 	tflog.Trace(ctx, common.MSG_METHOD_END+"[resource_cm_user_set.go -> Read]["+id+"]")
 }
 
@@ -348,8 +327,6 @@ func (r *resourceCTEUserSet) Update(ctx context.Context, req resource.UpdateRequ
 	plan.Account = types.StringValue(gjson.Get(response, "account").String())
 	plan.DevAccount = types.StringValue(gjson.Get(response, "devAccount").String())
 	plan.Application = types.StringValue(gjson.Get(response, "application").String())
-	// plan.CreatedAt = types.StringValue(gjson.Get(response, "createdAt").String())
-	// plan.UpdatedAt = types.StringValue(gjson.Get(response, "updatedAt").String())
 	diags = resp.State.Set(ctx, plan)
 	resp.Diagnostics.Append(diags...)
 	if resp.Diagnostics.HasError() {
@@ -408,8 +385,6 @@ func setCTEUserSetState(
 	state.Account = types.StringValue(apiResp.Account)
 	state.DevAccount = types.StringValue(apiResp.DevAccount)
 	state.Application = types.StringValue(apiResp.Application)
-	// state.CreatedAt = types.StringValue(apiResp.CreatedAt)
-	// state.UpdatedAt = types.StringValue(apiResp.UpdatedAt)
 	state.Name = types.StringValue(apiResp.Name)
 
 	if apiResp.Description != "" {
@@ -436,9 +411,7 @@ func setCTEUserSetState(
 	var users []CTEUserTFSDK
 	for _, user := range apiResp.Users {
 		userObj := CTEUserTFSDK{
-			// GName:    types.StringValue(user.GName),
 			OSDomain: types.StringValue(user.OSDomain),
-			// UName:    types.StringValue(user.UName),
 		}
 		if user.GName != "" {
 			userObj.GName = types.StringValue(user.GName)
