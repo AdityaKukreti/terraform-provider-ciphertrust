@@ -9,9 +9,11 @@ import (
 	// "github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	// "github.com/hashicorp/terraform-plugin-framework/schema/validator"
 
+	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/listdefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/types"
@@ -56,7 +58,12 @@ func (r *resourceLDTGroupCommSvc) Schema(_ context.Context, _ resource.SchemaReq
 				Description: "Description to identify the LDT group communication service.",
 			},
 			"client_list": schema.ListAttribute{
-				Optional:    true,
+				Optional: true,
+				Computed: true,
+				Default: listdefault.StaticValue(
+					types.ListValueMust(types.StringType, []attr.Value{}),
+				),
+
 				ElementType: types.StringType,
 				Description: "List of identifiers of clients to be associated with the LDT group communication service. This identifier can be the Name, ID (a UUIDv4), URI, or slug of the client.",
 			},
@@ -135,21 +142,61 @@ func (r *resourceLDTGroupCommSvc) Read(ctx context.Context, req resource.ReadReq
 	if resp.Diagnostics.HasError() {
 		return
 	}
-	_, err := r.client.GetById(ctx, id, state.ID.ValueString(), common.URL_LDT_GROUP_COMM_SVC)
+
+	// Fetch LDT group details
+	response, err := r.client.GetById(ctx, id, state.ID.ValueString(), common.URL_LDT_GROUP_COMM_SVC)
+
+	if response == "" {
+		resp.State.RemoveResource(ctx)
+		return
+	}
+
+	var apiResp LDTGroupCommSvcListJSON
+	err = json.Unmarshal([]byte(response), &apiResp)
 	if err != nil {
-		tflog.Debug(ctx, common.ERR_METHOD_END+err.Error()+" [resource_cte_ldtgroupcomms.go -> Read]["+id+"]")
 		resp.Diagnostics.AddError(
-			"Error reading LDT comm group on CipherTrust Manager: ",
-			"Could not read LDT comm group id : ,"+state.ID.ValueString()+"unexpected error: "+err.Error(),
+			"Error parsing API response",
+			err.Error(),
 		)
 		return
 	}
 
-	tflog.Trace(ctx, common.MSG_METHOD_END+"[resource_cte_ldtgroupcomms.go -> Read]["+id+"]")
+	// Sync description
+	if apiResp.Description != "" {
+		state.Description = types.StringValue(apiResp.Description)
+	} else {
+		state.Description = types.StringNull()
+	}
+
+	clientListResponse, _ := r.client.GetById(
+		ctx,
+		id,
+		state.ID.ValueString()+"/clients",
+		common.URL_LDT_GROUP_COMM_SVC,
+	)
+	var clientListResp LDTGroupCommSvcClientListJSON
+	err = json.Unmarshal([]byte(clientListResponse), &clientListResp)
+	if err != nil {
+		resp.Diagnostics.AddError(
+			"Error parsing client list API response",
+			err.Error(),
+		)
+		return
+	}
+
+	// Update client list in state using client names from response
+	clients := make([]types.String, len(clientListResp.Resources))
+	for i, client := range clientListResp.Resources {
+		clients[i] = types.StringValue(client.Name)
+	}
+	state.ClientList = clients
+	diags = resp.State.Set(ctx, &state)
 	resp.Diagnostics.Append(diags...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
+
+	tflog.Trace(ctx, common.MSG_METHOD_END+"[resource_cte_ldtgroupcomms.go -> Read]["+id+"]")
 }
 
 // Update updates the resource and sets the updated Terraform state on success.

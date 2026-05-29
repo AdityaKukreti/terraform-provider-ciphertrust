@@ -1137,6 +1137,9 @@ type LDTGroupCommSvcListJSON struct {
 	Application  string `json:"application"`
 }
 
+type LDTGroupCommSvcClientListJSON struct {
+	Resources []LDTGroupCommSvcListJSON `json:"resources"`
+}
 type CTEPolicyAddKeyRuleTFSDK struct {
 	CTEClientPolicyID types.String `tfsdk:"policy_id"`
 	KeyRuleID         types.String `tfsdk:"rule_id"`
