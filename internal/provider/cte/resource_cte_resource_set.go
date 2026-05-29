@@ -12,9 +12,12 @@ import (
 	"github.com/tidwall/gjson"
 
 	common "github.com/ThalesGroup/terraform-provider-ciphertrust/internal/provider/common"
+	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/mapdefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringdefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-log/tflog"
@@ -52,27 +55,35 @@ func (r *resourceCTEResourceSet) Schema(_ context.Context, _ resource.SchemaRequ
 			"uri": schema.StringAttribute{
 				Description: "A human readable unique identifier of the resource",
 				Computed:    true,
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.UseStateForUnknown(),
+				},
 			},
 			"account": schema.StringAttribute{
 				Description: "The account which owns this resource.",
 				Computed:    true,
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.UseStateForUnknown(),
+				},
 			},
 			"dev_account": schema.StringAttribute{
 				Description: "The developer account which owns this resource's application.",
 				Computed:    true,
+				Default:     stringdefault.StaticString(""),
 			},
 			"application": schema.StringAttribute{
 				Description: "The application this resource belongs to.",
 				Computed:    true,
+				Default:     stringdefault.StaticString(""),
 			},
-			"created_at": schema.StringAttribute{
-				Description: "Date/time the application was created",
-				Computed:    true,
-			},
-			"updated_at": schema.StringAttribute{
-				Description: "Date/time the application was updated",
-				Computed:    true,
-			},
+			// "created_at": schema.StringAttribute{
+			// 	Description: "Date/time the application was created",
+			// 	Computed:    true,
+			// },
+			// "updated_at": schema.StringAttribute{
+			// 	Description: "Date/time the application was updated",
+			// 	Computed:    true,
+			// },
 			"name": schema.StringAttribute{
 				Description: "Name of the resource set.",
 				Required:    true,
@@ -84,11 +95,17 @@ func (r *resourceCTEResourceSet) Schema(_ context.Context, _ resource.SchemaRequ
 			"labels": schema.MapAttribute{
 				Description: "Labels are key/value pairs used to group resources. They are based on Kubernetes Labels, see https://kubernetes.io/docs/concepts/overview/working-with-objects/labels/. To add a label, set the label's value as follows.\n\"labels\": {\n\t\"key1\": \"value1\",\n\t\"key2\": \"value2\"\n}",
 				ElementType: types.StringType,
-				Optional:    true,
+				Default: mapdefault.StaticValue(
+					types.MapValueMust(types.StringType, map[string]attr.Value{}),
+				),
+				Optional: true,
+				Computed: true,
 			},
 			"type": schema.StringAttribute{
 				Description: "Type of the resource set. The valid options is Directory. The default value is Directory.",
 				Optional:    true,
+				Computed:    true,
+				Default:     stringdefault.StaticString("Directory"),
 			},
 			"resources": schema.ListNestedAttribute{
 				Description: "List of resources to be added to the resource set.",
@@ -193,8 +210,8 @@ func (r *resourceCTEResourceSet) Create(ctx context.Context, req resource.Create
 	plan.Account = types.StringValue(gjson.Get(response, "account").String())
 	plan.DevAccount = types.StringValue(gjson.Get(response, "devAccount").String())
 	plan.Application = types.StringValue(gjson.Get(response, "application").String())
-	plan.CreatedAt = types.StringValue(gjson.Get(response, "createdAt").String())
-	plan.UpdatedAt = types.StringValue(gjson.Get(response, "updatedAt").String())
+	// plan.CreatedAt = types.StringValue(gjson.Get(response, "createdAt").String())
+	// plan.UpdatedAt = types.StringValue(gjson.Get(response, "updatedAt").String())
 
 	tflog.Trace(ctx, common.MSG_METHOD_END+"[resource_cm_resource_set.go -> Create]["+id+"]")
 	diags = resp.State.Set(ctx, plan)
@@ -209,32 +226,52 @@ func (r *resourceCTEResourceSet) Read(ctx context.Context, req resource.ReadRequ
 	var state CTEResourceSetTFSDK
 	id := uuid.New().String()
 
+	tflog.Trace(
+		ctx,
+		common.MSG_METHOD_START+
+			"[resource_cte_user_set.go -> Read]["+id+"]",
+	)
+
 	diags := req.State.Get(ctx, &state)
 	resp.Diagnostics.Append(diags...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
 	response, err := r.client.GetById(ctx, id, state.ID.ValueString(), common.URL_CTE_RESOURCE_SET)
+
+	if response == "" {
+		resp.State.RemoveResource(ctx)
+		return
+	}
+
+	var apiResp CTEResourceSetJSON
+
+	err = json.Unmarshal([]byte(response), &apiResp)
 	if err != nil {
-		tflog.Debug(ctx, common.ERR_METHOD_END+err.Error()+" [resource_cm_resource_set.go -> Read]["+id+"]")
 		resp.Diagnostics.AddError(
-			"Error reading CTE ResourceSet on CipherTrust Manager: ",
-			"Could not read CTE ResourceSet id : ,"+state.ID.ValueString()+"unexpected error: "+err.Error(),
+			"Error parsing API response",
+			err.Error(),
 		)
 		return
 	}
 
-	state.ID = types.StringValue(gjson.Get(response, "id").String())
-	state.URI = types.StringValue(gjson.Get(response, "uri").String())
-	state.Account = types.StringValue(gjson.Get(response, "account").String())
-	state.DevAccount = types.StringValue(gjson.Get(response, "devAccount").String())
-	state.Application = types.StringValue(gjson.Get(response, "application").String())
-	state.CreatedAt = types.StringValue(gjson.Get(response, "createdAt").String())
-	state.UpdatedAt = types.StringValue(gjson.Get(response, "updatedAt").String())
-	state.Name = types.StringValue(gjson.Get(response, "name").String())
-	state.Description = types.StringValue(gjson.Get(response, "description").String())
+	setCTEResourceSetState(&state, &apiResp, resp)
 
-	tflog.Trace(ctx, common.MSG_METHOD_END+"[resource_cm_resource_set.go -> Read]["+id+"]")
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	diags = resp.State.Set(ctx, &state)
+	resp.Diagnostics.Append(diags...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	tflog.Trace(
+		ctx,
+		common.MSG_METHOD_END+
+			"[resource_cte_resource_set.go -> Read]["+id+"]",
+	)
 }
 
 // Update updates the resource and sets the updated Terraform state on success.
@@ -298,8 +335,8 @@ func (r *resourceCTEResourceSet) Update(ctx context.Context, req resource.Update
 	plan.Account = types.StringValue(gjson.Get(response, "account").String())
 	plan.DevAccount = types.StringValue(gjson.Get(response, "devAccount").String())
 	plan.Application = types.StringValue(gjson.Get(response, "application").String())
-	plan.CreatedAt = types.StringValue(gjson.Get(response, "createdAt").String())
-	plan.UpdatedAt = types.StringValue(gjson.Get(response, "updatedAt").String())
+	// plan.CreatedAt = types.StringValue(gjson.Get(response, "createdAt").String())
+	// plan.UpdatedAt = types.StringValue(gjson.Get(response, "updatedAt").String())
 	diags = resp.State.Set(ctx, plan)
 	resp.Diagnostics.Append(diags...)
 	if resp.Diagnostics.HasError() {
@@ -346,4 +383,53 @@ func (d *resourceCTEResourceSet) Configure(_ context.Context, req resource.Confi
 	}
 
 	d.client = client
+}
+
+func setCTEResourceSetState(
+	state *CTEResourceSetTFSDK,
+	apiResp *CTEResourceSetJSON,
+	resp *resource.ReadResponse,
+) {
+	state.ID = types.StringValue(apiResp.ID)
+	state.URI = types.StringValue(apiResp.URI)
+	state.Account = types.StringValue(apiResp.Account)
+	state.DevAccount = types.StringValue(apiResp.DevAccount)
+	state.Application = types.StringValue(apiResp.Application)
+	// state.CreatedAt = types.StringValue(apiResp.CreatedAt)
+	// state.UpdatedAt = types.StringValue(apiResp.UpdatedAt)
+	state.Name = types.StringValue(apiResp.Name)
+	state.Type = types.StringValue(apiResp.Type)
+
+	if apiResp.Description != "" {
+		state.Description = types.StringValue(apiResp.Description)
+	} else {
+		state.Description = types.StringNull()
+	}
+
+	// Labels
+	labelsMap := map[string]attr.Value{}
+	for k, v := range apiResp.Labels {
+		if strVal, ok := v.(string); ok {
+			labelsMap[k] = types.StringValue(strVal)
+		}
+	}
+	labelsValue, diags := types.MapValue(types.StringType, labelsMap)
+	resp.Diagnostics.Append(diags...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	state.Labels = labelsValue
+
+	// Resources
+	var resources []CTEResourceTFSDK
+	for _, resource := range apiResp.Resources {
+		resourceObj := CTEResourceTFSDK{
+			Directory:         types.StringValue(resource.Directory),
+			File:              types.StringValue(resource.File),
+			HDFS:              types.BoolValue(resource.HDFS),
+			IncludeSubfolders: types.BoolValue(resource.IncludeSubfolders),
+		}
+		resources = append(resources, resourceObj)
+	}
+	state.Resources = resources
 }
