@@ -10,8 +10,15 @@ import (
 
 	common "github.com/ThalesGroup/terraform-provider-ciphertrust/internal/provider/common"
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
+	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/booldefault"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/int64default"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/listdefault"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/objectdefault"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringdefault"
+
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
@@ -53,6 +60,19 @@ func (r *resourceCTEProfile) Schema(_ context.Context, _ resource.SchemaRequest,
 			"cache_settings": schema.SingleNestedAttribute{
 				Optional:    true,
 				Description: "Cache settings for the server.",
+				Computed:    true,
+				Default: objectdefault.StaticValue(
+					types.ObjectValueMust(
+						map[string]attr.Type{
+							"max_files": types.Int64Type,
+							"max_space": types.Int64Type,
+						},
+						map[string]attr.Value{
+							"max_files": types.Int64Value(200),
+							"max_space": types.Int64Value(100),
+						},
+					),
+				),
 				Attributes: map[string]schema.Attribute{
 					"max_files": schema.Int64Attribute{
 						Optional:    true,
@@ -66,10 +86,14 @@ func (r *resourceCTEProfile) Schema(_ context.Context, _ resource.SchemaRequest,
 			},
 			"concise_logging": schema.BoolAttribute{
 				Optional:    true,
+				Computed:    true,
+				Default:     booldefault.StaticBool(false),
 				Description: "Whether to allow concise logging.",
 			},
 			"connect_timeout": schema.Int64Attribute{
 				Optional:    true,
+				Computed:    true,
+				Default:     int64default.StaticInt64(40),
 				Description: "Connect timeout in seconds. Valid values are 5 to 150.",
 			},
 			"description": schema.StringAttribute{
@@ -79,13 +103,28 @@ func (r *resourceCTEProfile) Schema(_ context.Context, _ resource.SchemaRequest,
 			"duplicate_settings": schema.SingleNestedAttribute{
 				Optional:    true,
 				Description: "Duplicate setting parameters.",
+				Computed:    true,
+				Default: objectdefault.StaticValue(
+					types.ObjectValueMust(
+						map[string]attr.Type{
+							"suppress_interval":  types.Int64Type,
+							"suppress_threshold": types.Int64Type,
+						},
+						map[string]attr.Value{
+							"suppress_interval":  types.Int64Value(600),
+							"suppress_threshold": types.Int64Value(5),
+						},
+					),
+				),
 				Attributes: map[string]schema.Attribute{
 					"suppress_interval": schema.Int64Attribute{
-						Optional:    true,
+						Optional: true,
+
 						Description: "Suppress interval in seconds. Valid values are 1 to 1000.",
 					},
 					"suppress_threshold": schema.Int64Attribute{
-						Optional:    true,
+						Optional: true,
+
 						Description: "Suppress threshold. Valid values are 1 to 100.",
 					},
 				},
@@ -93,24 +132,44 @@ func (r *resourceCTEProfile) Schema(_ context.Context, _ resource.SchemaRequest,
 			"file_settings": schema.SingleNestedAttribute{
 				Optional:    true,
 				Description: "File settings for the profile.",
+				Computed:    true,
+				Default: objectdefault.StaticValue(
+					types.ObjectValueMust(
+						map[string]attr.Type{
+							"allow_purge":    types.BoolType,
+							"file_threshold": types.StringType,
+							"max_file_size":  types.Int64Type,
+							"max_old_files":  types.Int64Type,
+						},
+						map[string]attr.Value{
+							"allow_purge":    types.BoolValue(true),
+							"file_threshold": types.StringValue("ERROR"),
+							"max_file_size":  types.Int64Value(1000000),
+							"max_old_files":  types.Int64Value(25),
+						},
+					),
+				),
 				Attributes: map[string]schema.Attribute{
 					"allow_purge": schema.BoolAttribute{
 						Optional:    true,
 						Description: "Allows purge.",
 					},
 					"file_threshold": schema.StringAttribute{
-						Optional:    true,
+						Optional: true,
+
 						Description: "Applicable file threshold. ",
 						Validators: []validator.String{
 							stringvalidator.OneOf([]string{"DEBUG", "INFO", "WARN", "ERROR", "FATAL"}...),
 						},
 					},
 					"max_file_size": schema.Int64Attribute{
-						Optional:    true,
+						Optional: true,
+
 						Description: "Maximum file size(bytes) 1,000 - 1,000,000,000 (1KB to 1GB).",
 					},
 					"max_old_files": schema.Int64Attribute{
-						Optional:    true,
+						Optional: true,
+
 						Description: "Maximum number of old files allowed. Valid values are 1 to 100.",
 					},
 				},
@@ -122,14 +181,20 @@ func (r *resourceCTEProfile) Schema(_ context.Context, _ resource.SchemaRequest,
 			},
 			"ldt_qos_cap_cpu_allocation": schema.BoolAttribute{
 				Optional:    true,
+				Computed:    true,
+				Default:     booldefault.StaticBool(false),
 				Description: "Whether to allow CPU allocation for Quality of Service (QoS) capabilities.",
 			},
 			"ldt_qos_cpu_percent": schema.Int64Attribute{
 				Optional:    true,
+				Computed:    true,
+				Default:     int64default.StaticInt64(0),
 				Description: "CPU application percentage if ldt_qos_cap_cpu_allocation is true. Valid values are 0 to 100.",
 			},
 			"ldt_qos_rekey_option": schema.StringAttribute{
 				Optional:    true,
+				Computed:    true,
+				Default:     stringdefault.StaticString("RekeyRate"),
 				Description: "Rekey option and applicable options are RekeyRate and CPU.",
 				Validators: []validator.String{
 					stringvalidator.OneOf([]string{"RekeyRate", "CPU"}...),
@@ -137,22 +202,48 @@ func (r *resourceCTEProfile) Schema(_ context.Context, _ resource.SchemaRequest,
 			},
 			"ldt_qos_rekey_rate": schema.Int64Attribute{
 				Optional:    true,
+				Computed:    true,
+				Default:     int64default.StaticInt64(0),
 				Description: "Rekey rate in terms of MB/s. Valid values are 0 to 32767.",
 			},
 			"ldt_qos_schedule": schema.StringAttribute{
 				Optional:    true,
 				Description: "Type of QoS schedule.",
+				Computed:    true,
+				Default:     stringdefault.StaticString("ANY_TIME"),
 				Validators: []validator.String{
 					stringvalidator.OneOf([]string{"CUSTOM", "CUSTOM_WITH_OVERWRITE", "ANY_TIME", "WEEKNIGHTS", "WEEKENDS"}...),
 				},
 			},
 			"ldt_qos_status_check_rate": schema.Int64Attribute{
 				Optional:    true,
+				Computed:    true,
+				Default:     int64default.StaticInt64(3600),
 				Description: "Frequency to check and update the LDT status on the CipherTrust Manager. The valid value ranges from 600 to 86400 seconds. The default value is 3600 seconds.",
 			},
+
 			"client_logging_configuration": schema.SingleNestedAttribute{
 				Optional:    true,
 				Description: "Logger configurations for the management service.",
+				Computed:    true,
+				Default: objectdefault.StaticValue(
+					types.ObjectValueMust(
+						map[string]attr.Type{
+							"duplicates":     types.StringType,
+							"file_enabled":   types.BoolType,
+							"syslog_enabled": types.BoolType,
+							"threshold":      types.StringType,
+							"upload_enabled": types.BoolType,
+						},
+						map[string]attr.Value{
+							"duplicates":     types.StringValue("SUPPRESS"),
+							"file_enabled":   types.BoolValue(true),
+							"syslog_enabled": types.BoolValue(false),
+							"threshold":      types.StringValue("ERROR"),
+							"upload_enabled": types.BoolValue(false),
+						},
+					),
+				),
 				Attributes: map[string]schema.Attribute{
 					"duplicates": schema.StringAttribute{
 						Optional:    true,
@@ -182,48 +273,94 @@ func (r *resourceCTEProfile) Schema(_ context.Context, _ resource.SchemaRequest,
 					},
 				},
 			},
+
 			"metadata_scan_interval": schema.Int64Attribute{
 				Optional:    true,
 				Description: "Time interval in seconds to scan files under the GuardPoint. The default value is 600.",
 			},
 			"mfa_exempt_user_set_id": schema.StringAttribute{
 				Optional:    true,
+				Computed:    true,
+				Default:     stringdefault.StaticString(""),
 				Description: "ID of the user set to be exempted from MFA. MFA will not be enforced on the users of this set.",
 			},
 			"oidc_connection_id": schema.StringAttribute{
 				Optional:    true,
+				Computed:    true,
+				Default:     stringdefault.StaticString(""),
 				Description: "ID of the OIDC connection.",
 			},
 			"qos_schedules": schema.ListNestedAttribute{
 				Optional:    true,
+				Computed:    true,
 				Description: "Schedule of QoS capabilities.",
+				Default: listdefault.StaticValue(
+					types.ListValueMust(
+						types.ObjectType{
+							AttrTypes: map[string]attr.Type{
+								"end_time_hour":   types.Int64Type,
+								"end_time_min":    types.Int64Type,
+								"end_weekday":     types.StringType,
+								"start_time_hour": types.Int64Type,
+								"start_time_min":  types.Int64Type,
+								"start_weekday":   types.StringType,
+							},
+						},
+						[]attr.Value{
+							types.ObjectValueMust(
+								map[string]attr.Type{
+									"end_time_hour":   types.Int64Type,
+									"end_time_min":    types.Int64Type,
+									"end_weekday":     types.StringType,
+									"start_time_hour": types.Int64Type,
+									"start_time_min":  types.Int64Type,
+									"start_weekday":   types.StringType,
+								},
+								map[string]attr.Value{
+									"end_time_hour":   types.Int64Value(23),
+									"end_time_min":    types.Int64Value(59),
+									"end_weekday":     types.StringValue("Saturday"),
+									"start_time_hour": types.Int64Value(0),
+									"start_time_min":  types.Int64Value(0),
+									"start_weekday":   types.StringValue("Sunday"),
+								},
+							),
+						},
+					),
+				),
 				NestedObject: schema.NestedAttributeObject{
 					Attributes: map[string]schema.Attribute{
 						"end_time_hour": schema.Int64Attribute{
-							Optional:    true,
+							Optional: true,
+
 							Description: "QoS end hour. Valid values are 1 to 23.",
 						},
 						"end_time_min": schema.Int64Attribute{
-							Optional:    true,
+							Optional: true,
+
 							Description: "QoS end minute. Valid values are 0 to 59.",
 						},
 						"end_weekday": schema.StringAttribute{
-							Optional:    true,
+							Optional: true,
+
 							Description: "QoS end day.",
 							Validators: []validator.String{
 								stringvalidator.OneOf([]string{"Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"}...),
 							},
 						},
 						"start_time_hour": schema.Int64Attribute{
-							Optional:    true,
+							Optional: true,
+
 							Description: "QOS start hour. Valid values are 1 to 23.",
 						},
 						"start_time_min": schema.Int64Attribute{
-							Optional:    true,
+							Optional: true,
+
 							Description: "QOS start minute. Valid values are 0 to 59.",
 						},
 						"start_weekday": schema.StringAttribute{
-							Optional:    true,
+							Optional: true,
+
 							Description: "QoS start day.",
 							Validators: []validator.String{
 								stringvalidator.OneOf([]string{"Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"}...),
@@ -232,8 +369,11 @@ func (r *resourceCTEProfile) Schema(_ context.Context, _ resource.SchemaRequest,
 					},
 				},
 			},
+
 			"rwp_operation": schema.StringAttribute{
 				Optional:    true,
+				Computed:    true,
+				Default:     stringdefault.StaticString("deny"),
 				Description: "Applicable to the Ransomware clients only. The valid values are permit(for Audit), deny(for Block), and disable. The default value is deny.",
 				Validators: []validator.String{
 					stringvalidator.OneOf([]string{"permit", "deny", "disable"}...),
@@ -241,10 +381,14 @@ func (r *resourceCTEProfile) Schema(_ context.Context, _ resource.SchemaRequest,
 			},
 			"rwp_process_set": schema.StringAttribute{
 				Optional:    true,
+				Computed:    true,
+				Default:     stringdefault.StaticString(""),
 				Description: "ID of the process set to be whitelisted.",
 			},
 			"server_response_rate": schema.Int64Attribute{
 				Optional:    true,
+				Computed:    true,
+				Default:     int64default.StaticInt64(0),
 				Description: "the percentage value of successful API calls to the server, for which the agent will consider the server to be working fine. If the value is set to 75 then, if the server responds to 75 percent of the calls it is considered OK & no update is sent by agent. Valid values are between 0 to 100, both inclusive. Default value is 0.",
 			},
 			"server_settings": schema.ListNestedAttribute{
@@ -266,52 +410,93 @@ func (r *resourceCTEProfile) Schema(_ context.Context, _ resource.SchemaRequest,
 			"syslog_settings": schema.SingleNestedAttribute{
 				Optional:    true,
 				Description: "Parameters to configure the Syslog server.",
+				Computed:    true,
+				Default: objectdefault.StaticValue(
+					types.ObjectValueMust(
+						map[string]attr.Type{
+							"local":            types.BoolType,
+							"syslog_threshold": types.StringType,
+							"servers": types.ListType{ElemType: types.ObjectType{AttrTypes: map[string]attr.Type{
+								"ca_certificate": types.StringType,
+								"certificate":    types.StringType,
+								"message_format": types.StringType,
+								"name":           types.StringType,
+								"port":           types.Int64Type,
+								"private_key":    types.StringType,
+								"protocol":       types.StringType,
+							}}},
+						},
+						map[string]attr.Value{
+							"local":            types.BoolValue(false),
+							"syslog_threshold": types.StringValue("ERROR"),
+							"servers": types.ListValueMust(types.ObjectType{AttrTypes: map[string]attr.Type{
+								"ca_certificate": types.StringType,
+								"certificate":    types.StringType,
+								"message_format": types.StringType,
+								"name":           types.StringType,
+								"port":           types.Int64Type,
+								"private_key":    types.StringType,
+								"protocol":       types.StringType,
+							}}, []attr.Value{}),
+						},
+					),
+				),
 				Attributes: map[string]schema.Attribute{
 					"local": schema.BoolAttribute{
-						Optional:    true,
+						Optional: true,
+
 						Description: "Whether the Syslog server is local.",
 					},
 					"syslog_threshold": schema.StringAttribute{
-						Optional:    true,
+						Optional: true,
+
 						Description: "Applicable threshold.",
 						Validators: []validator.String{
 							stringvalidator.OneOf([]string{"DEBUG", "INFO", "WARN", "ERROR", "FATAL"}...),
 						},
 					},
 					"servers": schema.ListNestedAttribute{
-						Optional:    true,
+						Optional: true,
+
 						Description: "Configuration of the Syslog server.",
 						NestedObject: schema.NestedAttributeObject{
 							Attributes: map[string]schema.Attribute{
 								"ca_certificate": schema.StringAttribute{
-									Optional:    true,
+									Optional: true,
+
 									Description: "CA certificate for syslog application provided by the client. for example: -----BEGIN CERTIFICATE-----\n<certificate content>\n-----END CERTIFICATE--------",
 								},
 								"certificate": schema.StringAttribute{
-									Optional:    true,
+									Optional: true,
+
 									Description: "Client certificate for syslog application provided by the client. for example: -----BEGIN CERTIFICATE-----\n<certificate content>\n-----END CERTIFICATE--------",
 								},
 								"message_format": schema.StringAttribute{
-									Optional:    true,
+									Optional: true,
+
 									Description: "Format of the message on the Syslog server.",
 									Validators: []validator.String{
 										stringvalidator.OneOf([]string{"CEF", "LEEF", "RFC5424", "PLAIN"}...),
 									},
 								},
 								"name": schema.StringAttribute{
-									Optional:    true,
+									Optional: true,
+
 									Description: "Name of the Syslog server.",
 								},
 								"port": schema.Int64Attribute{
 									Optional:    true,
+									Computed:    true,
 									Description: "Port for syslog server. Valid values are 1 to 65535.",
 								},
 								"private_key": schema.StringAttribute{
-									Optional:    true,
+									Optional: true,
+
 									Description: "Client certificate for syslog application provided by the client. for example: -----BEGIN RSA PRIVATE KEY-----\n<key content>\n-----END RSA PRIVATE KEY-----",
 								},
 								"protocol": schema.StringAttribute{
-									Optional:    true,
+									Optional: true,
+
 									Description: "Protocol of the Syslog server, TCP, UDP and TLS.",
 									Validators: []validator.String{
 										stringvalidator.OneOf([]string{"TCP", "UDP", "TLS"}...),
@@ -325,6 +510,29 @@ func (r *resourceCTEProfile) Schema(_ context.Context, _ resource.SchemaRequest,
 			"upload_settings": schema.SingleNestedAttribute{
 				Optional:    true,
 				Description: "Configure log upload.",
+				Computed:    true,
+				Default: objectdefault.StaticValue(
+					types.ObjectValueMust(
+						map[string]attr.Type{
+							"connection_timeout":     types.Int64Type,
+							"drop_if_busy":           types.BoolType,
+							"job_completion_timeout": types.Int64Type,
+							"max_interval":           types.Int64Type,
+							"max_messages":           types.Int64Type,
+							"min_interval":           types.Int64Type,
+							"upload_threshold":       types.StringType,
+						},
+						map[string]attr.Value{
+							"connection_timeout":     types.Int64Value(59),
+							"drop_if_busy":           types.BoolValue(false),
+							"job_completion_timeout": types.Int64Value(600),
+							"max_interval":           types.Int64Value(20),
+							"max_messages":           types.Int64Value(1000),
+							"min_interval":           types.Int64Value(10),
+							"upload_threshold":       types.StringValue("ERROR"),
+						},
+					),
+				),
 				Attributes: map[string]schema.Attribute{
 					"connection_timeout":     schema.Int64Attribute{Optional: true},
 					"drop_if_busy":           schema.BoolAttribute{Optional: true},
@@ -442,7 +650,6 @@ func (r *resourceCTEProfile) Create(ctx context.Context, req resource.CreateRequ
 	if plan.LDTQOSStatusCheckRate.ValueInt64() != types.Int64Null().ValueInt64() {
 		payload.LDTQOSStatusCheckRate = plan.LDTQOSStatusCheckRate.ValueInt64()
 	}
-
 	// Set client_logger_configs in the request
 	var managementServiceLogger, policyEvaluationLogger, securityAdminLogger, systemAdminLogger CTEProfileManagementServiceLoggerJSON
 	if !reflect.DeepEqual((*CTEProfileManagementServiceLoggerTFSDK)(nil), plan.Client_Logging_Config) {
@@ -657,21 +864,36 @@ func (r *resourceCTEProfile) Read(ctx context.Context, req resource.ReadRequest,
 	if resp.Diagnostics.HasError() {
 		return
 	}
-	_, err := r.client.GetById(ctx, id, state.ID.ValueString(), common.URL_CTE_PROFILE)
+
+	response, err := r.client.GetById(ctx, id, state.ID.ValueString(), common.URL_CTE_PROFILE)
+
+	if response == "" {
+		resp.State.RemoveResource(ctx)
+		return
+	}
+
+	var apiResp CTEProfilesListJSON
+	err = json.Unmarshal([]byte(response), &apiResp)
 	if err != nil {
-		tflog.Debug(ctx, common.ERR_METHOD_END+err.Error()+" [resource_cte_profile.go -> Read]["+id+"]")
 		resp.Diagnostics.AddError(
-			"Error reading CTE Profile on CipherTrust Manager: ",
-			"Could not read CTE Profile id : ,"+state.ID.ValueString()+err.Error(),
+			"Error parsing CTE Profile API response",
+			err.Error(),
 		)
 		return
 	}
 
-	tflog.Trace(ctx, common.MSG_METHOD_END+"[resource_cte_profile.go -> Read]["+id+"]")
+	setProfileState(&state, &apiResp)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	diags = resp.State.Set(ctx, &state)
 	resp.Diagnostics.Append(diags...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
+
+	tflog.Trace(ctx, common.MSG_METHOD_END+"[resource_cte_profile.go -> Read]["+id+"]")
 }
 
 // Update updates the resource and sets the updated Terraform state on success.
@@ -757,6 +979,7 @@ func (r *resourceCTEProfile) Update(ctx context.Context, req resource.UpdateRequ
 	if plan.LDTQOSStatusCheckRate.ValueInt64() != types.Int64Null().ValueInt64() {
 		payload.LDTQOSStatusCheckRate = plan.LDTQOSStatusCheckRate.ValueInt64()
 	}
+	// Set client_logger_configs in the request
 	// Set client_logger_configs in the request
 	var managementServiceLogger, policyEvaluationLogger, securityAdminLogger, systemAdminLogger CTEProfileManagementServiceLoggerJSON
 	if !reflect.DeepEqual((*CTEProfileManagementServiceLoggerTFSDK)(nil), plan.Client_Logging_Config) {
@@ -996,4 +1219,206 @@ func (d *resourceCTEProfile) Configure(_ context.Context, req resource.Configure
 	}
 
 	d.client = client
+}
+
+func setProfileState(
+	state *CTEProfileTFSDK,
+	apiResp *CTEProfilesListJSON,
+) {
+	// Simple scalar fields
+	if apiResp.Description != "" {
+		state.Description = types.StringValue(apiResp.Description)
+	} else {
+		state.Description = types.StringNull()
+	}
+
+	state.ConciseLogging = types.BoolValue(apiResp.ConciseLogging)
+	state.ConnectTimeout = types.Int64Value(apiResp.ConnectTimeout)
+	state.LDTQOSCapCPUAllocation = types.BoolValue(apiResp.LDTQOSCapCPUAllocation)
+	state.LDTQOSCapCPUPercent = types.Int64Value(apiResp.LDTQOSCapCPUPercent)
+	state.LDTQOSRekeyRate = types.Int64Value(apiResp.LDTQOSRekeyRate)
+	state.LDTQOSStatusCheckRate = types.Int64Value(apiResp.LDTQOSStatusCheckRate)
+	state.ServerResponseRate = types.Int64Value(apiResp.ServerResponseRate)
+
+	state.LDTQOSRekeyOption = types.StringValue(apiResp.LDTQOSRekeyOption)
+
+	state.LDTQOSSchedule = types.StringValue(apiResp.LDTQOSSchedule)
+
+	state.MFAExemptUserSetID = types.StringValue(apiResp.MFAExemptUserSetID)
+
+	state.OIDCConnectionID = types.StringValue(apiResp.OIDCConnectionID)
+
+	state.RWPOperation = types.StringValue(apiResp.RWPOperation)
+
+	state.RWPProcessSet = types.StringValue(apiResp.RWPProcessSet)
+
+	// CacheSettings
+	if apiResp.CacheSettings != nil {
+		state.CacheSettings = &CTEProfileCacheSettingsTFSDK{
+			MaxFiles: types.Int64Value(apiResp.CacheSettings.MaxFiles),
+			MaxSpace: types.Int64Value(apiResp.CacheSettings.MaxSpace),
+		}
+	} else {
+		state.CacheSettings = nil
+	}
+
+	// DuplicateSettings
+	if apiResp.DuplicateSettings != nil {
+		state.DuplicateSettings = &CTEProfileDuplicateSettingsTFSDK{
+			SuppressInterval:  types.Int64Value(apiResp.DuplicateSettings.SuppressInterval),
+			SuppressThreshold: types.Int64Value(apiResp.DuplicateSettings.SuppressThreshold),
+		}
+	} else {
+		state.DuplicateSettings = nil
+	}
+
+	// FileSettings
+	if apiResp.FileSettings != nil {
+		state.FileSettings = &CTEProfileFileSettingsTFSDK{
+			AllowPurge:  types.BoolValue(apiResp.FileSettings.AllowPurge),
+			MaxFileSize: types.Int64Value(apiResp.FileSettings.MaxFileSize),
+			MaxOldFiles: types.Int64Value(apiResp.FileSettings.MaxOldFiles),
+		}
+		if apiResp.FileSettings.FileThreshold != "" {
+			state.FileSettings.FileThreshold = types.StringValue(apiResp.FileSettings.FileThreshold)
+		} else {
+			state.FileSettings.FileThreshold = types.StringNull()
+		}
+	} else {
+		state.FileSettings = nil
+	}
+
+	if apiResp.ManagementServiceLogger != nil {
+		logger := apiResp.ManagementServiceLogger
+		state.Client_Logging_Config = &CTEProfileManagementServiceLoggerTFSDK{
+			FileEnabled:   types.BoolValue(logger.FileEnabled),
+			SyslogEnabled: types.BoolValue(logger.SyslogEnabled),
+			UploadEnabled: types.BoolValue(logger.UploadEnabled),
+		}
+		if logger.Duplicates != "" {
+			state.Client_Logging_Config.Duplicates = types.StringValue(logger.Duplicates)
+		} else {
+			state.Client_Logging_Config.Duplicates = types.StringNull()
+		}
+		if logger.Threshold != "" {
+			state.Client_Logging_Config.Threshold = types.StringValue(logger.Threshold)
+		} else {
+			state.Client_Logging_Config.Threshold = types.StringNull()
+		}
+	} else {
+		state.Client_Logging_Config = nil
+	}
+
+	// QOSSchedules
+	qosSchedules := make([]CTEProfileQOSScheduleTFSDK, len(apiResp.QOSSchedules))
+	for i, s := range apiResp.QOSSchedules {
+		qosSchedules[i] = CTEProfileQOSScheduleTFSDK{
+			EndTimeHour:   types.Int64Value(s.EndTimeHour),
+			EndTimeMin:    types.Int64Value(s.EndTimeMin),
+			StartTimeHour: types.Int64Value(s.StartTimeHour),
+			StartTimeMin:  types.Int64Value(s.StartTimeMin),
+		}
+		if s.EndWeekday != "" {
+			qosSchedules[i].EndWeekday = types.StringValue(s.EndWeekday)
+		} else {
+			qosSchedules[i].EndWeekday = types.StringNull()
+		}
+		if s.StartWeekday != "" {
+			qosSchedules[i].StartWeekday = types.StringValue(s.StartWeekday)
+		} else {
+			qosSchedules[i].StartWeekday = types.StringNull()
+		}
+	}
+	state.QOSSchedules = qosSchedules
+
+	// ServerSettings
+	if apiResp.ServerSettings != nil {
+		serverSettings := make([]CTEProfileServiceSettingTFSDK, len(apiResp.ServerSettings))
+		for i, s := range apiResp.ServerSettings {
+			serverSettings[i] = CTEProfileServiceSettingTFSDK{
+				Priority: types.Int64Value(s.Priority),
+			}
+			if s.HostName != "" {
+				serverSettings[i].HostName = types.StringValue(s.HostName)
+			} else {
+				serverSettings[i].HostName = types.StringNull()
+			}
+		}
+		state.ServerSettings = serverSettings
+	}
+
+	// SyslogSettings
+	if apiResp.SyslogSettings != nil {
+		syslog := apiResp.SyslogSettings
+		syslogState := &CTEProfileSyslogSettingsTFSDK{
+			Local: types.BoolValue(syslog.Local),
+		}
+		if syslog.Threshold != "" {
+			syslogState.Threshold = types.StringValue(syslog.Threshold)
+		} else {
+			syslogState.Threshold = types.StringNull()
+		}
+		servers := make([]CTEProfileSyslogSettingServerTFSDK, len(syslog.Servers))
+		for i, srv := range syslog.Servers {
+			servers[i] = CTEProfileSyslogSettingServerTFSDK{
+				Port: types.Int64Value(srv.Port),
+			}
+			if srv.CACert != "" {
+				servers[i].CACert = types.StringValue(srv.CACert)
+			} else {
+				servers[i].CACert = types.StringNull()
+			}
+			if srv.Certificate != "" {
+				servers[i].Certificate = types.StringValue(srv.Certificate)
+			} else {
+				servers[i].Certificate = types.StringNull()
+			}
+			if srv.MessageFormat != "" {
+				servers[i].MessageFormat = types.StringValue(srv.MessageFormat)
+			} else {
+				servers[i].MessageFormat = types.StringNull()
+			}
+			if srv.Name != "" {
+				servers[i].Name = types.StringValue(srv.Name)
+			} else {
+				servers[i].Name = types.StringNull()
+			}
+			if srv.PrivateKey != "" {
+				servers[i].PrivateKey = types.StringValue(srv.PrivateKey)
+			} else {
+				servers[i].PrivateKey = types.StringNull()
+			}
+			if srv.Protocol != "" {
+				servers[i].Protocol = types.StringValue(srv.Protocol)
+			} else {
+				servers[i].Protocol = types.StringNull()
+			}
+		}
+		syslogState.Servers = servers
+		state.SyslogSettings = syslogState
+	} else {
+		state.SyslogSettings = nil
+	}
+
+	// UploadSettings
+	if apiResp.UploadSettings != nil {
+		upload := apiResp.UploadSettings
+		uploadState := &CTEProfileUploadSettingsTFSDK{
+			DropIfBusy:           types.BoolValue(upload.DropIfBusy),
+			ConnectionTimeout:    types.Int64Value(upload.ConnectionTimeout),
+			JobCompletionTimeout: types.Int64Value(upload.JobCompletionTimeout),
+			MaxInterval:          types.Int64Value(upload.MaxInterval),
+			MaxMessages:          types.Int64Value(upload.MaxMessages),
+			MinInterval:          types.Int64Value(upload.MinInterval),
+		}
+		if upload.Threshold != "" {
+			uploadState.Threshold = types.StringValue(upload.Threshold)
+		} else {
+			uploadState.Threshold = types.StringNull()
+		}
+		state.UploadSettings = uploadState
+	} else {
+		state.UploadSettings = nil
+	}
+
 }

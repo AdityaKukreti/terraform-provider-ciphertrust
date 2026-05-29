@@ -616,7 +616,7 @@ type CTEProfilesListJSON struct {
 	ServerResponseRate      int64                                  `json:"server_response_rate"`
 	QOSSchedules            []CTEProfileQOSScheduleJSON            `json:"qos_schedules"`
 	ServerSettings          []CTEProfileServiceSettingJSON         `json:"server_settings"`
-	ManagementServiceLogger CTEProfileManagementServiceLoggerJSON  `json:"management_service_logger"`
+	ManagementServiceLogger *CTEProfileManagementServiceLoggerJSON `json:"management_service_logger"`
 	PolicyEvaluationLogger  *CTEProfileManagementServiceLoggerJSON `json:"policy_evaluation_logger"`
 	SecurityAdminLogger     *CTEProfileManagementServiceLoggerJSON `json:"security_admin_logger"`
 	SystemAdminLogger       *CTEProfileManagementServiceLoggerJSON `json:"system_admin_logger"`
@@ -1371,9 +1371,9 @@ type CTEProfileJSON struct {
 	FileSettings            *CTEProfileFileSettingsJSON            `json:"file_settings,omitempty"`
 	Labels                  map[string]interface{}                 `json:"labels,omitempty"`
 	LDTQOSCapCPUAllocation  bool                                   `json:"ldt_qos_cap_cpu_allocation"`
-	LDTQOSCapCPUPercent     int64                                  `json:"ldt_qos_cpu_percent,omitempty"`
+	LDTQOSCapCPUPercent     int64                                  `json:"ldt_qos_cpu_percent"`
 	LDTQOSRekeyOption       string                                 `json:"ldt_qos_rekey_option,omitempty"`
-	LDTQOSRekeyRate         int64                                  `json:"ldt_qos_rekey_rate,omitempty"`
+	LDTQOSRekeyRate         int64                                  `json:"ldt_qos_rekey_rate"`
 	LDTQOSSchedule          string                                 `json:"ldt_qos_schedule,omitempty"`
 	LDTQOSStatusCheckRate   int64                                  `json:"ldt_qos_status_check_rate,omitempty"`
 	ManagementServiceLogger *CTEProfileManagementServiceLoggerJSON `json:"management_service_logger,omitempty"`
