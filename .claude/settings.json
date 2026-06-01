@@ -1,0 +1,18 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(make build)",
+      "Bash(make test)",
+      "Bash(make testacc)",
+      "Bash(make lint)",
+      "Bash(make fmt)",
+      "Bash(make generate)",
+      "Bash(make install)",
+      "Bash(go mod tidy)",
+      "Bash(go mod vendor)",
+      "Bash(go version)",
+      "Bash(golangci-lint run)",
+      "Bash(gofmt -s -w -e .)"
+    ]
+  }
+}
