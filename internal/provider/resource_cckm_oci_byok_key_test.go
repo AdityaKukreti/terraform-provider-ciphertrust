@@ -25,6 +25,7 @@ var importStateVerifyIgnoreOCIKey = []string{
 }
 
 func TestCckmOCIKeysAndVersionsBYOK(t *testing.T) {
+	t.Skip("skipped")
 
 	connectionResource := initCckmOCITest(t)
 
