@@ -42,8 +42,8 @@ func TestCiphertrustCTEPolicyLDTKeyRulesDataSource(t *testing.T) {
 			policy_type = "LDT"
 			security_rules = [
 				{
-					action = "key_op"
-					effect = "permit,applykey"
+					action = "read"
+					effect = "permit"
 				}
 			]
 			ldt_key_rules = [
