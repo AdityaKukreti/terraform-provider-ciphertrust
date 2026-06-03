@@ -1,8 +1,3 @@
-# Unreleased
-
-## Bug Fixes
-    `ciphertrust_cm_key`: fix swapped JSON tags on `revocation_reason` and `revocation_message` that caused values to be stored in the wrong fields on CipherTrust Manager during Create/Update. Operators who previously set these attributes should re-apply affected resources so CM-side values are corrected. No Terraform state migration is required.
-
 # 1.0.1
 
 ## New Resources
