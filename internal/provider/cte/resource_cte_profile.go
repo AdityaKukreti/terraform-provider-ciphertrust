@@ -980,7 +980,6 @@ func (r *resourceCTEProfile) Update(ctx context.Context, req resource.UpdateRequ
 		payload.LDTQOSStatusCheckRate = plan.LDTQOSStatusCheckRate.ValueInt64()
 	}
 	// Set client_logger_configs in the request
-	// Set client_logger_configs in the request
 	var managementServiceLogger, policyEvaluationLogger, securityAdminLogger, systemAdminLogger CTEProfileManagementServiceLoggerJSON
 	if !reflect.DeepEqual((*CTEProfileManagementServiceLoggerTFSDK)(nil), plan.Client_Logging_Config) {
 		tflog.Debug(ctx, "Loggers should not be empty at this point")
