@@ -98,10 +98,14 @@ func (r *resourceCTEProcessSet) Schema(_ context.Context, _ resource.SchemaReque
 						"directory": schema.StringAttribute{
 							Description: "Directory of the process to be added to the process set.",
 							Optional:    true,
+							Computed:    true,
+							Default:     stringdefault.StaticString(""),
 						},
 						"file": schema.StringAttribute{
 							Description: "File name of the process to be added to the process set.",
 							Optional:    true,
+							Computed:    true,
+							Default:     stringdefault.StaticString(""),
 						},
 						"labels": schema.MapAttribute{
 							Description: "Labels are key/value pairs used to group resources. They are based on Kubernetes Labels, see https://kubernetes.io/docs/concepts/overview/working-with-objects/labels/. To add a label, set the label's value as follows.\n\"labels\": {\n\t\"key1\": \"value1\",\n\t\"key2\": \"value2\"\n}",
@@ -117,6 +121,8 @@ func (r *resourceCTEProcessSet) Schema(_ context.Context, _ resource.SchemaReque
 						"signature": schema.StringAttribute{
 							Description: "ID or name of the signature set to link to the process set.",
 							Optional:    true,
+							Computed:    true,
+							Default:     stringdefault.StaticString(""),
 						},
 					},
 				},
