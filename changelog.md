@@ -1,3 +1,11 @@
+# Unreleased
+
+## Bug Fixes
+    ciphertrust_cm_key
+        revocation_reason and revocation_message JSON tags were swapped, causing values to be persisted under the wrong keys on CipherTrust Manager (TFIN-286).
+        After upgrading, the next apply that modifies either attribute will write both values correctly.
+        Resources not re-applied will retain swapped CM-side storage; manual remediation is out of scope.
+
 # 1.0.1
 
 ## New Resources
