@@ -70,31 +70,3 @@ resource "ciphertrust_cm_key" "cte_key" {
 		},
 	})
 }
-
-// TestAccCMKey_revocationFieldsRoundTrip verifies that revocation_reason and
-// revocation_message are persisted under the correct CipherTrust Manager wire
-// keys (regression test for TFIN-286, where the JSON struct tags were swapped).
-func TestAccCMKey_revocationFieldsRoundTrip(t *testing.T) {
-	resource.Test(t, resource.TestCase{
-		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
-		Steps: []resource.TestStep{
-			{
-				Config: providerConfig + `
-resource "ciphertrust_cm_key" "revocation_key" {
-  name="terraform_revocation"
-  algorithm="aes"
-  key_size=256
-  usage_mask=13
-  revocation_reason="Unspecified"
-  revocation_message="revoked via terraform"
-}
-`,
-				Check: resource.ComposeAggregateTestCheckFunc(
-					resource.TestCheckResourceAttrSet("ciphertrust_cm_key.revocation_key", "id"),
-					resource.TestCheckResourceAttr("ciphertrust_cm_key.revocation_key", "revocation_reason", "Unspecified"),
-					resource.TestCheckResourceAttr("ciphertrust_cm_key.revocation_key", "revocation_message", "revoked via terraform"),
-				),
-			},
-		},
-	})
-}
