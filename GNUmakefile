@@ -20,8 +20,10 @@ fmt:
 test:
 	go test -v -cover -timeout=120s -parallel=10 ./...
 
+JUNIT_FILE ?=
+
 testacc:
-	TF_ACC=1 go test -v -cover -timeout 120m ./...
+	TF_ACC=1 gotestsum $(if $(JUNIT_FILE),--junitfile $(JUNIT_FILE)) --format testdox -- -v -cover -timeout 120m ./...
 
 .PHONY: fmt lint test testacc build install generate
 
