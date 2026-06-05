@@ -13,22 +13,22 @@ func TestResourceCMProperty(t *testing.T) {
 			{
 				Config: providerConfig + `
 resource "ciphertrust_property" "property_1" {
-    name = "ENABLE_RECORDS_DB_STORE"
+    name = "ALLOW_UNKNOWN_FIELDS"
     value = "false"
 }
 `,
 				Check: resource.ComposeAggregateTestCheckFunc(
-					resource.TestCheckResourceAttrSet("ciphertrust_property.property_1", "name"),
+					resource.TestCheckResourceAttr("ciphertrust_property.property_1", "value", "false"),
 				)},
 			{
 				Config: providerConfig + `
 resource "ciphertrust_property" "property_1" {
-    name = "ENABLE_RECORDS_DB_STORE"
+    name = "ALLOW_UNKNOWN_FIELDS"
     value = "true"
 }
 `,
 				Check: resource.ComposeAggregateTestCheckFunc(
-					resource.TestCheckResourceAttrSet("ciphertrust_property.property_1", "name"),
+					resource.TestCheckResourceAttr("ciphertrust_property.property_1", "value", "true"),
 				),
 			},
 		},

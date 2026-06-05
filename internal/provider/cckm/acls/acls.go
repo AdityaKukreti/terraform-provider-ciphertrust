@@ -13,6 +13,7 @@ import (
 	"github.com/tidwall/gjson"
 )
 
+// EncodeContainerAclID builds a composite ACL resource ID from a container ID and either a user ID or a group name.
 func EncodeContainerAclID(containerID, userID, group string) string {
 	if userID != "" {
 		return containerID + "::" + "user" + "::" + userID
@@ -21,6 +22,7 @@ func EncodeContainerAclID(containerID, userID, group string) string {
 	}
 }
 
+// DecodeContainerAclID splits a composite ACL resource ID back into its container ID, type ("user" or "group"), and identity.
 func DecodeContainerAclID(resourceID string) (containerID string, aclType string, userIDorGroup string, err error) {
 	idParts := strings.Split(resourceID, "::")
 	if len(idParts) != 3 {
@@ -33,9 +35,10 @@ func DecodeContainerAclID(resourceID string) (containerID string, aclType string
 	return
 }
 
-func SetAclsStateFromJSON(ctx context.Context, acslJSON gjson.Result, aclSet *types.Set, diags *diag.Diagnostics) {
+// SetAclsStateFromJSON populates a Terraform Set value with ACL entries parsed from a gjson ACL array result.
+func SetAclsStateFromJSON(ctx context.Context, aclsJSON gjson.Result, aclSet *types.Set, diags *diag.Diagnostics) {
 	var aclsTFSDK []AclTFSDK
-	for _, aclJSON := range acslJSON.Array() {
+	for _, aclJSON := range aclsJSON.Array() {
 		actionSet := utils.StringSliceJSONToSetValue(gjson.Get(aclJSON.String(), "actions").Array(), diags)
 		if diags.HasError() {
 			return
@@ -53,13 +56,10 @@ func SetAclsStateFromJSON(ctx context.Context, acslJSON gjson.Result, aclSet *ty
 		diags.Append(dg...)
 		return
 	}
-	*aclSet, dg = aclsSetValue.ToSetValue(ctx)
-	if dg.HasError() {
-		diags.Append(dg...)
-		return
-	}
+	*aclSet = aclsSetValue
 }
 
+// GetUnPermittedAcl returns an ACL revocation entry for any actions currently granted that are absent from newActions.
 func GetUnPermittedAcl(ctx context.Context, resourceID string, aclsJSON string, newActions []string, diags *diag.Diagnostics) *ContainerAclJSON {
 	_, aclType, userIDOrGroup, err := DecodeContainerAclID(resourceID)
 	if err != nil {
@@ -85,7 +85,7 @@ func GetUnPermittedAcl(ctx context.Context, resourceID string, aclsJSON string, 
 	var currentActions []string
 	if len(currentAcls) != 0 {
 		for _, acl := range currentAcls {
-			if aclType == "user" && acl.UserID == userIDOrGroup || aclType == "group" && acl.Group == userIDOrGroup {
+			if (aclType == "user" && acl.UserID == userIDOrGroup) || (aclType == "group" && acl.Group == userIDOrGroup) {
 				currentActions = acl.Actions
 				break
 			}
@@ -121,6 +121,7 @@ func GetUnPermittedAcl(ctx context.Context, resourceID string, aclsJSON string, 
 	return nil
 }
 
+// GetPermittedAcl builds an ACL permit entry granting the supplied actions to the user or group encoded in resourceID.
 func GetPermittedAcl(ctx context.Context, resourceID string, newActions []string, diags *diag.Diagnostics) *ContainerAclJSON {
 	_, aclType, userIDOrGroup, err := DecodeContainerAclID(resourceID)
 	if err != nil {
@@ -142,6 +143,29 @@ func GetPermittedAcl(ctx context.Context, resourceID string, newActions []string
 	return &acl
 }
 
+// AclExistsInResponse returns true if the ACL entry for the user or group encoded in resourceID
+// is present in the acls array of the API response JSON.
+func AclExistsInResponse(responseJSON string, resourceID string) bool {
+	_, aclType, userIDOrGroup, err := DecodeContainerAclID(resourceID)
+	if err != nil {
+		return false
+	}
+	aclsResult := gjson.Get(responseJSON, "acls")
+	if !aclsResult.Exists() {
+		return false
+	}
+	for _, aclJSON := range aclsResult.Array() {
+		if aclType == "group" && gjson.Get(aclJSON.String(), "group").String() == userIDOrGroup {
+			return true
+		}
+		if aclType == "user" && gjson.Get(aclJSON.String(), "user_id").String() == userIDOrGroup {
+			return true
+		}
+	}
+	return false
+}
+
+// SetAclCommonState populates an AclTFSDK state struct by locating the matching ACL entry within the API response JSON.
 func SetAclCommonState(ctx context.Context, resourceID string, responseJSON string, state *AclTFSDK, diags *diag.Diagnostics) {
 	_, aclType, userIDOrGroup, err := DecodeContainerAclID(resourceID)
 	if err != nil {

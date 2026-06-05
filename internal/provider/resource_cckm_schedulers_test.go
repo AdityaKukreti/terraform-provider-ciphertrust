@@ -2,10 +2,21 @@ package provider
 
 import (
 	"fmt"
+	"strings"
 	"testing"
 
 	"github.com/google/uuid"
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
+)
+
+// blockImportIgnore lists the block attributes that are stored as empty lists
+// when not configured, but arrive as null after import+Read. ImportStateVerify
+// treats [] != null as a mismatch, so we ignore the unused block for each
+// operation type.
+var (
+	rotationImportIgnore = []string{"cckm_synchronization_params"}
+	syncImportIgnore     = []string{"cckm_key_rotation_params"}
+	xksCredImportIgnore  = []string{"cckm_key_rotation_params", "cckm_synchronization_params"}
 )
 
 func TestCckmSchedulersRotationResource(t *testing.T) {
@@ -97,7 +108,15 @@ func TestCckmSchedulersRotationResource(t *testing.T) {
 			rotationAfterUpdate, maxParamsName, expirationUpdate, expireInUpdate,
 			rotationAfterUpdate, minParamsName)
 		updateConfig2 := fmt.Sprintf(updateSchedulerParams2, maxParamsName, minParamsName)
+		rotateMaterialExpectedTrueValue := "true"
+		if getCipherTrustVersion() < 221 {
+			rotateMaterialExpectedTrueValue = "false"
+			createConfig = strings.ReplaceAll(createConfig, "rotate_material = true", "")
+			updateConfig = strings.ReplaceAll(updateConfig, "rotate_material = true", "")
+			updateConfig2 = strings.ReplaceAll(updateConfig2, "rotate_material = true", "")
+		}
 		resource.Test(t, resource.TestCase{
+			PreCheck:                 func() { cleanupCckmAwsKMS() },
 			ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
 			Steps: []resource.TestStep{
 				{
@@ -109,14 +128,29 @@ func TestCckmSchedulersRotationResource(t *testing.T) {
 						resource.TestCheckResourceAttr(maxParamsResource, "cckm_key_rotation_params.0.expiration", expiration),
 						resource.TestCheckResourceAttr(maxParamsResource, "cckm_key_rotation_params.0.expire_in", expireIn),
 						resource.TestCheckResourceAttr(maxParamsResource, "cckm_key_rotation_params.0.rotation_after", rotationAfter),
-						resource.TestCheckResourceAttr(maxParamsResource, "cckm_key_rotation_params.0.rotate_material", "true"),
+						resource.TestCheckResourceAttr(maxParamsResource, "cckm_key_rotation_params.0.rotate_material", rotateMaterialExpectedTrueValue),
 
 						resource.TestCheckResourceAttrSet(minParamsResource, "id"),
 						resource.TestCheckResourceAttrSet(minParamsResource, "cckm_key_rotation_params.#"),
 						resource.TestCheckResourceAttr(minParamsResource, "cckm_key_rotation_params.0.cloud_name", "aws"),
-						testCheckAttributeNotSet(minParamsResource, "cckm_key_rotation_params.0.expiration"),
-						testCheckAttributeNotSet(minParamsResource, "cckm_key_rotation_params.0.expire_in"),
 					),
+				},
+				{
+					RefreshState: true,
+				},
+				// Import the fully-configured scheduler and verify all rotation params round-trip.
+				{
+					ResourceName:            maxParamsResource,
+					ImportState:             true,
+					ImportStateVerify:       true,
+					ImportStateVerifyIgnore: rotationImportIgnore,
+				},
+				// Import the minimal scheduler (cloud_name only) to verify sparse round-trip.
+				{
+					ResourceName:            minParamsResource,
+					ImportState:             true,
+					ImportStateVerify:       true,
+					ImportStateVerifyIgnore: rotationImportIgnore,
 				},
 				{
 					Config: updateConfig,
@@ -135,26 +169,11 @@ func TestCckmSchedulersRotationResource(t *testing.T) {
 						resource.TestCheckResourceAttr(minParamsResource, "cckm_key_rotation_params.0.expiration", expirationUpdate),
 						resource.TestCheckResourceAttr(minParamsResource, "cckm_key_rotation_params.0.expire_in", expireInUpdate),
 						resource.TestCheckResourceAttr(minParamsResource, "cckm_key_rotation_params.0.rotation_after", rotationAfterUpdate),
-						resource.TestCheckResourceAttr(minParamsResource, "cckm_key_rotation_params.0.rotate_material", "true"),
+						resource.TestCheckResourceAttr(minParamsResource, "cckm_key_rotation_params.0.rotate_material", rotateMaterialExpectedTrueValue),
 					),
 				},
 				{
-					Config: createConfig,
-					Check: resource.ComposeTestCheckFunc(
-						resource.TestCheckResourceAttrSet(maxParamsResource, "id"),
-						resource.TestCheckResourceAttrSet(maxParamsResource, "cckm_key_rotation_params.#"),
-						resource.TestCheckResourceAttr(maxParamsResource, "cckm_key_rotation_params.0.cloud_name", "aws"),
-						resource.TestCheckResourceAttr(maxParamsResource, "cckm_key_rotation_params.0.expiration", expiration),
-						resource.TestCheckResourceAttr(maxParamsResource, "cckm_key_rotation_params.0.expire_in", expireIn),
-						resource.TestCheckResourceAttr(maxParamsResource, "cckm_key_rotation_params.0.rotation_after", rotationAfter),
-						resource.TestCheckResourceAttr(maxParamsResource, "cckm_key_rotation_params.0.rotate_material", "true"),
-
-						resource.TestCheckResourceAttrSet(minParamsResource, "id"),
-						resource.TestCheckResourceAttrSet(minParamsResource, "cckm_key_rotation_params.#"),
-						resource.TestCheckResourceAttr(minParamsResource, "cckm_key_rotation_params.0.cloud_name", "aws"),
-						testCheckAttributeNotSet(minParamsResource, "cckm_key_rotation_params.0.expiration"),
-						testCheckAttributeNotSet(minParamsResource, "cckm_key_rotation_params.0.expire_in"),
-					),
+					RefreshState: true,
 				},
 				{
 					Config: updateConfig2,
@@ -176,6 +195,9 @@ func TestCckmSchedulersRotationResource(t *testing.T) {
 						resource.TestCheckResourceAttr(minParamsResource, "cckm_key_rotation_params.0.rotate_material", "false"),
 					),
 				},
+				{
+					RefreshState: true,
+				},
 			},
 		})
 	})
@@ -194,6 +216,7 @@ func TestCckmSchedulersRotationResource(t *testing.T) {
 		schedulerConfigStr := fmt.Sprintf(schedulerConfig, schedulerName)
 		schedulerResourceName := "ciphertrust_scheduler.xks_credential_rotation"
 		resource.Test(t, resource.TestCase{
+			PreCheck:                 func() { cleanupCckmAwsKMS() },
 			ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
 			Steps: []resource.TestStep{
 				{
@@ -203,11 +226,21 @@ func TestCckmSchedulersRotationResource(t *testing.T) {
 						resource.TestCheckResourceAttr(schedulerResourceName, "cckm_xks_credential_rotation_params.cloud_name", "aws"),
 					),
 				},
+				{
+					RefreshState: true,
+				},
+				{
+					ResourceName:            schedulerResourceName,
+					ImportState:             true,
+					ImportStateVerify:       true,
+					ImportStateVerifyIgnore: xksCredImportIgnore,
+				},
 			},
 		})
 	})
 
 	t.Run("oci", func(t *testing.T) {
+		schedulerResource := "ciphertrust_scheduler.oci"
 		createConfig := `
 			resource "ciphertrust_scheduler" "oci" {
 				cckm_key_rotation_params {
@@ -224,10 +257,26 @@ func TestCckmSchedulersRotationResource(t *testing.T) {
 		name := "tf" + uuid.New().String()[:8]
 		createConfigStr := fmt.Sprintf(createConfig, expiration, expireIn, name)
 		resource.Test(t, resource.TestCase{
+			PreCheck:                 func() { cleanupCckmOCIVaults() },
 			ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
 			Steps: []resource.TestStep{
 				{
 					Config: createConfigStr,
+					Check: resource.ComposeTestCheckFunc(
+						resource.TestCheckResourceAttrSet(schedulerResource, "id"),
+						resource.TestCheckResourceAttr(schedulerResource, "cckm_key_rotation_params.0.cloud_name", "oci"),
+						resource.TestCheckResourceAttr(schedulerResource, "cckm_key_rotation_params.0.expiration", expiration),
+						resource.TestCheckResourceAttr(schedulerResource, "cckm_key_rotation_params.0.expire_in", expireIn),
+					),
+				},
+				{
+					RefreshState: true,
+				},
+				{
+					ResourceName:            schedulerResource,
+					ImportState:             true,
+					ImportStateVerify:       true,
+					ImportStateVerifyIgnore: rotationImportIgnore,
 				},
 			},
 		})
@@ -285,6 +334,7 @@ func TestCckmSchedulersSyncResource(t *testing.T) {
 		createConfig := connectionResource + fmt.Sprintf(createParams, kmsParamsName, syncAllParamsName)
 		updateConfig := connectionResource + fmt.Sprintf(updateParams, kmsParamsName, syncAllParamsName)
 		resource.Test(t, resource.TestCase{
+			PreCheck:                 func() { cleanupCckmAwsKMS() },
 			ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
 			Steps: []resource.TestStep{
 				{
@@ -300,6 +350,20 @@ func TestCckmSchedulersSyncResource(t *testing.T) {
 						resource.TestCheckResourceAttr(syncAllParamsResource, "cckm_synchronization_params.0.cloud_name", "aws"),
 						resource.TestCheckResourceAttr(syncAllParamsResource, "cckm_synchronization_params.0.synchronize_all", "true"),
 					),
+				},
+				// Import the KMS-scoped scheduler and verify kms list and synchronize_all round-trip.
+				{
+					ResourceName:            kmsParamsResource,
+					ImportState:             true,
+					ImportStateVerify:       true,
+					ImportStateVerifyIgnore: syncImportIgnore,
+				},
+				// Import the synchronize_all scheduler and verify round-trip.
+				{
+					ResourceName:            syncAllParamsResource,
+					ImportState:             true,
+					ImportStateVerify:       true,
+					ImportStateVerifyIgnore: syncImportIgnore,
 				},
 				{
 					Config: updateConfig,
@@ -334,7 +398,9 @@ func TestCckmSchedulersSyncResource(t *testing.T) {
 	})
 	t.Run("oci", func(t *testing.T) {
 		connectionResource := initCckmOCITest(t)
-		createConfig := `	
+		syncVaultResource := "ciphertrust_scheduler.sync_vault"
+		syncAllResource := "ciphertrust_scheduler.sync_all"
+		createConfig := `
 			resource "ciphertrust_scheduler" "sync_vault" {
 				cckm_synchronization_params {
 					cloud_name  = "oci"
@@ -357,10 +423,39 @@ func TestCckmSchedulersSyncResource(t *testing.T) {
 		syncAllName := "oci-sync-all" + uuid.New().String()[:8]
 		createConfigStr := connectionResource + fmt.Sprintf(createConfig, syncVaultName, syncAllName)
 		resource.Test(t, resource.TestCase{
+			PreCheck:                 func() { cleanupCckmOCIVaults() },
 			ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
 			Steps: []resource.TestStep{
 				{
 					Config: createConfigStr,
+					Check: resource.ComposeTestCheckFunc(
+						resource.TestCheckResourceAttrSet(syncVaultResource, "id"),
+						resource.TestCheckResourceAttr(syncVaultResource, "cckm_synchronization_params.0.cloud_name", "oci"),
+						resource.TestCheckResourceAttr(syncVaultResource, "cckm_synchronization_params.0.oci_vaults.#", "1"),
+						resource.TestCheckResourceAttr(syncVaultResource, "cckm_synchronization_params.0.synchronize_all", "false"),
+
+						resource.TestCheckResourceAttrSet(syncAllResource, "id"),
+						resource.TestCheckResourceAttr(syncAllResource, "cckm_synchronization_params.0.cloud_name", "oci"),
+						resource.TestCheckResourceAttr(syncAllResource, "cckm_synchronization_params.0.oci_vaults.#", "0"),
+						resource.TestCheckResourceAttr(syncAllResource, "cckm_synchronization_params.0.synchronize_all", "true"),
+					),
+				},
+				{
+					RefreshState: true,
+				},
+				// Import vault-scoped scheduler and verify oci_vaults and synchronize_all round-trip.
+				{
+					ResourceName:            syncVaultResource,
+					ImportState:             true,
+					ImportStateVerify:       true,
+					ImportStateVerifyIgnore: syncImportIgnore,
+				},
+				// Import synchronize_all scheduler and verify round-trip.
+				{
+					ResourceName:            syncAllResource,
+					ImportState:             true,
+					ImportStateVerify:       true,
+					ImportStateVerifyIgnore: syncImportIgnore,
 				},
 			},
 		})

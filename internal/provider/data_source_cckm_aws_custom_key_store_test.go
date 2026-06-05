@@ -18,7 +18,7 @@ func TestCckmAWSDataSourceCustomKeyStore(t *testing.T) {
 		resource "ciphertrust_cm_key" "cm_aes_key" {
 			name         = "%s"
 			algorithm    = "AES"
-			usage_mask   = 60
+			usage_mask   = local.cm_key_usage_mask
 			unexportable = true
 			undeletable  = true
 			remove_from_state_on_destroy = true
@@ -52,18 +52,48 @@ func TestCckmAWSDataSourceCustomKeyStore(t *testing.T) {
 	cmKeyName := "tf-cm-key-" + uuid.New().String()[:8]
 	keyStoreName := "tf-custom-key-store" + uuid.New().String()[:8]
 	proxyURIEndpoint := os.Getenv("CM_ADDRESS")
+	if os.Getenv("CTAAS") == "true" {
+		proxyURIEndpoint = "https://xks." + proxyURIEndpoint[len("https://"):]
+	}
 	createKeyStoreConfigStr := fmt.Sprintf(createKeyStoreConfig, cmKeyName, keyStoreName, proxyURIEndpoint)
 
 	keyStoreResourceName := "ciphertrust_aws_custom_keystore.custom_keystore"
 	dataSourceResourceName := "data.ciphertrust_aws_custom_keystore.by_id"
 
 	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { cleanupCckmAwsKMS() },
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
 		Steps: []resource.TestStep{
 			{
 				Config: awsConnectionResource + createKeyStoreConfigStr,
 				Check: resource.ComposeTestCheckFunc(
-					resource.TestCheckResourceAttrPair(keyStoreResourceName, "id", dataSourceResourceName, "id"),
+					// Verify resource attributes are set as expected.
+					resource.TestCheckResourceAttr(keyStoreResourceName, "name", keyStoreName),
+					resource.TestCheckResourceAttr(keyStoreResourceName, "linked_state", "false"),
+					resource.TestCheckResourceAttr(keyStoreResourceName, "connect_disconnect_keystore", "DISCONNECT_KEYSTORE"),
+					resource.TestCheckResourceAttr(keyStoreResourceName, "local_hosted_params.0.blocked", "false"),
+					resource.TestCheckResourceAttr(keyStoreResourceName, "local_hosted_params.0.max_credentials", "8"),
+					resource.TestCheckResourceAttr(keyStoreResourceName, "local_hosted_params.0.source_key_tier", "local"),
+					resource.TestCheckResourceAttr(keyStoreResourceName, "local_hosted_params.0.mtls_enabled", "true"),
+					resource.TestCheckResourceAttr(keyStoreResourceName, "aws_param.0.custom_key_store_type", "EXTERNAL_KEY_STORE"),
+					resource.TestCheckResourceAttr(keyStoreResourceName, "aws_param.0.xks_proxy_connectivity", "VPC_ENDPOINT_SERVICE"),
+					resource.TestCheckResourceAttr(keyStoreResourceName, "labels.%", "0"),
+
+					// Verify data source matches resource.
+					resource.TestCheckResourceAttrPair(dataSourceResourceName, "id", keyStoreResourceName, "id"),
+					resource.TestCheckResourceAttrPair(dataSourceResourceName, "name", keyStoreResourceName, "name"),
+					resource.TestCheckResourceAttrPair(dataSourceResourceName, "region", keyStoreResourceName, "region"),
+					resource.TestCheckResourceAttrPair(dataSourceResourceName, "kms_id", keyStoreResourceName, "kms_id"),
+					resource.TestCheckResourceAttrPair(dataSourceResourceName, "linked_state", keyStoreResourceName, "linked_state"),
+					resource.TestCheckResourceAttrPair(dataSourceResourceName, "connect_disconnect_keystore", keyStoreResourceName, "connect_disconnect_keystore"),
+					resource.TestCheckResourceAttrPair(dataSourceResourceName, "local_hosted_params.0.blocked", keyStoreResourceName, "local_hosted_params.0.blocked"),
+					resource.TestCheckResourceAttrPair(dataSourceResourceName, "local_hosted_params.0.max_credentials", keyStoreResourceName, "local_hosted_params.0.max_credentials"),
+					resource.TestCheckResourceAttrPair(dataSourceResourceName, "local_hosted_params.0.source_key_tier", keyStoreResourceName, "local_hosted_params.0.source_key_tier"),
+					resource.TestCheckResourceAttrPair(dataSourceResourceName, "local_hosted_params.0.mtls_enabled", keyStoreResourceName, "local_hosted_params.0.mtls_enabled"),
+					resource.TestCheckResourceAttrPair(dataSourceResourceName, "aws_param.0.custom_key_store_type", keyStoreResourceName, "aws_param.0.custom_key_store_type"),
+					resource.TestCheckResourceAttrPair(dataSourceResourceName, "aws_param.0.connection_state", keyStoreResourceName, "aws_param.0.connection_state"),
+					resource.TestCheckResourceAttrPair(dataSourceResourceName, "aws_param.0.xks_proxy_connectivity", keyStoreResourceName, "aws_param.0.xks_proxy_connectivity"),
+					resource.TestCheckResourceAttrPair(dataSourceResourceName, "labels.%", keyStoreResourceName, "labels.%"),
 				),
 			},
 		},

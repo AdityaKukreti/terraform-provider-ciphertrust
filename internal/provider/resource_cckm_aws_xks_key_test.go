@@ -3,11 +3,35 @@ package provider
 import (
 	"fmt"
 	"os"
+	"regexp"
 	"testing"
 
 	"github.com/google/uuid"
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
 )
+
+// importStateVerifyIgnoreAwsXksKey lists the attributes that cannot round-trip through
+// terraform import for unlinked XKS keys. It is the superset of all four import steps
+// in TestCckmAWSXKSUnlinkedKey - extra entries are harmless when the attributes already match.
+var importStateVerifyIgnoreAwsXksKey = []string{
+	// alias: not applied to AWS for unlinked keys, so not returned by GET.
+	"alias",
+	// description: Read() preserves prior state value for unlinked keys; no prior state after import.
+	"description",
+	// enable_key: not applied for unlinked keys (block/enable ops require linked_state = true).
+	"enable_key",
+	// enable_rotation: not surfaced in GET response; cannot round-trip.
+	"enable_rotation",
+	// key_policy: not surfaced in GET response; cannot round-trip.
+	"key_policy",
+	// local_hosted_params: write-only input block; top-level blocked/linked computed attributes
+	// reflect the actual key state instead.
+	"local_hosted_params",
+	// schedule_for_deletion_days: null for active keys; does not round-trip cleanly after import.
+	"schedule_for_deletion_days",
+	// tags: not applied/returned for unlinked keys (AWS-side operation).
+	"tags",
+}
 
 func TestCckmAWSXKSUnlinkedKey(t *testing.T) {
 	awsConnectionResource, ok := initCckmAwsTest()
@@ -26,7 +50,7 @@ func TestCckmAWSXKSUnlinkedKey(t *testing.T) {
 		resource "ciphertrust_cm_key" "cm_aes_key" {
 			name         = "%s"
 			algorithm    = "AES"
-			usage_mask   = 60
+			usage_mask   = local.cm_key_usage_mask
 			unexportable = true
 			undeletable  = true
 			remove_from_state_on_destroy = true
@@ -50,6 +74,9 @@ func TestCckmAWSXKSUnlinkedKey(t *testing.T) {
 	cmKeyName := "tf-cm-key-" + uuid.New().String()[:8]
 	keyStoreName := "tf-custom-key-store" + uuid.New().String()[:8]
 	proxyURIEndpoint := os.Getenv("CM_ADDRESS")
+	if os.Getenv("CTAAS") == "true" {
+		proxyURIEndpoint = "https://xks." + proxyURIEndpoint[len("https://"):]
+	}
 	createKeyStoreConfigStr := fmt.Sprintf(createKeyStoreConfig, cmKeyName, keyStoreName, proxyURIEndpoint)
 
 	createPolicyTemplateConfig := `
@@ -79,6 +106,7 @@ func TestCckmAWSXKSUnlinkedKey(t *testing.T) {
 		  start_date = "2025-03-07T14:24:00Z"
 		}`
 	enableRotationConfigStr := fmt.Sprintf(enableRotationConfig, enableRotationName)
+	enableRotationConfigStr = applyCTAAS(enableRotationConfigStr)
 
 	createXKSKeyConfig := `
 		resource "ciphertrust_aws_xks_key" "unlinked_cm_source_min_params" {
@@ -105,7 +133,7 @@ func TestCckmAWSXKSUnlinkedKey(t *testing.T) {
 				custom_key_store_id = ciphertrust_aws_custom_keystore.unlinked_xks_custom_keystore.id
 				blocked = true
 				linked  = false
-				source_key_id   = ciphertrust_cm_key.cm_aes_key.id
+				source_key_id   = %s
 				source_key_tier = "local"
 			}
 			tags = {
@@ -116,7 +144,9 @@ func TestCckmAWSXKSUnlinkedKey(t *testing.T) {
 		awsKeyNamePrefix + uuid.New().String(),
 		awsKeyNamePrefix + uuid.New().String(),
 	}
-	createXKSKeyConfigStr := fmt.Sprintf(createXKSKeyConfig, aliasList[0], aliasList[1], false)
+	createXKSKeyConfigStr := fmt.Sprintf(createXKSKeyConfig, aliasList[0], aliasList[1], false, "ciphertrust_cm_key.cm_aes_key.id")
+	modifyPlanConfigStr := awsConnectionResource + createKeyStoreConfigStr + policyTemplateConfigStr + enableRotationConfigStr +
+		fmt.Sprintf(createXKSKeyConfig, aliasList[0], aliasList[1], false, `"tf-fake-key-id"`)
 	createConfigStr := awsConnectionResource + createKeyStoreConfigStr + policyTemplateConfigStr + enableRotationConfigStr + createXKSKeyConfigStr
 
 	updateXKSKeyConfig := `
@@ -165,17 +195,22 @@ func TestCckmAWSXKSUnlinkedKey(t *testing.T) {
 	keyResourceMinParams := "ciphertrust_aws_xks_key.unlinked_cm_source_min_params"
 
 	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { cleanupCckmAwsKMS() },
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
 		Steps: []resource.TestStep{
 			{
 				Config: createConfigStr,
 				Check: resource.ComposeTestCheckFunc(
 					resource.TestCheckResourceAttr(keyResourceMaxParams, "alias.#", "3"),
+					// blocked, enable_key, key_state: for unlinked keys these are stored from plan but not
+					// applied to AWS - block/enable ops are gated on linked_state == true.
 					resource.TestCheckResourceAttr(keyResourceMaxParams, "blocked", "true"),
 					resource.TestCheckResourceAttr(keyResourceMaxParams, "enable_key", "false"),
-					// Not updated for unlinked key
-					resource.TestCheckResourceAttr(keyResourceMaxParams, "labels.#", "0"),
-					// Not updated for unlinked key
+					resource.TestCheckResourceAttr(keyResourceMaxParams, "labels.%", "4"),
+					resource.TestCheckResourceAttr(keyResourceMaxParams, "labels.auto_rotate_key_source", "local"),
+					resource.TestCheckResourceAttr(keyResourceMaxParams, "labels.disable_encrypt_on_auto_rotate", "false"),
+					resource.TestCheckResourceAttr(keyResourceMaxParams, "labels.disable_encrypt_for_all_accounts_on_auto_rotate", "false"),
+					resource.TestCheckResourceAttrPair(keyResourceMaxParams, "labels.job_config_id", "ciphertrust_scheduler.scheduled_rotation_job", "id"),
 					resource.TestCheckResourceAttr(keyResourceMaxParams, "key_state", "Enabled"),
 					resource.TestCheckResourceAttr(keyResourceMaxParams, "description", "create description"),
 					resource.TestCheckResourceAttr(keyResourceMaxParams, "tags.%", "1"),
@@ -184,37 +219,23 @@ func TestCckmAWSXKSUnlinkedKey(t *testing.T) {
 					resource.TestCheckResourceAttr(keyResourceMinParams, "alias.#", "0"),
 					resource.TestCheckResourceAttr(keyResourceMinParams, "blocked", "false"),
 					resource.TestCheckResourceAttr(keyResourceMinParams, "enable_key", "true"),
-					resource.TestCheckResourceAttr(keyResourceMinParams, "labels.#", "0"),
+					resource.TestCheckResourceAttr(keyResourceMinParams, "labels.%", "0"),
 					resource.TestCheckResourceAttr(keyResourceMinParams, "key_state", "Enabled"),
 					resource.TestCheckResourceAttr(keyResourceMinParams, "description", ""),
 					resource.TestCheckResourceAttr(keyResourceMinParams, "tags.%", "0"),
 				),
 			},
 			{
-				ResourceName:      keyResourceMaxParams,
-				ImportState:       true,
-				ImportStateVerify: true,
-				ImportStateVerifyIgnore: []string{
-					"alias",
-					"description",
-					"enable_key",
-					"enable_rotation",
-					"key_policy",
-					"local_hosted_params",
-					"schedule_for_deletion_days",
-					"tags",
-				},
+				ResourceName:            keyResourceMaxParams,
+				ImportState:             true,
+				ImportStateVerify:       true,
+				ImportStateVerifyIgnore: importStateVerifyIgnoreAwsXksKey,
 			},
 			{
-				ResourceName:      keyResourceMinParams,
-				ImportState:       true,
-				ImportStateVerify: true,
-				ImportStateVerifyIgnore: []string{
-					"description",
-					"enable_key",
-					"local_hosted_params",
-					"schedule_for_deletion_days",
-				},
+				ResourceName:            keyResourceMinParams,
+				ImportState:             true,
+				ImportStateVerify:       true,
+				ImportStateVerifyIgnore: importStateVerifyIgnoreAwsXksKey,
 			},
 			{
 				Config: updateConfigStr,
@@ -222,7 +243,7 @@ func TestCckmAWSXKSUnlinkedKey(t *testing.T) {
 					resource.TestCheckResourceAttr(keyResourceMaxParams, "alias.#", "1"),
 					resource.TestCheckResourceAttr(keyResourceMaxParams, "blocked", "false"),
 					resource.TestCheckResourceAttr(keyResourceMaxParams, "enable_key", "true"),
-					resource.TestCheckResourceAttr(keyResourceMaxParams, "labels.#", "0"),
+					resource.TestCheckResourceAttr(keyResourceMaxParams, "labels.%", "0"),
 					resource.TestCheckResourceAttr(keyResourceMaxParams, "key_state", "Enabled"),
 					resource.TestCheckResourceAttr(keyResourceMaxParams, "description", "update description"),
 					resource.TestCheckResourceAttr(keyResourceMaxParams, "tags.%", "2"),
@@ -232,7 +253,7 @@ func TestCckmAWSXKSUnlinkedKey(t *testing.T) {
 					resource.TestCheckResourceAttr(keyResourceMinParams, "alias.#", "1"),
 					resource.TestCheckResourceAttr(keyResourceMinParams, "blocked", "true"),
 					resource.TestCheckResourceAttr(keyResourceMinParams, "enable_key", "false"),
-					resource.TestCheckResourceAttr(keyResourceMinParams, "labels.#", "0"),
+					resource.TestCheckResourceAttr(keyResourceMinParams, "labels.%", "0"),
 					resource.TestCheckResourceAttr(keyResourceMinParams, "key_state", "Enabled"),
 					resource.TestCheckResourceAttr(keyResourceMinParams, "description", "update description"),
 					resource.TestCheckResourceAttr(keyResourceMinParams, "tags.%", "2"),
@@ -241,46 +262,34 @@ func TestCckmAWSXKSUnlinkedKey(t *testing.T) {
 				),
 			},
 			{
+				// Verify state is stable immediately after the update (no phantom diffs).
 				RefreshState: true,
 			},
 			{
-				ResourceName:      keyResourceMaxParams,
-				ImportState:       true,
-				ImportStateVerify: true,
-				ImportStateVerifyIgnore: []string{
-					"alias",
-					"description",
-					"enable_key",
-					"enable_rotation",
-					"key_policy",
-					"local_hosted_params",
-					"schedule_for_deletion_days",
-					"tags",
-				},
+				ResourceName:            keyResourceMaxParams,
+				ImportState:             true,
+				ImportStateVerify:       true,
+				ImportStateVerifyIgnore: importStateVerifyIgnoreAwsXksKey,
 			},
 			{
-				ResourceName:      keyResourceMinParams,
-				ImportState:       true,
-				ImportStateVerify: true,
-				ImportStateVerifyIgnore: []string{
-					"alias",
-					"description",
-					"enable_key",
-					"enable_rotation",
-					"key_policy",
-					"local_hosted_params",
-					"schedule_for_deletion_days",
-					"tags",
-				}},
+				ResourceName:            keyResourceMinParams,
+				ImportState:             true,
+				ImportStateVerify:       true,
+				ImportStateVerifyIgnore: importStateVerifyIgnoreAwsXksKey,
+			},
 			{
 				Config: createConfigStr,
 				Check: resource.ComposeTestCheckFunc(
 					resource.TestCheckResourceAttr(keyResourceMaxParams, "alias.#", "3"),
+					// blocked, enable_key, key_state: for unlinked keys these are stored from plan but not
+					// applied to AWS - block/enable ops are gated on linked_state == true.
 					resource.TestCheckResourceAttr(keyResourceMaxParams, "blocked", "true"),
 					resource.TestCheckResourceAttr(keyResourceMaxParams, "enable_key", "false"),
-					// Not updated for unlinked key
-					resource.TestCheckResourceAttr(keyResourceMaxParams, "labels.#", "0"),
-					// Not updated for unlinked key
+					resource.TestCheckResourceAttr(keyResourceMaxParams, "labels.%", "4"),
+					resource.TestCheckResourceAttr(keyResourceMaxParams, "labels.auto_rotate_key_source", "local"),
+					resource.TestCheckResourceAttr(keyResourceMaxParams, "labels.disable_encrypt_on_auto_rotate", "false"),
+					resource.TestCheckResourceAttr(keyResourceMaxParams, "labels.disable_encrypt_for_all_accounts_on_auto_rotate", "false"),
+					resource.TestCheckResourceAttrPair(keyResourceMaxParams, "labels.job_config_id", "ciphertrust_scheduler.scheduled_rotation_job", "id"),
 					resource.TestCheckResourceAttr(keyResourceMaxParams, "key_state", "Enabled"),
 					resource.TestCheckResourceAttr(keyResourceMaxParams, "description", "create description"),
 					resource.TestCheckResourceAttr(keyResourceMaxParams, "tags.%", "1"),
@@ -289,11 +298,17 @@ func TestCckmAWSXKSUnlinkedKey(t *testing.T) {
 					resource.TestCheckResourceAttr(keyResourceMinParams, "alias.#", "0"),
 					resource.TestCheckResourceAttr(keyResourceMinParams, "blocked", "false"),
 					resource.TestCheckResourceAttr(keyResourceMinParams, "enable_key", "true"),
-					resource.TestCheckResourceAttr(keyResourceMinParams, "labels.#", "0"),
+					resource.TestCheckResourceAttr(keyResourceMinParams, "labels.%", "0"),
 					resource.TestCheckResourceAttr(keyResourceMinParams, "key_state", "Enabled"),
 					resource.TestCheckResourceAttr(keyResourceMinParams, "description", ""),
 					resource.TestCheckResourceAttr(keyResourceMinParams, "tags.%", "0"),
 				),
+			},
+			{
+				// Verify ModifyPlan fires an error when local_hosted_params.source_key_id is changed.
+				Config:      modifyPlanConfigStr,
+				PlanOnly:    true,
+				ExpectError: regexp.MustCompile(`Immutable attribute change detected`),
 			},
 		},
 	})

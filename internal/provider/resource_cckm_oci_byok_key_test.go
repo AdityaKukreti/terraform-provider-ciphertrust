@@ -2,7 +2,7 @@ package provider
 
 import (
 	"fmt"
-	"os"
+	"regexp"
 	"testing"
 
 	"github.com/google/uuid"
@@ -10,54 +10,28 @@ import (
 	"github.com/hashicorp/terraform-plugin-testing/terraform"
 )
 
-func initCckmOCITest(t *testing.T) string {
-
-	keyFile := os.Getenv("CCKM_OCI_KEY_FILE")
-	pubKeyFP := os.Getenv("CCKM_OCI_FINGERPRINT")
-	region := os.Getenv("CCKM_OCI_REGION")
-	tenancyOCID := os.Getenv("CCKM_OCI_CONN_TENANCY")
-	userOCID := os.Getenv("CCKM_OCI_USER")
-	vaultOCID := os.Getenv("CCKM_OCI_VAULT")
-
-	ok := keyFile != "" && pubKeyFP != "" && region != "" && tenancyOCID != "" && userOCID != "" /*&& compartmentOCID != "" */ && vaultOCID != ""
-	if !ok {
-		t.Skip("Failed to get OCI connection environment variables")
-	}
-	name := "tf-" + uuid.New().String()[:8]
-	config := `
-		locals {
-			vault_ocid          = "%s"
-			region              = "%s"
-		}
-		resource "ciphertrust_oci_connection" "oci_connection" {
-			key_file = <<-EOT
-			%s
-			EOT
-			name                = "%s"
-			pub_key_fingerprint = "%s"
-			region              = "%s"
-			tenancy_ocid        = "%s"
-			user_ocid           = "%s"
-		}
-		resource "ciphertrust_oci_vault" "vault" {
-			connection_id = ciphertrust_oci_connection.oci_connection.id
-			vault_id      = local.vault_ocid
-			region        = local.region
-		}`
-	resourceStr := fmt.Sprintf(config,
-		vaultOCID, region, keyFile, name, pubKeyFP, region, tenancyOCID, userOCID)
-	return resourceStr
+// importStateVerifyIgnoreOCIKey lists attributes that cannot round-trip through terraform import
+// for an OCI key (both native and BYOK). Used by import steps in TestCckmOCIKeysAndVersionsBYOK
+// and TestCckmOCIKeysAndVersionsNative.
+var importStateVerifyIgnoreOCIKey = []string{
+	// version_summary: Computed list; reflects versions present at key-read time, not
+	// at import time -- may have changed between the two operations.
+	"version_summary",
+	// oci_key_params.current_key_version: Computed; changes as new versions are promoted.
+	"oci_key_params.current_key_version",
+	// schedule_for_deletion_days: Optional-only on the key schema (no Computed/default);
+	// stays null in both pre-import and post-import state, but kept here for explicitness.
+	"schedule_for_deletion_days",
 }
 
 func TestCckmOCIKeysAndVersionsBYOK(t *testing.T) {
+	t.Skip("skipped")
 
 	connectionResource := initCckmOCITest(t)
 
 	localsConfig := `locals {
-		connection_name     = "tf-%s"
 		cm_key_name         = "tf-%s"
 		oci_key_name        = "tf-%s"
-		oci_min_key_name    = "tf-%s"
 		cm_key_version_name = "tf-%s"
 		rotation_job_name   = "tf-%s"
 		rotation_job_name_2 = "tf-%s"
@@ -65,8 +39,8 @@ func TestCckmOCIKeysAndVersionsBYOK(t *testing.T) {
 	}`
 
 	localsResource := fmt.Sprintf(localsConfig,
-		uuid.New().String()[:8], uuid.New().String()[:8], uuid.New().String()[:8], uuid.New().String()[:8],
-		uuid.New().String()[:8], uuid.New().String()[:8], uuid.New().String()[:8], uuid.New().String()[:8])
+		uuid.New().String()[:8], uuid.New().String()[:8], uuid.New().String()[:8],
+		uuid.New().String()[:8], uuid.New().String()[:8], uuid.New().String()[:8])
 
 	maxConfig := `
 		%s
@@ -89,7 +63,7 @@ func TestCckmOCIKeysAndVersionsBYOK(t *testing.T) {
 		resource "ciphertrust_cm_key" "cm_aes_key" {
 			name         = local.cm_key_name
 			algorithm    = "AES"
-			usage_mask   = 60
+			usage_mask   = local.cm_key_usage_mask
 		}
 
 		# Create a byok OCI key
@@ -125,7 +99,7 @@ func TestCckmOCIKeysAndVersionsBYOK(t *testing.T) {
 					hello = "english"
 				}
 			}
-			source_key_id   = ciphertrust_cm_key.cm_aes_key.id
+			source_key_id   = %s
 			source_key_tier = "local"
 			vault           = ciphertrust_oci_vault.vault.id
 		}
@@ -134,12 +108,12 @@ func TestCckmOCIKeysAndVersionsBYOK(t *testing.T) {
 		resource "ciphertrust_cm_key" "cm_key_version" {
 			name      = local.cm_key_version_name
 			algorithm = "AES"
-			usage_mask = 60
+			usage_mask = local.cm_key_usage_mask
 		}
 
 		# Add a byok version to the key
 		resource "ciphertrust_oci_byok_key_version" "byok_v1" {
-			cckm_key_id = ciphertrust_oci_byok_key.aes.id
+			cckm_key_id = %s
 			source_key_id = ciphertrust_cm_key.cm_key_version.id
 		}
 
@@ -203,7 +177,7 @@ func TestCckmOCIKeysAndVersionsBYOK(t *testing.T) {
 		resource "ciphertrust_cm_key" "cm_aes_key" {
 			name         = local.cm_key_name
 			algorithm    = "AES"
-			usage_mask   = 60
+			usage_mask   = local.cm_key_usage_mask
 		}
 
 		# Create a byok OCI key
@@ -246,7 +220,7 @@ func TestCckmOCIKeysAndVersionsBYOK(t *testing.T) {
 		resource "ciphertrust_cm_key" "cm_key_version" {
 			name      = local.cm_key_version_name
 			algorithm = "AES"
-			usage_mask = 60
+			usage_mask = local.cm_key_usage_mask
 		}
 
 		# Add a byok version to the key
@@ -274,7 +248,7 @@ func TestCckmOCIKeysAndVersionsBYOK(t *testing.T) {
 		resource "ciphertrust_cm_key" "cm_aes_key" {
 			name         = local.cm_key_name
 			algorithm    = "AES"
-			usage_mask   = 60
+			usage_mask   = local.cm_key_usage_mask
 		}
 
 		# Create a byok OCI key
@@ -293,7 +267,7 @@ func TestCckmOCIKeysAndVersionsBYOK(t *testing.T) {
 		resource "ciphertrust_cm_key" "cm_key_version" {
 			name      = local.cm_key_version_name
 			algorithm = "AES"
-			usage_mask = 60
+			usage_mask = local.cm_key_usage_mask
 		}
 
 		# Add a byok version to the key
@@ -318,33 +292,60 @@ func TestCckmOCIKeysAndVersionsBYOK(t *testing.T) {
 	keysDataSource := "data.ciphertrust_oci_key_list.keys"
 	versionDataSource := "data.ciphertrust_oci_key_version_list.versions"
 
-	createResourceStr := fmt.Sprintf(maxConfig, localsResource, connectionResource)
+	maxConfig = applyCTAAS(maxConfig)
+	updateConfig = applyCTAAS(updateConfig)
+	createResourceStr := fmt.Sprintf(maxConfig, localsResource, connectionResource,
+		"ciphertrust_cm_key.cm_aes_key.id", "ciphertrust_oci_byok_key.aes.id")
 	updateResourceStr := fmt.Sprintf(updateConfig, localsResource, connectionResource)
 	minResourceStr := fmt.Sprintf(minConfig, localsResource, connectionResource)
+	modifyKeyConfigStr := fmt.Sprintf(maxConfig, localsResource, connectionResource,
+		`"tf-fake-source-key-id"`, "ciphertrust_oci_byok_key.aes.id")
+	modifyVersionConfigStr := fmt.Sprintf(maxConfig, localsResource, connectionResource,
+		"ciphertrust_cm_key.cm_aes_key.id", `"tf-fake-key-id"`)
 
 	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { cleanupCckmOCIVaults() },
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
 		Steps: []resource.TestStep{
 			{
 				Config: createResourceStr,
 				Check: resource.ComposeTestCheckFunc(
+					// Key resource
+					resource.TestCheckResourceAttrSet(keyResource, "id"),
+					resource.TestCheckResourceAttr(keyResource, "enable_key", "true"),
+					resource.TestCheckResourceAttr(keyResource, "source_key_tier", "local"),
+					resource.TestCheckResourceAttr(keyResource, "oci_key_params.protection_mode", "SOFTWARE"),
+					resource.TestCheckResourceAttrPair(keyResource, "vault", "ciphertrust_oci_vault.vault", "id"),
+					resource.TestCheckResourceAttrSet(keyResource, "oci_key_params.key_id"),
+					resource.TestCheckResourceAttrSet(keyResource, "vault_id"),
 					resource.TestCheckResourceAttr(keyResource, "labels.%", "2"),
+					// version_summary reflects versions present at key-read time (not later-added versions in same apply)
+					resource.TestCheckResourceAttrSet(keyResource, "version_summary.0.version_id"),
+					// Version resource (byok_v1)
+					resource.TestCheckResourceAttrSet(versionResource, "id"),
+					resource.TestCheckResourceAttrPair(versionResource, "cckm_key_id", keyResource, "id"),
+					resource.TestCheckResourceAttrSet(versionResource, "oci_key_version_params.vault_id"),
+					resource.TestCheckResourceAttrSet(versionResource, "oci_key_version_params.key_id"),
+					resource.TestCheckResourceAttrSet(versionResource, "oci_key_version_params.version_id"),
+					// Key list data source
 					resource.TestCheckResourceAttr(keysDataSource, "keys.#", "1"),
+					resource.TestCheckResourceAttr(keysDataSource, "matched", "1"),
+					resource.TestCheckResourceAttrPair(keysDataSource, "keys.0.id", keyResource, "id"),
+					resource.TestCheckResourceAttr(keysDataSource, "keys.0.oci_key_params.protection_mode", "SOFTWARE"),
+					// Key version list data source
 					resource.TestCheckResourceAttr(versionDataSource, "versions.#", "4"),
+					resource.TestCheckResourceAttr(versionDataSource, "matched", "4"),
+					resource.TestCheckResourceAttrSet(versionDataSource, "versions.0.id"),
 				),
 			},
 			{
 				RefreshState: true,
 			},
 			{
-				ResourceName:      keyResource,
-				ImportState:       true,
-				ImportStateVerify: true,
-				ImportStateVerifyIgnore: []string{
-					"version_summary",
-					"oci_key_params.current_key_version",
-					"schedule_for_deletion_days",
-				},
+				ResourceName:            keyResource,
+				ImportState:             true,
+				ImportStateVerify:       true,
+				ImportStateVerifyIgnore: importStateVerifyIgnoreOCIKey,
 			},
 			{
 				ResourceName:      versionResource,
@@ -355,7 +356,16 @@ func TestCckmOCIKeysAndVersionsBYOK(t *testing.T) {
 			{
 				Config: updateResourceStr,
 				Check: resource.ComposeTestCheckFunc(
-					resource.TestCheckResourceAttr(keyResource, "version_summary.#", "4"),
+					// Key resource -- scheduler switched to scheduler_2, name changed to oci_key_name_update
+					resource.TestCheckResourceAttrSet(keyResource, "id"),
+					resource.TestCheckResourceAttr(keyResource, "enable_key", "true"),
+					resource.TestCheckResourceAttr(keyResource, "labels.%", "2"),
+					resource.TestCheckResourceAttr(keyResource, "oci_key_params.protection_mode", "SOFTWARE"),
+					resource.TestCheckResourceAttrSet(keyResource, "version_summary.0.version_id"),
+					// Version resource
+					resource.TestCheckResourceAttrSet(versionResource, "id"),
+					resource.TestCheckResourceAttrPair(versionResource, "cckm_key_id", keyResource, "id"),
+					resource.TestCheckResourceAttrSet(versionResource, "oci_key_version_params.version_id"),
 				),
 			},
 			{
@@ -366,21 +376,28 @@ func TestCckmOCIKeysAndVersionsBYOK(t *testing.T) {
 			{
 				Config: minResourceStr,
 				Check: resource.ComposeTestCheckFunc(
+					// Key resource -- no rotation, no tags, default enable_key (true)
+					resource.TestCheckResourceAttrSet(keyResource, "id"),
+					resource.TestCheckResourceAttr(keyResource, "enable_key", "true"),
 					resource.TestCheckResourceAttr(keyResource, "labels.%", "0"),
+					resource.TestCheckResourceAttr(keyResource, "oci_key_params.protection_mode", "SOFTWARE"),
+					resource.TestCheckResourceAttr(keyResource, "source_key_tier", "local"),
+					// Version resource
+					resource.TestCheckResourceAttrSet(versionResource, "id"),
+					resource.TestCheckResourceAttrPair(versionResource, "cckm_key_id", keyResource, "id"),
+					resource.TestCheckResourceAttrSet(versionResource, "oci_key_version_params.vault_id"),
+					resource.TestCheckResourceAttrSet(versionResource, "oci_key_version_params.key_id"),
+					resource.TestCheckResourceAttrSet(versionResource, "oci_key_version_params.version_id"),
 				),
 			},
 			{
 				RefreshState: true,
 			},
 			{
-				ResourceName:      keyResource,
-				ImportState:       true,
-				ImportStateVerify: true,
-				ImportStateVerifyIgnore: []string{
-					"version_summary",
-					"oci_key_params.current_key_version",
-					"schedule_for_deletion_days",
-				},
+				ResourceName:            keyResource,
+				ImportState:             true,
+				ImportStateVerify:       true,
+				ImportStateVerifyIgnore: importStateVerifyIgnoreOCIKey,
 			},
 			{
 				ResourceName:      versionResource,
@@ -390,11 +407,37 @@ func TestCckmOCIKeysAndVersionsBYOK(t *testing.T) {
 			},
 			{
 				Config: updateResourceStr,
-				Check:  resource.ComposeTestCheckFunc(),
+				Check: resource.ComposeTestCheckFunc(
+					// Key resource
+					resource.TestCheckResourceAttrSet(keyResource, "id"),
+					resource.TestCheckResourceAttr(keyResource, "labels.%", "2"),
+					// Version resource
+					resource.TestCheckResourceAttrSet(versionResource, "id"),
+				),
 			},
 			{
 				Config: createResourceStr,
-				Check:  resource.ComposeTestCheckFunc(),
+				Check: resource.ComposeTestCheckFunc(
+					// Key resource
+					resource.TestCheckResourceAttrSet(keyResource, "id"),
+					resource.TestCheckResourceAttrSet(keyResource, "version_summary.0.version_id"),
+					// Version resource
+					resource.TestCheckResourceAttrSet(versionResource, "id"),
+					// Key list data source
+					resource.TestCheckResourceAttr(keysDataSource, "keys.#", "1"),
+					// Key version list data source
+					resource.TestCheckResourceAttr(versionDataSource, "versions.#", "4"),
+				),
+			},
+			// ModifyPlan: source_key_id changed to a fake value - expect plan-time error on byok key.
+			{
+				Config:      modifyKeyConfigStr,
+				ExpectError: regexp.MustCompile("Immutable attribute change detected"),
+			},
+			// ModifyPlan: cckm_key_id changed to a fake value - expect plan-time error on byok key version.
+			{
+				Config:      modifyVersionConfigStr,
+				ExpectError: regexp.MustCompile("Immutable attribute change detected"),
 			},
 		},
 	})

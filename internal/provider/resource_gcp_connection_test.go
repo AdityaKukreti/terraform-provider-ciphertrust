@@ -45,7 +45,6 @@ func TestResourceGCPConnection(t *testing.T) {
 				Config: providerConfig + createConfig,
 				// verifying the resources for id, private key id, client email, cloud name and products
 				Check: resource.ComposeAggregateTestCheckFunc(
-					testAccListResourceAttributes("ciphertrust_gcp_connection.gcp_connection"),
 					resource.TestCheckResourceAttrSet("ciphertrust_gcp_connection.gcp_connection", "id"),
 					resource.TestCheckResourceAttrSet("ciphertrust_gcp_connection.gcp_connection", "private_key_id"),
 					resource.TestCheckResourceAttrSet("ciphertrust_gcp_connection.gcp_connection", "client_email"),

@@ -19,8 +19,9 @@ import (
 )
 
 var (
-	_ resource.Resource              = &resourceAWSKeyRotation{}
-	_ resource.ResourceWithConfigure = &resourceAWSKeyRotation{}
+	_ resource.Resource               = &resourceAWSKeyRotation{}
+	_ resource.ResourceWithConfigure  = &resourceAWSKeyRotation{}
+	_ resource.ResourceWithModifyPlan = &resourceAWSKeyRotation{}
 )
 
 func NewResourceAWSKeyRotation() resource.Resource {
@@ -56,7 +57,9 @@ func (r *resourceAWSKeyRotation) Schema(_ context.Context, _ resource.SchemaRequ
 			"This is only applicable to single or multi-region native symmetric keys. " +
 			"This resource will only submit the request to AWS and AWS will rotate the key-material asynchronously. " +
 			"Use the aws_key_rotation_list datasource to view key material rotation history of EXTERNAL SYMMETRIC_DEFAULT keys. " +
-			"\n\n\n\nNote: This resource and the datasource are only available for CipherTrust Manager version 2.22 and greater.",
+			"If the AWS key is not found in CipherTrust Manager during refresh, an error is returned. " +
+			"Use 'terraform state rm' to remove this resource from state if the key no longer exists. " +
+			"\n\n\n\nNote: This resource and the datasource are only available for CipherTrust Manager version 2.20 and greater.",
 		Attributes: map[string]schema.Attribute{
 			"id": schema.StringAttribute{
 				Computed:    true,
@@ -77,10 +80,11 @@ func (r *resourceAWSKeyRotation) Schema(_ context.Context, _ resource.SchemaRequ
 	}
 }
 
+// Create sends a key material rotation request to AWS and records the operation in Terraform state.
 func (r *resourceAWSKeyRotation) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
 	id := uuid.New().String()
-	tflog.Trace(ctx, common.MSG_METHOD_START+"[resource_aws_key_rotation.go -> Create]["+id+"]")
-	defer tflog.Trace(ctx, common.MSG_METHOD_END+"[resource_aws_key_rotation.go -> Create]["+id+"]")
+	tflog.Debug(ctx, common.MSG_METHOD_START+"[resource_aws_key_rotation.go -> Create]["+id+"]")
+	defer tflog.Debug(ctx, common.MSG_METHOD_END+"[resource_aws_key_rotation.go -> Create]["+id+"]")
 	var (
 		plan     AWSKeyRotationTFSDK
 		response string
@@ -90,54 +94,85 @@ func (r *resourceAWSKeyRotation) Create(ctx context.Context, req resource.Create
 		return
 	}
 
-	keyID := plan.KeyID.ValueString()
-	response = r.rotateKeyMaterial(ctx, keyID, &plan, &resp.Diagnostics)
+	response = r.rotateKeyMaterial(ctx, id, &plan, &resp.Diagnostics)
 	if resp.Diagnostics.HasError() {
 		return
 	}
 
-	kid := gjson.Get(response, "aws_param.KeyID").String()
-	region := gjson.Get(response, "region").String()
-	plan.ID = types.StringValue(encodeAWSKeyTerraformResourceID(region, kid) + "\\" + uuid.NewString())
 	now := time.Now().UTC().Format("2006-01-02 15:04:05 MST")
+	plan.ID = types.StringValue(gjson.Get(response, "id").String() + "-" + now)
 	plan.Status = types.StringValue("A key material rotation request was sent to AWS on " + now + ".")
 	resp.Diagnostics.Append(resp.State.Set(ctx, plan)...)
-	tflog.Trace(ctx, "[resource_aws_key_rotation.go -> Create][response:"+response)
+	tflog.Debug(ctx, "[resource_aws_key_rotation.go -> Create][response:"+redactAWSResponse(response))
 }
 
+// Read refreshes the Terraform state for an AWS key by fetching the latest data from CipherTrust Manager.
+// Returns an error if the key is not found (no kms_id is tracked by this resource, so preserveState is never set).
 func (r *resourceAWSKeyRotation) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
 	id := uuid.New().String()
-	tflog.Trace(ctx, common.MSG_METHOD_START+"[resource_aws_key_rotation.go -> Read]["+id+"]")
-	defer tflog.Trace(ctx, common.MSG_METHOD_END+"[resource_aws_key_rotation.go -> Read]["+id+"]")
+	tflog.Debug(ctx, common.MSG_METHOD_START+"[resource_aws_key_rotation.go -> Read]["+id+"]")
+	defer tflog.Debug(ctx, common.MSG_METHOD_END+"[resource_aws_key_rotation.go -> Read]["+id+"]")
 	var state AWSKeyRotationTFSDK
 	resp.Diagnostics.Append(req.State.Get(ctx, &state)...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
 	keyID := state.KeyID.ValueString()
-	response, err := r.client.GetById(ctx, id, keyID, common.URL_AWS_KEY)
-	if err != nil {
-		msg := "Error reading AWS key."
-		details := utils.ApiError(msg, map[string]interface{}{"error": err.Error(), "key_id": keyID})
-		tflog.Error(ctx, details)
-		resp.Diagnostics.AddError(details, "")
+	response, _ := getAwsKey(ctx, id, r.client, "", keyID, "reading", &resp.Diagnostics)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	readKeyState := gjson.Get(response, "aws_param.KeyState").String()
+	if readKeyState == "PendingDeletion" || readKeyState == "PendingReplicaDeletion" {
+		msg := "AWS key is pending deletion, removing rotation resource from state."
+		details := utils.ApiError(msg, map[string]interface{}{"key_id": keyID})
+		tflog.Warn(ctx, details)
+		resp.Diagnostics.AddWarning(details, "")
+		resp.State.RemoveResource(ctx)
 		return
 	}
 	resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
-	tflog.Trace(ctx, "[resource_aws_key_rotation.go -> Read][response:"+response)
 }
 
+// Update is a no-op; rotations are immutable once submitted and require replace.
 func (r *resourceAWSKeyRotation) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
 }
 
+// Delete is a no-op; rotation records are removed from state only and do not affect the AWS key.
 func (r *resourceAWSKeyRotation) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
 }
 
+// ModifyPlan errors at plan time if any immutable attribute is changed on an existing resource,
+// preventing silent in-place updates to fields that cannot be modified after creation.
+func (r *resourceAWSKeyRotation) ModifyPlan(ctx context.Context, req resource.ModifyPlanRequest, resp *resource.ModifyPlanResponse) {
+	// Skip create and destroy operations.
+	if req.Plan.Raw.IsNull() || req.State.Raw.IsNull() {
+		return
+	}
+
+	var plan, state AWSKeyRotationTFSDK
+
+	resp.Diagnostics.Append(req.Plan.Get(ctx, &plan)...)
+	resp.Diagnostics.Append(req.State.Get(ctx, &state)...)
+
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	if plan.KeyID != state.KeyID {
+		resp.Diagnostics.AddError(
+			"Immutable attribute change detected",
+			"The following attributes cannot be modified after creation: key_id. "+
+				"Delete and recreate the resource to apply these changes.",
+		)
+	}
+}
+
+// rotateKeyMaterial calls the CipherTrust Manager rotate-material API for the specified AWS key.
 func (r *resourceAWSKeyRotation) rotateKeyMaterial(ctx context.Context, id string, plan *AWSKeyRotationTFSDK, diags *diag.Diagnostics) string {
-	tflog.Trace(ctx, "[resource_aws_key_rotation.go -> rotateKeyMaterial]["+id+"]")
 	keyID := plan.KeyID.ValueString()
 	response, err := r.client.PostDataV2(ctx, id, common.URL_AWS_KEY+"/"+keyID+"/rotate-material", nil)
 	if err != nil {
@@ -147,6 +182,6 @@ func (r *resourceAWSKeyRotation) rotateKeyMaterial(ctx context.Context, id strin
 		diags.AddError(details, "")
 		return ""
 	}
-	tflog.Trace(ctx, "[resource_aws_key_rotation.go -> rotateKeyMaterial][response:"+response)
+	tflog.Debug(ctx, "[resource_aws_key_rotation.go -> rotateKeyMaterial][response:"+redactAWSResponse(response))
 	return response
 }

@@ -16,6 +16,8 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-log/tflog"
@@ -26,6 +28,7 @@ var (
 	_ resource.Resource                = &resourceCCKMOCIVault{}
 	_ resource.ResourceWithConfigure   = &resourceCCKMOCIVault{}
 	_ resource.ResourceWithImportState = &resourceCCKMOCIVault{}
+	_ resource.ResourceWithModifyPlan  = &resourceCCKMOCIVault{}
 )
 
 func NewResourceCCKMOCIVault() resource.Resource {
@@ -65,7 +68,7 @@ func (r *resourceCCKMOCIVault) Schema(_ context.Context, _ resource.SchemaReques
 			},
 			"acls": schema.SetNestedAttribute{
 				Computed:    true,
-				Description: "(Updatable) List of ACLs that have been added to the vault.",
+				Description: "List of ACLs that have been added to the vault.",
 				NestedObject: schema.NestedAttributeObject{
 					Attributes: map[string]schema.Attribute{
 						"actions": schema.SetAttribute{
@@ -138,8 +141,9 @@ func (r *resourceCCKMOCIVault) Schema(_ context.Context, _ resource.SchemaReques
 				Description: "The freeform tags of the vault.",
 			},
 			"id": schema.StringAttribute{
-				Computed:    true,
-				Description: "The vault's CipherTrust Managers resource ID.",
+				Computed:      true,
+				Description:   "The vault's CipherTrust Managers resource ID.",
+				PlanModifiers: []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
 			},
 			"is_primary": schema.BoolAttribute{
 				Computed:    true,
@@ -207,10 +211,14 @@ func (r *resourceCCKMOCIVault) Schema(_ context.Context, _ resource.SchemaReques
 	}
 }
 
+// Create creates an OCI vault resource in CipherTrust Manager.
+// Failures that occur after the vault has been successfully created (setVaultState from
+// the add-vaults response, and the subsequent GetById refresh) are downgraded to
+// warnings so that the vault is not lost from state.
 func (r *resourceCCKMOCIVault) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
 	id := uuid.New().String()
-	tflog.Trace(ctx, common.MSG_METHOD_START+"[resource_oci_vault.go -> Create]["+id+"]")
-	defer tflog.Trace(ctx, common.MSG_METHOD_END+"[resource_oci_vault.go -> Create]["+id+"]")
+	tflog.Debug(ctx, common.MSG_METHOD_START+"[resource_oci_vault.go -> Create]["+id+"]")
+	defer tflog.Debug(ctx, common.MSG_METHOD_END+"[resource_oci_vault.go -> Create]["+id+"]")
 
 	var plan models.VaultTFSDK
 	resp.Diagnostics.Append(req.Plan.Get(ctx, &plan)...)
@@ -239,7 +247,7 @@ func (r *resourceCCKMOCIVault) Create(ctx context.Context, req resource.CreateRe
 		return
 	}
 
-	response, err := r.client.PostDataV2(ctx, id, common.URL_OCI+"/add-vaults", payloadJSON)
+	response, err := ociPostDataV2WithRetry(ctx, r.client, id, common.URL_OCI+"/add-vaults", payloadJSON)
 	if err != nil {
 		msg := "Error adding OCI vault."
 		details := utils.ApiError(msg, map[string]interface{}{"error": err.Error(), "vault": payload.VaultIDs[0]})
@@ -252,13 +260,17 @@ func (r *resourceCCKMOCIVault) Create(ctx context.Context, req resource.CreateRe
 		vaultsJSON := gjson.Get(response, "vaults").Array()
 		for _, vaultJSON := range vaultsJSON {
 			plan.ID = types.StringValue(gjson.Get(vaultJSON.Raw, "id").String())
-			tflog.Trace(ctx, "[resource_oci_vault.go -> Create][response:"+vaultJSON.Raw)
 			var diags diag.Diagnostics
 			r.setVaultState(ctx, vaultJSON.Raw, &plan, &diags)
 			for _, d := range diags {
 				resp.Diagnostics.AddWarning(d.Summary(), d.Detail())
 			}
 		}
+	}
+
+	if plan.ID.ValueString() == "" {
+		resp.Diagnostics.AddError("Error adding OCI vault: no vault returned in API response.", "")
+		return
 	}
 
 	getResponse, err := r.client.GetById(ctx, id, plan.ID.ValueString(), common.URL_OCI+"/vaults")
@@ -269,56 +281,59 @@ func (r *resourceCCKMOCIVault) Create(ctx context.Context, req resource.CreateRe
 		resp.Diagnostics.AddWarning(details, "")
 	} else {
 		var diags diag.Diagnostics
+		tflog.Debug(ctx, "[resource_oci_vault.go -> Create][response:"+redactOCIResponse(getResponse)+"]")
 		r.setVaultState(ctx, getResponse, &plan, &diags)
 		for _, d := range diags {
 			resp.Diagnostics.AddWarning(d.Summary(), d.Detail())
 		}
-		tflog.Trace(ctx, "[resource_oci_vault.go -> Create][response:"+getResponse)
 	}
 	resp.Diagnostics.Append(resp.State.Set(ctx, plan)...)
 }
 
+// Read refreshes the Terraform state for an OCI vault. Uses getOciVault as a pre-flight check.
 func (r *resourceCCKMOCIVault) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
 	id := uuid.New().String()
-	tflog.Trace(ctx, common.MSG_METHOD_START+"[resource_oci_vault.go -> Read]["+id+"]")
-	defer tflog.Trace(ctx, common.MSG_METHOD_END+"[resource_oci_vault.go -> Read]["+id+"]")
+	tflog.Debug(ctx, common.MSG_METHOD_START+"[resource_oci_vault.go -> Read]["+id+"]")
+	defer tflog.Debug(ctx, common.MSG_METHOD_END+"[resource_oci_vault.go -> Read]["+id+"]")
 	var state models.VaultTFSDK
 	resp.Diagnostics.Append(req.State.Get(ctx, &state)...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
 	vaultID := state.ID.ValueString()
-	response, err := r.client.GetById(ctx, id, vaultID, common.URL_OCI+"/vaults")
-	if err != nil {
-		msg := "Error reading OCI vault."
-		details := utils.ApiError(msg, map[string]interface{}{"error": err.Error(), "vault_id": vaultID})
-		tflog.Error(ctx, details)
-		resp.Diagnostics.AddError(details, "")
+	// Save the prior connection value before getOciVault and setVaultState run.
+	priorConn := state.Connection.ValueString()
+	response := getOciVault(ctx, id, r.client, vaultID, "reading", &resp.Diagnostics)
+	if resp.Diagnostics.HasError() {
 		return
 	}
-	tflog.Trace(ctx, "[resource_oci_vault.go -> Read][response:"+response)
 	r.setVaultState(ctx, response, &state, &resp.Diagnostics)
 	if resp.Diagnostics.HasError() {
 		return
 	}
-	if state.Connection.ValueString() == "" {
-		// Don't overwrite what might be connection ID with connection name
-		state.Connection = types.StringValue(gjson.Get(response, "connection").String())
+	// Preserve the user-supplied connection_id form (name or UUID) when it resolves
+	// to the same connection that the API reports, so configs using either form do
+	// not produce spurious plan drift after every refresh.
+	// Only overwrite when the connection has genuinely changed out-of-band.
+	apiConnName := gjson.Get(response, "connection").String()
+	state.Connection = types.StringValue(apiConnName)
+	if priorConn != "" && priorConn != apiConnName {
+		connResp, connErr := r.client.GetById(ctx, id, priorConn, common.URL_OCI_CONNECTION)
+		if connErr == nil && gjson.Get(connResp, "name").String() == apiConnName {
+			// Same connection, different representation - restore the prior value so
+			// that users who specify a UUID do not see spurious drift.
+			state.Connection = types.StringValue(priorConn)
+		}
+		// else: genuine out-of-band change - keep the API name.
 	}
 	resp.Diagnostics.Append(resp.State.Set(ctx, state)...)
 }
 
-func (r *resourceCCKMOCIVault) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
-	id := uuid.New().String()
-	tflog.Trace(ctx, common.MSG_METHOD_START+"[resource_oci_vault.go -> ImportState]["+id+"]")
-	defer tflog.Trace(ctx, common.MSG_METHOD_END+"[resource_oci_vault.go -> ImportState]["+id+"]")
-	resource.ImportStatePassthroughID(ctx, path.Root("id"), req, resp)
-}
-
+// Update patches connection_id, bucket_name, and bucket_namespace via PATCH /oci/vaults/:id.
 func (r *resourceCCKMOCIVault) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
 	id := uuid.New().String()
-	tflog.Trace(ctx, common.MSG_METHOD_START+"[resource_oci_vault.go -> Update]["+id+"]")
-	defer tflog.Trace(ctx, common.MSG_METHOD_END+"[resource_oci_vault.go -> Update]["+id+"]")
+	tflog.Debug(ctx, common.MSG_METHOD_START+"[resource_oci_vault.go -> Update]["+id+"]")
+	defer tflog.Debug(ctx, common.MSG_METHOD_END+"[resource_oci_vault.go -> Update]["+id+"]")
 
 	var plan models.VaultTFSDK
 	resp.Diagnostics.Append(req.Plan.Get(ctx, &plan)...)
@@ -333,12 +348,9 @@ func (r *resourceCCKMOCIVault) Update(ctx context.Context, req resource.UpdateRe
 	}
 
 	vaultID := state.ID.ValueString()
-	response, err := r.client.GetById(ctx, id, vaultID, common.URL_OCI+"/vaults")
-	if err != nil {
-		msg := "Error reading OCI vault."
-		details := utils.ApiError(msg, map[string]interface{}{"error": err.Error(), "vault_id": vaultID})
-		tflog.Warn(ctx, details)
-		resp.Diagnostics.AddWarning(details, "")
+	response := getOciVault(ctx, id, r.client, vaultID, "updating", &resp.Diagnostics)
+	if resp.Diagnostics.HasError() {
+		return
 	}
 	if plan.Connection.ValueString() != gjson.Get(response, "connection").String() ||
 		plan.BucketName.ValueString() != gjson.Get(response, "bucket_name").String() ||
@@ -363,7 +375,7 @@ func (r *resourceCCKMOCIVault) Update(ctx context.Context, req resource.UpdateRe
 			resp.Diagnostics.AddError(details, "")
 			return
 		}
-		_, err = r.client.UpdateDataV2(ctx, vaultID, common.URL_OCI+"/vaults", payloadJSON)
+		_, err = ociUpdateDataV2WithRetry(ctx, r.client, vaultID, common.URL_OCI+"/vaults", payloadJSON)
 		if err != nil {
 			msg := "Error updating OCI Vault."
 			details := utils.ApiError(msg, map[string]interface{}{"error": err.Error(), "vault_id": vaultID})
@@ -371,7 +383,7 @@ func (r *resourceCCKMOCIVault) Update(ctx context.Context, req resource.UpdateRe
 			resp.Diagnostics.AddError(details, "")
 			return
 		}
-		response, err = r.client.GetById(ctx, id, vaultID, common.URL_OCI+"/vaults")
+		updatedResponse, err := r.client.GetById(ctx, id, vaultID, common.URL_OCI+"/vaults")
 		if err != nil {
 			msg := "Error reading OCI Vault."
 			details := utils.ApiError(msg, map[string]interface{}{"error": err.Error(), "vault_id": vaultID})
@@ -379,8 +391,9 @@ func (r *resourceCCKMOCIVault) Update(ctx context.Context, req resource.UpdateRe
 			resp.Diagnostics.AddError(details, "")
 			return
 		}
+		response = updatedResponse
 	}
-	tflog.Trace(ctx, "[resource_oci_vault.go -> Update][response:"+response)
+	tflog.Debug(ctx, "[resource_oci_vault.go -> Update][response:"+redactOCIResponse(response)+"]")
 	r.setVaultState(ctx, response, &state, &resp.Diagnostics)
 	if resp.Diagnostics.HasError() {
 		return
@@ -389,10 +402,11 @@ func (r *resourceCCKMOCIVault) Update(ctx context.Context, req resource.UpdateRe
 	resp.Diagnostics.Append(resp.State.Set(ctx, state)...)
 }
 
+// Delete removes the vault from CipherTrust Manager.
 func (r *resourceCCKMOCIVault) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
 	id := uuid.New().String()
-	tflog.Trace(ctx, common.MSG_METHOD_START+"[resource_oci_vault.go -> Delete]["+id+"]")
-	defer tflog.Trace(ctx, common.MSG_METHOD_END+"[resource_oci_vault.go -> Delete]["+id+"]")
+	tflog.Debug(ctx, common.MSG_METHOD_START+"[resource_oci_vault.go -> Delete]["+id+"]")
+	defer tflog.Debug(ctx, common.MSG_METHOD_END+"[resource_oci_vault.go -> Delete]["+id+"]")
 
 	var state models.VaultTFSDK
 	resp.Diagnostics.Append(req.State.Get(ctx, &state)...)
@@ -400,17 +414,66 @@ func (r *resourceCCKMOCIVault) Delete(ctx context.Context, req resource.DeleteRe
 		return
 	}
 	vaultID := state.ID.ValueString()
+	vaultJSON := getOciVault(ctx, id, r.client, vaultID, "deleting", &resp.Diagnostics)
+	if resp.Diagnostics.HasError() {
+		return // Non-404 error - vault kept in state.
+	}
+	if vaultJSON == "" {
+		return // Vault not found (404) - warning already added, Terraform removes from state.
+	}
 	_, err := r.client.DeleteByURL(ctx, id, common.URL_OCI+"/vaults/"+vaultID)
 	if err != nil {
-		msg := "Error deleting OCI Vault."
+		msg := "Error deleting OCI vault."
 		details := utils.ApiError(msg, map[string]interface{}{"error": err.Error(), "vault_id": vaultID})
 		tflog.Error(ctx, details)
-		if strings.Contains(err.Error(), "NCERRResourceNotFound") {
-			resp.Diagnostics.AddWarning(details, "")
-		} else {
-			resp.Diagnostics.AddError(details, "")
-		}
+		resp.Diagnostics.AddError(details, "")
 	}
+}
+
+// ModifyPlan errors at plan time if any immutable attribute is changed on an existing resource,
+// preventing silent in-place updates to fields that cannot be modified after creation.
+func (r *resourceCCKMOCIVault) ModifyPlan(ctx context.Context, req resource.ModifyPlanRequest, resp *resource.ModifyPlanResponse) {
+	// Skip create and destroy operations.
+	if req.Plan.Raw.IsNull() || req.State.Raw.IsNull() {
+		return
+	}
+
+	var plan, state models.VaultTFSDK
+
+	resp.Diagnostics.Append(req.Plan.Get(ctx, &plan)...)
+	resp.Diagnostics.Append(req.State.Get(ctx, &state)...)
+
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	var changed []string
+
+	if plan.Region != state.Region {
+		changed = append(changed, "region")
+	}
+
+	if plan.VaultID != state.VaultID {
+		changed = append(changed, "vault_id")
+	}
+
+	if len(changed) > 0 {
+		resp.Diagnostics.AddError(
+			"Immutable attribute change detected",
+			fmt.Sprintf(
+				"The following attributes cannot be modified after creation: %s. "+
+					"Delete and recreate the resource to apply these changes.",
+				strings.Join(changed, ", "),
+			),
+		)
+	}
+}
+
+func (r *resourceCCKMOCIVault) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
+	id := uuid.New().String()
+	tflog.Debug(ctx, common.MSG_METHOD_START+"[resource_oci_vault.go -> ImportState]["+id+"]")
+	defer tflog.Debug(ctx, common.MSG_METHOD_END+"[resource_oci_vault.go -> ImportState]["+id+"]")
+	resource.ImportStatePassthroughID(ctx, path.Root("id"), req, resp)
 }
 
 func (r *resourceCCKMOCIVault) setVaultState(ctx context.Context, response string, state *models.VaultTFSDK, diags *diag.Diagnostics) {
@@ -436,6 +499,7 @@ func (r *resourceCCKMOCIVault) setVaultState(ctx context.Context, response strin
 	}
 }
 
+// setCommonVaultState populates VaultCommonTFSDK fields from a JSON response string.
 func setCommonVaultState(ctx context.Context, response string, state *models.VaultCommonTFSDK, diags *diag.Diagnostics) {
 	state.Account = types.StringValue(gjson.Get(response, "account").String())
 	acls.SetAclsStateFromJSON(ctx, gjson.Get(response, "acls"), &state.Acls, diags)

@@ -1,4 +1,4 @@
-# 1.0.1-pre1
+# 1.0.1
 
 ## New Resources
     ciphertrust_aws_acl
@@ -111,6 +111,41 @@
     ciphertrust_scheduler_list
     ciphertrust_scp_connection_list
     
+# 0.11.3-beta
+## Background Refresh of CipherTrust Manager Authentication Token
+    Middleware was added to the REST client to automatically handle authentication token renewal, preventing tokens from expiring. 
+    Previously token refreshes had to occur during CRUD operations.
+
+# 0.11.2-beta
+## New Provider Settings
+    replication_delay_ms
+        In the case of a CipherTrust Manager cluster behind a load balancer a small delay after creating CipherTrust Manager resources may be required to allow for replication to other cluster instances. 
+        replication_delay_ms can be set in the provider block, via the CM_REPLICATION_DELAY environment variable or in ~/.ciphertrust/config. The default is 100 milliseconds.
+
+
+## Updated Resources
+    ciphertrust_aws_custom_keystore
+        The 'connect_disconnect_keystore' attribute will reflect the current state of the key store.   
+    
+# 0.11.1-beta
+## Updated Resources
+    ciphertrust_aws_custom_keystore
+        Enabled connection of the key store during terraform create phase.
+        Fixed incorrect 'connection_state' value after updating 'connect_disconnect_keystore'.
+
+    ciphertrust_aws_xks_key
+        Addressed errors occuring when updating an unlinked key'.
+
+## Updated Data Sources
+    ciphertrust_aws_custom_keystore
+        Fixed 'connected' state showing incorrectly in output after updating 'connect_disconnect_keystore'.    
+
+# 0.11.0-beta
+## No code changes
+
+# 0.10.10-beta
+## No code changes
+
 # 0.10.9-beta
 ## Updated Resources
     Fixes an ldap user creating a ciphertrust_cm_key resource.

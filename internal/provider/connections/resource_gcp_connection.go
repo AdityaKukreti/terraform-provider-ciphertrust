@@ -49,6 +49,7 @@ func (r *resourceGCPConnection) Schema(_ context.Context, _ resource.SchemaReque
 			},
 			"key_file": schema.StringAttribute{
 				Required:    true,
+				Sensitive:   true,
 				Description: "The private key JSON file of a Google Cloud Platform (GCP) service account can be provided either as a JSON file or as a string.",
 			},
 			"name": schema.StringAttribute{
@@ -87,7 +88,8 @@ func (r *resourceGCPConnection) Schema(_ context.Context, _ resource.SchemaReque
 				Computed: true,
 			},
 			"private_key_id": schema.StringAttribute{
-				Computed: true,
+				Computed:  true,
+				Sensitive: true,
 			},
 			//common response parameters (optional)
 			"uri":                   schema.StringAttribute{Computed: true, Optional: true},
@@ -215,7 +217,6 @@ func (r *resourceGCPConnection) Read(ctx context.Context, req resource.ReadReque
 	getGcpParamsFromResponse(response, &resp.Diagnostics, &state)
 	// required parameters are fetched separately
 	state.Name = types.StringValue(gjson.Get(response, "name").String())
-	state.KeyFile = types.StringValue(gjson.Get(response, "keyFile").String())
 
 	diags = resp.State.Set(ctx, &state)
 	resp.Diagnostics.Append(diags...)

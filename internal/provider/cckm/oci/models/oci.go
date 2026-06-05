@@ -41,9 +41,9 @@ type GetOCICompartmentJSON struct {
 }
 
 type GetOCICompartmentsPayloadJSON struct {
-	Connection string  `tfsdk:"connection_id"`
-	Limit      *int64  `tfsdk:"limit"`
-	NextPage   *string `json:"ociNextPage"`
+	Connection string  `json:"connection"`
+	Limit      *int64  `json:"limit,omitempty"`
+	NextPage   *string `json:"ociNextPage,omitempty"`
 }
 
 type GetOCICompartmentsJSON struct {

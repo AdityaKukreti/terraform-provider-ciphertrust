@@ -10,12 +10,10 @@ import (
 	"github.com/ThalesGroup/terraform-provider-ciphertrust/internal/provider/cckm/utils"
 	"github.com/ThalesGroup/terraform-provider-ciphertrust/internal/provider/common"
 	"github.com/google/uuid"
-	"github.com/hashicorp/terraform-plugin-framework-validators/int64validator"
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
-	"github.com/hashicorp/terraform-plugin-framework/resource/schema/int64default"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringdefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
@@ -27,8 +25,9 @@ import (
 )
 
 var (
-	_ resource.Resource              = &resourceAWSKeyImportMaterial{}
-	_ resource.ResourceWithConfigure = &resourceAWSKeyImportMaterial{}
+	_ resource.Resource               = &resourceAWSKeyImportMaterial{}
+	_ resource.ResourceWithConfigure  = &resourceAWSKeyImportMaterial{}
+	_ resource.ResourceWithModifyPlan = &resourceAWSKeyImportMaterial{}
 )
 
 func NewResourceAWSKeyImportMaterial() resource.Resource {
@@ -60,7 +59,10 @@ func (r *resourceAWSKeyImportMaterial) Configure(_ context.Context, req resource
 
 func (r *resourceAWSKeyImportMaterial) Schema(_ context.Context, _ resource.SchemaRequest, resp *resource.SchemaResponse) {
 	resp.Schema = schema.Schema{
-		Description: "Use this resource to import or re-import key material to an AWS EXTERNAL key.",
+		Description: "Use this resource to import or re-import key material to an AWS EXTERNAL key. " +
+			"If the KMS is not found during refresh, the resource is preserved in state until the KMS is recovered. " +
+			"If the AWS key is not found but the KMS is reachable, an error is returned. " +
+			"Use 'terraform state rm' to remove this resource from state if the key no longer exists.",
 		Attributes: map[string]schema.Attribute{
 			"id": schema.StringAttribute{
 				Computed:    true,
@@ -71,45 +73,27 @@ func (r *resourceAWSKeyImportMaterial) Schema(_ context.Context, _ resource.Sche
 			},
 			"region": schema.StringAttribute{
 				Computed:    true,
-				Description: "AWS region in which to create the AWS key.",
+				Description: "AWS region of the key.",
 			},
 			"customer_master_key_spec": schema.StringAttribute{
-				Optional:    true,
 				Computed:    true,
-				Description: "Whether the KMS key contains a symmetric key or an asymmetric key pair. Valid values: " + strings.Join(awsKeySpecs, ", ") + ". Default is SYMMETRIC_DEFAULT.",
-				Validators:  []validator.String{stringvalidator.OneOf(awsKeySpecs...)},
+				Description: "Key specification",
 			},
 			"key_usage": schema.StringAttribute{
-				Optional: true,
-				Computed: true,
-				Description: "Specifies the intended use of the key. Options are ENCRYPT_DECRYPT, SIGN_VERIFY and GENERATE_VERIFY_MAC." +
-					"Default for RSA keys is ENCRYPT_DECRYPT," +
-					"default for EC keys is SIGN_VERIFY, " +
-					"default for symmetric keys is ENCRYPT_DECRYPT and " +
-					"default for HMAC keys is GENERATE_VERIFY_MAC.",
+				Computed:    true,
+				Description: "Specifies the intended use of the key.",
 			},
 			"kms": schema.StringAttribute{
-				Optional:    true,
 				Computed:    true,
-				Description: "Name or ID of the KMS to be used to create the key. Required unless replicating a multi-region key.",
+				Description: "Name or ID of the KMS to be used to create the key.",
 			},
 			"multi_region": schema.BoolAttribute{
-				Optional:    true,
 				Computed:    true,
 				Description: "Creates or identifies a multi-region key.",
 			},
 			"origin": schema.StringAttribute{
 				Computed:    true,
 				Description: "AWS source of the key material.",
-			},
-			"schedule_for_deletion_days": schema.Int64Attribute{
-				Optional:    true,
-				Computed:    true,
-				Description: "Waiting period after the key is destroyed before the key is deleted. Only relevant when the resource is destroyed. Default is 7.",
-				Default:     int64default.StaticInt64(7),
-				Validators: []validator.Int64{
-					int64validator.AtLeast(7),
-				},
 			},
 			"arn": schema.StringAttribute{
 				Computed:    true,
@@ -263,31 +247,31 @@ func (r *resourceAWSKeyImportMaterial) Schema(_ context.Context, _ resource.Sche
 		},
 		Blocks: map[string]schema.Block{
 			"import_key_material": schema.ListNestedBlock{
-				Description: "Key material parameters.",
+				Description: "(Updatable) Key material parameters. Changing any field in this block triggers a re-import of key material.",
 				NestedObject: schema.NestedBlockObject{
 					Attributes: map[string]schema.Attribute{
 						"import_type": schema.StringAttribute{
 							Optional: true,
-							Description: "Options: NEW_KEY_MATERIAL, EXISTING_KEY_MATERIAL. " +
+							Description: "(Updatable) Options: NEW_KEY_MATERIAL, EXISTING_KEY_MATERIAL. " +
 								"This parameter is optional and only usable with symmetric keys. If no key material has " +
 								"ever been imported into the AWS key, and this parameter is omitted, the default is NEW_KEY_MATERIAL. " +
-								"Otherwise, the default is EXISTING_KEY_MATERIAL. ",
+								"Otherwise, the default is EXISTING_KEY_MATERIAL.",
 						},
 						"key_expiration": schema.BoolAttribute{
 							Optional:    true,
-							Description: "Enable key material expiration. Default is false.",
+							Description: "(Updatable) Enable key material expiration. Default is false.",
 						},
 						"key_material_description": schema.StringAttribute{
 							Optional:    true,
-							Description: "Specify the description for the key material.",
+							Description: "(Updatable) Specify the description for the key material.",
 						},
 						"key_material_id": schema.StringAttribute{
 							Optional:    true,
-							Description: "Specify the key material id. This is applicable for re-import to symmetric keys only.",
+							Description: "(Updatable) Specify the key material id. This is applicable for re-import to symmetric keys only.",
 						},
 						"source_key_identifier": schema.StringAttribute{
 							Optional: true,
-							Description: "This parameter is optional only if the source_key_tier is local and the key is a 256 bits AES key. " +
+							Description: "(Updatable) This parameter is optional only if the source_key_tier is local and the key is a 256 bits AES key. " +
 								"If key material is being re-imported, AWS only allows re-importing the same key material therefore it's necessary " +
 								"to provide the source key identifier of the same source key which was imported previously.",
 						},
@@ -295,11 +279,11 @@ func (r *resourceAWSKeyImportMaterial) Schema(_ context.Context, _ resource.Sche
 							Computed:    true,
 							Optional:    true,
 							Default:     stringdefault.StaticString("local"),
-							Description: "Source of the key material. Current option is 'local' implying a CipherTrust Manager key. Default is 'local'.",
+							Description: "(Updatable) Source of the key material. Current option is 'local' implying a CipherTrust Manager key. Default is 'local'.",
 						},
 						"valid_to": schema.StringAttribute{
 							Optional:    true,
-							Description: "Date of key material expiry in UTC time in RFC3339 format. For example, 2027-07-03T14:24:00Z.",
+							Description: "(Updatable) Date of key material expiry in UTC time in RFC3339 format. For example, 2027-07-03T14:24:00Z.",
 							Validators: []validator.String{
 								stringvalidator.RegexMatches(
 									regexp.MustCompile(awsValidToRegEx), awsValidToFormatMsg,
@@ -313,10 +297,11 @@ func (r *resourceAWSKeyImportMaterial) Schema(_ context.Context, _ resource.Sche
 	}
 }
 
+// Create imports key material into an existing EXTERNAL AWS key and sets Terraform state.
 func (r *resourceAWSKeyImportMaterial) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
 	id := uuid.New().String()
-	tflog.Trace(ctx, common.MSG_METHOD_START+"[resource_aws_key_import_material.go -> Create]["+id+"]")
-	defer tflog.Trace(ctx, common.MSG_METHOD_END+"[resource_aws_key_import_material.go -> Create]["+id+"]")
+	tflog.Debug(ctx, common.MSG_METHOD_START+"[resource_aws_key_import_material.go -> Create]["+id+"]")
+	defer tflog.Debug(ctx, common.MSG_METHOD_END+"[resource_aws_key_import_material.go -> Create]["+id+"]")
 	var (
 		plan     AWSKeyForImportMaterialTFSDK
 		response string
@@ -330,9 +315,7 @@ func (r *resourceAWSKeyImportMaterial) Create(ctx context.Context, req resource.
 		return
 	}
 
-	kid := gjson.Get(response, "aws_param.KeyID").String()
-	region := gjson.Get(response, "region").String()
-	plan.ID = types.StringValue(encodeAWSKeyTerraformResourceID(region, kid))
+	plan.ID = types.StringValue(gjson.Get(response, "id").String())
 	keyID := plan.KeyID.ValueString()
 	var err error
 	response, err = r.client.GetById(ctx, id, keyID, common.URL_AWS_KEY)
@@ -348,25 +331,38 @@ func (r *resourceAWSKeyImportMaterial) Create(ctx context.Context, req resource.
 		resp.Diagnostics.AddWarning(d.Summary(), d.Detail())
 	}
 	resp.Diagnostics.Append(resp.State.Set(ctx, plan)...)
-	tflog.Trace(ctx, "[resource_aws_key_import_material.go -> Create][response:"+response)
+	tflog.Debug(ctx, "[resource_aws_key_import_material.go -> Create][response:"+redactAWSResponse(response))
 }
 
+// Read refreshes Terraform state for an import-material resource by reading the current AWS key from
+// CipherTrust Manager.
+// Returns an error if the KMS is not reachable
 func (r *resourceAWSKeyImportMaterial) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
 	id := uuid.New().String()
-	tflog.Trace(ctx, common.MSG_METHOD_START+"[resource_aws_key_import_material.go -> Read]["+id+"]")
-	defer tflog.Trace(ctx, common.MSG_METHOD_END+"[resource_aws_key_import_material.go -> Read]["+id+"]")
+	tflog.Debug(ctx, common.MSG_METHOD_START+"[resource_aws_key_import_material.go -> Read]["+id+"]")
+	defer tflog.Debug(ctx, common.MSG_METHOD_END+"[resource_aws_key_import_material.go -> Read]["+id+"]")
 	var state AWSKeyForImportMaterialTFSDK
 	resp.Diagnostics.Append(req.State.Get(ctx, &state)...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
 	keyID := state.KeyID.ValueString()
-	response, err := r.client.GetById(ctx, id, keyID, common.URL_AWS_KEY)
-	if err != nil {
-		msg := "Error reading AWS key."
-		details := utils.ApiError(msg, map[string]interface{}{"error": err.Error(), "key_id": keyID})
-		tflog.Error(ctx, details)
-		resp.Diagnostics.AddError(details, "")
+	response, preserveState := getAwsKey(ctx, id, r.client, state.KMSID.ValueString(), keyID, "reading", &resp.Diagnostics)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	if preserveState {
+		// KMS not found - key is hidden. Keep existing state unchanged until KMS is recovered.
+		resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
+		return
+	}
+	readKeyState := gjson.Get(response, "aws_param.KeyState").String()
+	if readKeyState == "PendingDeletion" || readKeyState == "PendingReplicaDeletion" {
+		msg := "AWS key is pending deletion, removing from state."
+		details := utils.ApiError(msg, map[string]interface{}{"key_id": keyID})
+		tflog.Warn(ctx, details)
+		resp.Diagnostics.AddWarning(details, "")
+		resp.State.RemoveResource(ctx)
 		return
 	}
 	r.setKeyState(ctx, response, &state, &resp.Diagnostics)
@@ -381,13 +377,14 @@ func (r *resourceAWSKeyImportMaterial) Read(ctx context.Context, req resource.Re
 	if resp.Diagnostics.HasError() {
 		return
 	}
-	tflog.Trace(ctx, "[resource_aws_key_import_material.go -> Read][response:"+response)
 }
 
+// Update re-imports key material into the EXTERNAL AWS key when the import_key_material block changes.
+// Returns an error if the KMS is not reachable
 func (r *resourceAWSKeyImportMaterial) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
 	id := uuid.New().String()
-	tflog.Trace(ctx, common.MSG_METHOD_START+"[resource_aws_key_import_material.go -> Update]["+id+"]")
-	defer tflog.Trace(ctx, common.MSG_METHOD_END+"[resource_aws_key_import_material.go -> Update]["+id+"]")
+	tflog.Debug(ctx, common.MSG_METHOD_START+"[resource_aws_key_import_material.go -> Update]["+id+"]")
+	defer tflog.Debug(ctx, common.MSG_METHOD_END+"[resource_aws_key_import_material.go -> Update]["+id+"]")
 	var (
 		plan  AWSKeyForImportMaterialTFSDK
 		state AWSKeyForImportMaterialTFSDK
@@ -400,14 +397,29 @@ func (r *resourceAWSKeyImportMaterial) Update(ctx context.Context, req resource.
 	if resp.Diagnostics.HasError() {
 		return
 	}
-	response := r.importKeyMaterial(ctx, id, &plan, &resp.Diagnostics)
+	keyID := state.KeyID.ValueString()
+	plan.KeyID = types.StringValue(keyID)
+	response, _ := getAwsKey(ctx, id, r.client, state.KMSID.ValueString(), keyID, "updating", &resp.Diagnostics)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	updateKeyState := gjson.Get(response, "aws_param.KeyState").String()
+	if updateKeyState == "PendingDeletion" || updateKeyState == "PendingReplicaDeletion" {
+		msg := "AWS key is pending deletion, removing from state."
+		details := utils.ApiError(msg, map[string]interface{}{"key_id": keyID})
+		tflog.Warn(ctx, details)
+		resp.Diagnostics.AddWarning(details, "")
+		resp.State.RemoveResource(ctx)
+		return
+	}
+	response = r.importKeyMaterial(ctx, id, &plan, &resp.Diagnostics)
 	if resp.Diagnostics.HasError() {
 		return
 	}
 	r.setKeyState(ctx, response, &plan, &resp.Diagnostics)
 	if resp.Diagnostics.HasError() {
 		msg := "Error updating AWS key, failed to set resource state."
-		details := utils.ApiError(msg, map[string]interface{}{"key_id": plan.KeyID.ValueString()})
+		details := utils.ApiError(msg, map[string]interface{}{"key_id": keyID})
 		tflog.Error(ctx, details)
 		resp.Diagnostics.AddError(details, "")
 		return
@@ -416,24 +428,62 @@ func (r *resourceAWSKeyImportMaterial) Update(ctx context.Context, req resource.
 	if resp.Diagnostics.HasError() {
 		return
 	}
-	tflog.Trace(ctx, "[resource_aws_key_import_material.go -> Update][response:"+response)
+	tflog.Debug(ctx, "[resource_aws_key_import_material.go -> Update][response:"+redactAWSResponse(response))
 }
 
+// Delete is a no-op; the import material resource does not delete the underlying AWS key on destroy.
 func (r *resourceAWSKeyImportMaterial) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
 }
 
+// ModifyPlan errors at plan time if any immutable attribute is changed on an existing resource,
+// preventing silent in-place updates to fields that cannot be modified after creation.
+func (r *resourceAWSKeyImportMaterial) ModifyPlan(ctx context.Context, req resource.ModifyPlanRequest, resp *resource.ModifyPlanResponse) {
+	// Skip create and destroy operations.
+	if req.Plan.Raw.IsNull() || req.State.Raw.IsNull() {
+		return
+	}
+
+	var plan, state AWSKeyForImportMaterialTFSDK
+
+	resp.Diagnostics.Append(req.Plan.Get(ctx, &plan)...)
+	resp.Diagnostics.Append(req.State.Get(ctx, &state)...)
+
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	var changed []string
+
+	if plan.KeyID != state.KeyID {
+		changed = append(changed, "key_id")
+	}
+
+	if len(changed) > 0 {
+		resp.Diagnostics.AddError(
+			"Immutable attribute change detected",
+			fmt.Sprintf(
+				"The following attributes cannot be modified after creation: %s. "+
+					"Delete and recreate the resource to apply these changes.",
+				strings.Join(changed, ", "),
+			),
+		)
+	}
+}
+
+// setKeyState populates the full Terraform state for an import-material resource from an API response JSON string.
 func (r *resourceAWSKeyImportMaterial) setKeyState(ctx context.Context, response string, state *AWSKeyForImportMaterialTFSDK, diags *diag.Diagnostics) {
-	tflog.Trace(ctx, "[resource_aws_key_import_material.go -> setKeyState][response:"+response)
-	setCommonKeyStateImportMaterial(ctx, response, &state.AWSKeyCommonImportMaterialTFSDK, diags)
+	tflog.Debug(ctx, "[resource_aws_key_import_material.go -> setKeyState][response:"+redactAWSResponse(response))
+	r.setImportMaterialState(ctx, response, &state.AWSKeyCommonImportMaterialTFSDK, diags)
 	state.MultiRegion = types.BoolValue(gjson.Get(response, "aws_param.MultiRegion").Bool())
 	state.MultiRegionKeyType = types.StringValue(gjson.Get(response, "aws_param.MultiRegionConfiguration.MultiRegionKeyType").String())
 	setMultiRegionConfiguration(ctx, response, &state.MultiRegionPrimaryKey, &state.MultiRegionReplicaKeys, diags)
 	state.NextRotationDate = types.StringValue(gjson.Get(response, "aws_param.NextRotationDate").String())
 }
 
+// importKeyMaterial sends the import-material request to CipherTrust Manager for an EXTERNAL AWS key.
 func (r *resourceAWSKeyImportMaterial) importKeyMaterial(ctx context.Context, id string, plan *AWSKeyForImportMaterialTFSDK, diags *diag.Diagnostics) string {
-	tflog.Trace(ctx, common.MSG_METHOD_START+"[resource_aws_key_import_material.go -> importKeyMaterial]["+id+"]")
-	defer tflog.Trace(ctx, common.MSG_METHOD_END+"[resource_aws_key_import_material.go -> importKeyMaterial]["+id+"]")
+	tflog.Debug(ctx, common.MSG_METHOD_START+"[resource_aws_key_import_material.go -> importKeyMaterial]["+id+"]")
+	defer tflog.Debug(ctx, common.MSG_METHOD_END+"[resource_aws_key_import_material.go -> importKeyMaterial]["+id+"]")
 	var importMaterialPlan AWSKeyImportMaterialTFSDK
 	for _, v := range plan.ImportKeyMaterial.Elements() {
 		diags.Append(tfsdk.ValueAs(ctx, v, &importMaterialPlan)...)
@@ -444,7 +494,7 @@ func (r *resourceAWSKeyImportMaterial) importKeyMaterial(ctx context.Context, id
 	payload := AWSKeyImportMaterialJSON{}
 
 	if !importMaterialPlan.ImportType.IsUnknown() && !importMaterialPlan.ImportType.IsNull() {
-		payload.ImportType = importMaterialPlan.ImportType.ValueString()
+		payload.ImportType = importMaterialPlan.ImportType.ValueStringPointer()
 	}
 	if !importMaterialPlan.KeyMaterialDescription.IsUnknown() && !importMaterialPlan.KeyMaterialDescription.IsNull() {
 		payload.KeyMaterialDescription = importMaterialPlan.KeyMaterialDescription.ValueStringPointer()
@@ -464,30 +514,30 @@ func (r *resourceAWSKeyImportMaterial) importKeyMaterial(ctx context.Context, id
 	if !importMaterialPlan.ValidTo.IsUnknown() && !importMaterialPlan.ValidTo.IsNull() {
 		payload.ValidTo = importMaterialPlan.ValidTo.ValueString()
 	}
-	jb, _ := json.Marshal(payload)
-	tflog.Info(ctx, string(jb))
 	keyID := plan.KeyID.ValueString()
 	payloadJSON, err := json.Marshal(payload)
 	if err != nil {
-		msg := "Error creating AWS key. Failed to import key material, invalid data input."
+		msg := "Error importing key material. Failed to import key material, invalid data input."
 		details := utils.ApiError(msg, map[string]interface{}{"error": err.Error(), "key_id": keyID})
 		tflog.Error(ctx, details)
-		diags.AddWarning(details, "")
+		diags.AddError(details, "")
 		return ""
 	}
+	tflog.Info(ctx, string(payloadJSON))
 	response, err := r.client.PostDataV2(ctx, id, common.URL_AWS_KEY+"/"+keyID+"/import-material", payloadJSON)
 	if err != nil {
-		msg := "Error creating AWS key, failed to import key material."
+		msg := "Error importing key material, failed to import key material."
 		details := utils.ApiError(msg, map[string]interface{}{"error": err.Error(), "key_id": keyID})
 		tflog.Error(ctx, details)
-		diags.AddWarning(details, "")
+		diags.AddError(details, "")
 		return ""
 	}
-	tflog.Trace(ctx, "[resource_aws_key_import_material.go -> importKeyMaterial][response:"+response)
+	tflog.Debug(ctx, "[resource_aws_key_import_material.go -> importKeyMaterial][response:"+redactAWSResponse(response))
 	return response
 }
 
-func setCommonKeyStateImportMaterial(ctx context.Context, response string, state *AWSKeyCommonImportMaterialTFSDK, diags *diag.Diagnostics) {
+// setCommonKeyStateImportMaterial populates the common read-only key fields for the import-material resource from an API response.
+func (r *resourceAWSKeyImportMaterial) setImportMaterialState(ctx context.Context, response string, state *AWSKeyCommonImportMaterialTFSDK, diags *diag.Diagnostics) {
 	state.KeyID = types.StringValue(gjson.Get(response, "id").String())
 	state.ARN = types.StringValue(gjson.Get(response, "aws_param.Arn").String())
 	state.AWSAccountID = types.StringValue(gjson.Get(response, "aws_param.AWSAccountId").String())
@@ -520,7 +570,7 @@ func setCommonKeyStateImportMaterial(ctx context.Context, response string, state
 	state.Origin = types.StringValue(gjson.Get(response, "aws_param.Origin").String())
 	state.Region = types.StringValue(gjson.Get(response, "region").String())
 	state.RotatedAt = types.StringValue(gjson.Get(response, "rotated_at").String())
-	state.RotatedFrom = types.StringValue(gjson.Get(response, "rotated_to").String())
+	state.RotatedFrom = types.StringValue(gjson.Get(response, "rotated_from").String())
 	state.RotationStatus = types.StringValue(gjson.Get(response, "rotation_status").String())
 	state.RotatedTo = types.StringValue(gjson.Get(response, "rotated_to").String())
 	state.SyncedAt = types.StringValue(gjson.Get(response, "synced_at").String())

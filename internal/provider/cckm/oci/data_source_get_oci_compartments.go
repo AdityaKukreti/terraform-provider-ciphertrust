@@ -74,7 +74,7 @@ func (d *dataSourceGetOCICompartments) Schema(_ context.Context, _ datasource.Sc
 						},
 						"compartment_id": schema.StringAttribute{
 							Computed:    true,
-							Description: "The compartment's OCID.",
+							Description: "The parent compartment's OCID.",
 						},
 						"description": schema.StringAttribute{
 							Computed:    true,
@@ -86,11 +86,13 @@ func (d *dataSourceGetOCICompartments) Schema(_ context.Context, _ datasource.Sc
 							NestedObject: schema.NestedAttributeObject{
 								Attributes: map[string]schema.Attribute{
 									"tag": schema.StringAttribute{
-										Computed: true,
+										Computed:    true,
+										Description: "The tag's namespace.",
 									},
 									"values": schema.MapAttribute{
 										Computed:    true,
 										ElementType: types.StringType,
+										Description: "The key:value pairs associated with the tag.",
 									},
 								},
 							},
@@ -127,10 +129,13 @@ func (d *dataSourceGetOCICompartments) Schema(_ context.Context, _ datasource.Sc
 	}
 }
 
+// Read retrieves OCI compartments available to the connection by calling the CM
+// get-compartments API. Automatically paginates until all results are returned
+// (or the optional limit is reached).
 func (d *dataSourceGetOCICompartments) Read(ctx context.Context, req datasource.ReadRequest, resp *datasource.ReadResponse) {
-	tflog.Trace(ctx, common.MSG_METHOD_START+"[data_source_oci_compartments.go -> Read]")
-	defer tflog.Trace(ctx, common.MSG_METHOD_END+"[data_source_oci_compartments.go -> Read]")
 	id := uuid.New().String()
+	tflog.Debug(ctx, common.MSG_METHOD_START+"[data_source_get_oci_compartments.go -> Read]["+id+"]")
+	defer tflog.Debug(ctx, common.MSG_METHOD_END+"[data_source_get_oci_compartments.go -> Read]["+id+"]")
 
 	var state models.GetOCICompartmentsDataSourceModelTFSDK
 	resp.Diagnostics.Append(req.Config.Get(ctx, &state)...)
@@ -153,7 +158,7 @@ func (d *dataSourceGetOCICompartments) Read(ctx context.Context, req datasource.
 	}
 	data = append(data, compartments.Data...)
 	nextPage := compartments.NextPage
-	for i := 0; nextPage != "" && (limit != 0 && int64(len(data)) < limit); i++ {
+	for nextPage != "" && (limit == 0 || int64(len(data)) < limit) {
 		payload.NextPage = &nextPage
 		compartments = d.fetchCompartments(ctx, id, payload, &resp.Diagnostics)
 		if resp.Diagnostics.HasError() {
@@ -161,6 +166,13 @@ func (d *dataSourceGetOCICompartments) Read(ctx context.Context, req datasource.
 		}
 		data = append(data, compartments.Data...)
 		nextPage = compartments.NextPage
+	}
+
+	// Provider-side enforcement: the OCI API may ignore the per-request limit and
+	// return all compartments in one page. Truncate here so callers always receive
+	// at most limit results.
+	if limit > 0 && int64(len(data)) > limit {
+		data = data[:limit]
 	}
 
 	for _, compartment := range data {
@@ -185,9 +197,10 @@ func (d *dataSourceGetOCICompartments) Read(ctx context.Context, req datasource.
 		state.Compartments = append(state.Compartments, compartmentTFSDK)
 	}
 	resp.Diagnostics.Append(resp.State.Set(ctx, state)...)
-	tflog.Trace(ctx, common.MSG_METHOD_END+"[data_source_get_oci_compartments.go -> Read]["+id+"]")
 }
 
+// fetchCompartments marshals payload into JSON, calls the CM OCI get-compartments
+// endpoint, and unmarshals the response. Returns nil and appends an error on any failure.
 func (d *dataSourceGetOCICompartments) fetchCompartments(ctx context.Context, id string,
 	payload models.GetOCICompartmentsPayloadJSON, diags *diag.Diagnostics) *models.GetOCICompartmentsJSON {
 

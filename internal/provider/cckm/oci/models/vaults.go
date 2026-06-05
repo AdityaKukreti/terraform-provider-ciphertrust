@@ -126,8 +126,8 @@ type GetOCIVaultsPayloadJSON struct {
 	Connection    string  `json:"connection"`
 	CompartmentID string  `json:"compartment_id"`
 	Region        string  `json:"region"`
-	Limit         *int64  `json:"limit"`
-	NextPage      *string `json:"ociNextPage"`
+	Limit         *int64  `json:"limit,omitempty"`
+	NextPage      *string `json:"ociNextPage,omitempty"`
 }
 
 type GetOCIVaultsJSON struct {
@@ -151,12 +151,12 @@ type DataSourceGetOCIVaultJSON struct {
 	CompartmentID      string                       `json:"compartment_id"`
 	DisplayName        string                       `json:"display_name"`
 	VaultID            string                       `json:"vault_id"`
-	LifecycleState     string                       `json:"lifecycleState"`
+	LifecycleState     string                       `json:"lifecycle_state"`
 	ManagementEndpoint string                       `json:"management_endpoint"`
 	TimeCreated        string                       `json:"time_created"`
 	VaultType          string                       `json:"vault_type"`
-	FreeformTags       map[string]string            `json:"freeformTags"`
-	DefinedTags        map[string]map[string]string `json:"definedTags"`
+	FreeformTags       map[string]string            `json:"freeform_tags"`
+	DefinedTags        map[string]map[string]string `json:"defined_tags"`
 }
 
 type DataSourceGetOCIVaultsTFSDK struct {

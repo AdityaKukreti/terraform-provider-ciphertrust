@@ -14,24 +14,16 @@ provider "ciphertrust" {
 }
 
 resource "ciphertrust_cte_process_set" "process_set" {
-    name = "process_set"
+    name = "process_set_tf"
+
     description = "Process set test"
+
     processes = [
       {
-        directory = "/opt/temp1"
-        file = "*"
+        directory = "/usr/bin"
+        file = "ls"
         signature = "demo"
-        labels = {
-            key1 = "value1"
-        }
       }
     ]
 }
 
-output "process_set_id" {
-    value = ciphertrust_cte_process_set.process_set.id
-}
-
-output "process_set_name" {
-    value = ciphertrust_cte_process_set.process_set.name
-}

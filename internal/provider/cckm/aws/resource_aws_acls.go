@@ -11,11 +11,15 @@ import (
 	"github.com/ThalesGroup/terraform-provider-ciphertrust/internal/provider/cckm/utils"
 	"github.com/ThalesGroup/terraform-provider-ciphertrust/internal/provider/common"
 	"github.com/google/uuid"
+	"github.com/hashicorp/terraform-plugin-framework-validators/setvalidator"
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
+	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-log/tflog"
@@ -23,8 +27,10 @@ import (
 )
 
 var (
-	_ resource.Resource              = &resourceCCKMAWSAcl{}
-	_ resource.ResourceWithConfigure = &resourceCCKMAWSAcl{}
+	_ resource.Resource                = &resourceCCKMAWSAcl{}
+	_ resource.ResourceWithConfigure   = &resourceCCKMAWSAcl{}
+	_ resource.ResourceWithImportState = &resourceCCKMAWSAcl{}
+	_ resource.ResourceWithModifyPlan  = &resourceCCKMAWSAcl{}
 )
 
 func NewResourceCCKMAWSAcl() resource.Resource {
@@ -90,9 +96,11 @@ const awsACLTable = `The following table lists the accepted values:
 |Link (Custom Key Store)          |  keystorelink                 | Permission to link Custom key store to AWS. |
 |Bulk operation                   |  keybulkoperation             | Permission to perform bulk job operations. |
 
-Note: It's not necessary to add any view permissions as they will be automatically added.
+It's not necessary to add any view permissions as they will be automatically added.
 
-For backwards compatibility the deprecated "view" permission will be automatically converted to 'viewnative' and 'viewbyok' permissions.`
+To remove a user or group from the KMS ACL entirely, delete the resource.
+
+For backwards compatibility the deprecated 'view' permission will be automatically converted to 'viewnative' and 'viewbyok' permissions.`
 
 func (r *resourceCCKMAWSAcl) Configure(_ context.Context, req resource.ConfigureRequest, resp *resource.ConfigureResponse) {
 	if req.ProviderData == nil {
@@ -116,7 +124,8 @@ func (r *resourceCCKMAWSAcl) Schema(_ context.Context, _ resource.SchemaRequest,
 			"actions": schema.SetAttribute{
 				Required:            true,
 				ElementType:         types.StringType,
-				MarkdownDescription: awsACLTable,
+				MarkdownDescription: "(Updatable) " + awsACLTable,
+				Validators:          []validator.Set{setvalidator.SizeAtLeast(1)},
 			},
 			"kms_actions": schema.SetAttribute{
 				Computed:    true,
@@ -128,8 +137,9 @@ func (r *resourceCCKMAWSAcl) Schema(_ context.Context, _ resource.SchemaRequest,
 				Description: "The CipherTrust Manager group the ACL applies to. Specify either \"user_id\" or \"group\".",
 			},
 			"id": schema.StringAttribute{
-				Computed:    true,
-				Description: "The CipherTrust Manager KMS resource ID concatenated with either the user ID or the group name separated by two semi-colons.",
+				Computed:      true,
+				Description:   "The CipherTrust Manager KMS resource ID concatenated with either the user ID or the group name separated by two semi-colons.",
+				PlanModifiers: []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
 			},
 			"user_id": schema.StringAttribute{
 				Optional:    true,
@@ -144,10 +154,11 @@ func (r *resourceCCKMAWSAcl) Schema(_ context.Context, _ resource.SchemaRequest,
 	}
 }
 
+// Create grants the configured actions to a user or group on an AWS KMS in CipherTrust Manager.
 func (r *resourceCCKMAWSAcl) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
 	id := uuid.New().String()
-	tflog.Trace(ctx, common.MSG_METHOD_START+"[resource_aws_acls.go -> Create]["+id+"]")
-	defer tflog.Trace(ctx, common.MSG_METHOD_END+"[resource_aws_acls.go -> Create]["+id+"]")
+	tflog.Debug(ctx, common.MSG_METHOD_START+"[resource_aws_acls.go -> Create]["+id+"]")
+	defer tflog.Debug(ctx, common.MSG_METHOD_END+"[resource_aws_acls.go -> Create]["+id+"]")
 
 	var plan KMSAclTFSDK
 	resp.Diagnostics.Append(req.Plan.Get(ctx, &plan)...)
@@ -159,7 +170,7 @@ func (r *resourceCCKMAWSAcl) Create(ctx context.Context, req resource.CreateRequ
 	var actions []string
 	resp.Diagnostics.Append(plan.Actions.ElementsAs(ctx, &actions, false)...)
 	if resp.Diagnostics.HasError() {
-		tflog.Debug(ctx, fmt.Sprintf("Error converting ACL actions: %v", resp.Diagnostics.Errors()))
+		tflog.Error(ctx, fmt.Sprintf("Error converting ACL actions: %v", resp.Diagnostics.Errors()))
 		return
 	}
 	resourceID := acls.EncodeContainerAclID(kmsID, plan.UserID.ValueString(), plan.Group.ValueString())
@@ -175,7 +186,6 @@ func (r *resourceCCKMAWSAcl) Create(ctx context.Context, req resource.CreateRequ
 			if resp.Diagnostics.HasError() {
 				return
 			}
-			tflog.Info(ctx, fmt.Sprintf("Create response: %s", response))
 		}
 	}
 
@@ -191,10 +201,12 @@ func (r *resourceCCKMAWSAcl) Create(ctx context.Context, req resource.CreateRequ
 	resp.Diagnostics.Append(resp.State.Set(ctx, plan)...)
 }
 
+// Read refreshes the Terraform state for an AWS KMS ACL by fetching the current ACL list from CipherTrust Manager.
+// Returns an error if the KMS is not reachable.
 func (r *resourceCCKMAWSAcl) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
 	id := uuid.New().String()
-	tflog.Trace(ctx, common.MSG_METHOD_START+"[resource_aws_acls.go -> Read]["+id+"]")
-	defer tflog.Trace(ctx, common.MSG_METHOD_END+"[resource_aws_acls.go -> Read]["+id+"]")
+	tflog.Debug(ctx, common.MSG_METHOD_START+"[resource_aws_acls.go -> Read]["+id+"]")
+	defer tflog.Debug(ctx, common.MSG_METHOD_END+"[resource_aws_acls.go -> Read]["+id+"]")
 
 	var state KMSAclTFSDK
 	resp.Diagnostics.Append(req.State.Get(ctx, &state)...)
@@ -202,24 +214,51 @@ func (r *resourceCCKMAWSAcl) Read(ctx context.Context, req resource.ReadRequest,
 		return
 	}
 	resourceID := state.ID.ValueString()
-	kmsID := state.KmsID.ValueString()
-
-	response, err := r.client.GetById(ctx, id, kmsID, common.URL_AWS+"/kms")
+	kmsID, _, _, err := acls.DecodeContainerAclID(resourceID)
 	if err != nil {
-		msg := "Error reading AWS KMS."
-		details := utils.ApiError(msg, map[string]interface{}{"error": err.Error(), "vault_id": kmsID})
+		msg := "Error reading ACL, invalid resource ID."
+		details := utils.ApiError(msg, map[string]interface{}{"error": err.Error(), "id": resourceID})
+		tflog.Error(ctx, details)
+		resp.Diagnostics.AddError(details, "")
+		return
+	}
+	state.KmsID = types.StringValue(kmsID)
+
+	kmsResponse, kmsErr := r.client.GetById(ctx, id, kmsID, common.URL_AWS_KMS)
+	if kmsErr != nil {
+		if strings.Contains(kmsErr.Error(), notFoundError) {
+			msg := "AWS KMS was not found. AWS KMS ACLs will be removed from state."
+			details := utils.ApiError(msg, map[string]interface{}{"kms_id": kmsID})
+			tflog.Warn(ctx, details)
+			resp.Diagnostics.AddWarning(details, "")
+			resp.State.RemoveResource(ctx)
+			return
+		}
+		msg := "Error reading AWS KMS ACLs, failed to read AWS KMS."
+		details := utils.ApiError(msg, map[string]interface{}{"error": kmsErr.Error(), "kms_id": kmsID})
+		tflog.Error(ctx, details)
+		resp.Diagnostics.AddError(details, "")
+		return
+	}
+	response := kmsResponse
+	if !acls.AclExistsInResponse(response, resourceID) {
+		msg := "AWS KMS ACL was not found, it will be removed from state."
+		details := utils.ApiError(msg, map[string]interface{}{"kms_id": kmsID, "id": resourceID})
 		tflog.Warn(ctx, details)
 		resp.Diagnostics.AddWarning(details, "")
+		resp.State.RemoveResource(ctx)
+		return
 	}
-	tflog.Trace(ctx, "[resource_aws_acls.go -> Read][response:"+response)
 	r.setAWSAclState(ctx, resourceID, response, &state, &resp.Diagnostics)
 	resp.Diagnostics.Append(resp.State.Set(ctx, state)...)
 }
 
+// Update reconciles the planned ACL actions against the current KMS ACL list, revoking and granting as needed.
+// Returns an error if the KMS is not reachable.
 func (r *resourceCCKMAWSAcl) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
 	id := uuid.New().String()
-	tflog.Trace(ctx, common.MSG_METHOD_START+"[resource_aws_acls.go -> Update]["+id+"]")
-	defer tflog.Trace(ctx, common.MSG_METHOD_END+"[resource_aws_acls.go -> Update]["+id+"]")
+	tflog.Debug(ctx, common.MSG_METHOD_START+"[resource_aws_acls.go -> Update]["+id+"]")
+	defer tflog.Debug(ctx, common.MSG_METHOD_END+"[resource_aws_acls.go -> Update]["+id+"]")
 
 	var plan KMSAclTFSDK
 	resp.Diagnostics.Append(req.Plan.Get(ctx, &plan)...)
@@ -235,10 +274,26 @@ func (r *resourceCCKMAWSAcl) Update(ctx context.Context, req resource.UpdateRequ
 	kmsID := state.KmsID.ValueString()
 	plan.ID = state.ID
 
-	response, err := r.client.GetById(ctx, id, kmsID, common.URL_AWS+"/kms")
-	if err != nil {
-		msg := "Error reading AWS KMS."
-		details := utils.ApiError(msg, map[string]interface{}{"error": err.Error(), "vault_id": kmsID, "id": resourceID})
+	kmsResp, kmsErr := r.client.GetById(ctx, id, kmsID, common.URL_AWS_KMS)
+	if kmsErr != nil {
+		if strings.Contains(kmsErr.Error(), notFoundError) {
+			msg := "AWS KMS was not found. AWS KMS ACLs will be removed from state."
+			details := utils.ApiError(msg, map[string]interface{}{"kms_id": kmsID})
+			tflog.Warn(ctx, details)
+			resp.Diagnostics.AddWarning(details, "")
+			resp.State.RemoveResource(ctx)
+			return
+		}
+		msg := "Error updating AWS KMS ACLs, failed to read AWS KMS."
+		details := utils.ApiError(msg, map[string]interface{}{"error": kmsErr.Error(), "kms_id": kmsID})
+		tflog.Error(ctx, details)
+		resp.Diagnostics.AddError(details, "")
+		return
+	}
+	response := kmsResp
+	if !acls.AclExistsInResponse(response, resourceID) {
+		msg := "AWS KMS ACL was not found, cannot update."
+		details := utils.ApiError(msg, map[string]interface{}{"kms_id": kmsID, "id": resourceID})
 		tflog.Error(ctx, details)
 		resp.Diagnostics.AddError(details, "")
 		return
@@ -276,24 +331,21 @@ func (r *resourceCCKMAWSAcl) Update(ctx context.Context, req resource.UpdateRequ
 			if resp.Diagnostics.HasError() {
 				return
 			}
-			tflog.Info(ctx, fmt.Sprintf("Update response: %s", response))
 		}
 	}
 	r.setAWSAclState(ctx, resourceID, response, &plan, &resp.Diagnostics)
 	if resp.Diagnostics.HasError() {
-		msg := "Error updating AWS ACL, failed to set resource state."
-		details := utils.ApiError(msg, map[string]interface{}{"id": resourceID})
-		tflog.Error(ctx, details)
-		resp.Diagnostics.AddError(details, "")
 		return
 	}
 	resp.Diagnostics.Append(resp.State.Set(ctx, plan)...)
 }
 
+// Delete revokes all actions for the user or group from the AWS KMS ACL list.
+// Returns an error if the KMS is not reachable.
 func (r *resourceCCKMAWSAcl) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
 	id := uuid.New().String()
-	tflog.Trace(ctx, common.MSG_METHOD_START+"[resource_aws_acls.go -> Delete]["+id+"]")
-	defer tflog.Trace(ctx, common.MSG_METHOD_END+"[resource_aws_acls.go -> Delete]["+id+"]")
+	tflog.Debug(ctx, common.MSG_METHOD_START+"[resource_aws_acls.go -> Delete]["+id+"]")
+	defer tflog.Debug(ctx, common.MSG_METHOD_END+"[resource_aws_acls.go -> Delete]["+id+"]")
 
 	var state KMSAclTFSDK
 	resp.Diagnostics.Append(req.State.Get(ctx, &state)...)
@@ -303,12 +355,27 @@ func (r *resourceCCKMAWSAcl) Delete(ctx context.Context, req resource.DeleteRequ
 	resourceID := state.ID.ValueString()
 	kmsID := state.KmsID.ValueString()
 
-	response, err := r.client.GetById(ctx, id, kmsID, common.URL_AWS+"/kms")
-	if err != nil {
-		msg := "Error reading AWS KMS."
-		details := utils.ApiError(msg, map[string]interface{}{"error": err.Error(), "vault_id": kmsID, "id": resourceID})
+	kmsResp, kmsErr := r.client.GetById(ctx, id, kmsID, common.URL_AWS_KMS)
+	if kmsErr != nil {
+		if strings.Contains(kmsErr.Error(), notFoundError) {
+			msg := "AWS KMS was not found. AWS KMS ACLs will be removed from state."
+			details := utils.ApiError(msg, map[string]interface{}{"kms_id": kmsID})
+			tflog.Warn(ctx, details)
+			resp.Diagnostics.AddWarning(details, "")
+			return // Terraform removes from state when Delete returns without error.
+		}
+		msg := "Error deleting AWS KMS ACLs, failed to read AWS KMS."
+		details := utils.ApiError(msg, map[string]interface{}{"error": kmsErr.Error(), "kms_id": kmsID})
 		tflog.Error(ctx, details)
 		resp.Diagnostics.AddError(details, "")
+		return
+	}
+	response := kmsResp
+	if !acls.AclExistsInResponse(response, resourceID) {
+		msg := "AWS KMS ACL was not found, it will be removed from state."
+		details := utils.ApiError(msg, map[string]interface{}{"kms_id": kmsID, "id": resourceID})
+		tflog.Warn(ctx, details)
+		resp.Diagnostics.AddWarning(details, "")
 		return
 	}
 	var aclsJSON string
@@ -324,10 +391,63 @@ func (r *resourceCCKMAWSAcl) Delete(ctx context.Context, req resource.DeleteRequ
 		if resp.Diagnostics.HasError() {
 			return
 		}
-		tflog.Info(ctx, fmt.Sprintf("Delete response: %s", response))
 	}
 }
 
+// ModifyPlan errors at plan time if any immutable attribute is changed on an existing resource,
+// preventing silent in-place updates to fields that cannot be modified after creation.
+func (r *resourceCCKMAWSAcl) ModifyPlan(ctx context.Context, req resource.ModifyPlanRequest, resp *resource.ModifyPlanResponse) {
+	// Skip create and destroy operations.
+	if req.Plan.Raw.IsNull() || req.State.Raw.IsNull() {
+		return
+	}
+
+	var plan, state KMSAclTFSDK
+
+	resp.Diagnostics.Append(req.Plan.Get(ctx, &plan)...)
+	resp.Diagnostics.Append(req.State.Get(ctx, &state)...)
+
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	var changed []string
+
+	// Guard against false positives when group is not set in config (null in plan)
+	// while state holds an empty string returned by the API.
+	if !plan.Group.IsNull() && !plan.Group.IsUnknown() && plan.Group != state.Group {
+		changed = append(changed, "group")
+	}
+	if plan.KmsID != state.KmsID {
+		changed = append(changed, "kms_id")
+	}
+	// Guard against false positives when user_id is not set in config (null in plan)
+	// while state holds an empty string returned by the API.
+	if !plan.UserID.IsNull() && !plan.UserID.IsUnknown() && plan.UserID != state.UserID {
+		changed = append(changed, "user_id")
+	}
+
+	if len(changed) > 0 {
+		resp.Diagnostics.AddError(
+			"Immutable attribute change detected",
+			fmt.Sprintf(
+				"The following attributes cannot be modified after creation: %s. "+
+					"Delete and recreate the resource to apply these changes.",
+				strings.Join(changed, ", "),
+			),
+		)
+	}
+}
+
+// ImportState imports an existing AWS KMS ACL into Terraform state using its composite resource ID.
+func (r *resourceCCKMAWSAcl) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
+	id := uuid.New().String()
+	tflog.Debug(ctx, common.MSG_METHOD_START+"[resource_aws_acls.go -> ImportState]["+id+"]")
+	defer tflog.Debug(ctx, common.MSG_METHOD_END+"[resource_aws_acls.go -> ImportState]["+id+"]")
+	resource.ImportStatePassthroughID(ctx, path.Root("id"), req, resp)
+}
+
+// applyAcls sends an update-acls request for a single ACL entry to the AWS KMS, using a mutex to prevent races.
 func (r *resourceCCKMAWSAcl) applyAcls(ctx context.Context, id string, kmsID string, acl *acls.ContainerAclJSON, diags *diag.Diagnostics, ignoreNotFoundErrors bool) string {
 	mutexKey := fmt.Sprintf("aws-acls-%s", kmsID)
 	mutex.CckmMutex.Lock(mutexKey)
@@ -356,12 +476,16 @@ func (r *resourceCCKMAWSAcl) applyAcls(ctx context.Context, id string, kmsID str
 			return ""
 		}
 	}
-	tflog.Trace(ctx, "[resource_aws_acls.go -> applyAcls][response:"+response)
+	tflog.Debug(ctx, "[resource_aws_acls.go -> applyAcls][response:"+redactAWSResponse(response)+"]")
 	return response
 }
 
+// setAWSAclState populates the KMSAclTFSDK state, separating the API-returned kms_actions from the user-defined actions.
 func (r *resourceCCKMAWSAcl) setAWSAclState(ctx context.Context, resourceID string, responseJSON string, state *KMSAclTFSDK, diags *diag.Diagnostics) {
 	inputActions := state.Actions
+	// Reset Actions before calling SetAclCommonState so that kms_actions correctly
+	// reflects only what the API returned, not stale user input when the ACL is not found.
+	state.AclTFSDK.Actions, _ = types.SetValue(types.StringType, []attr.Value{})
 	acls.SetAclCommonState(ctx, resourceID, responseJSON, &state.AclTFSDK, diags)
 	if len(state.Actions.Elements()) != 0 {
 		state.KmsActions = state.Actions

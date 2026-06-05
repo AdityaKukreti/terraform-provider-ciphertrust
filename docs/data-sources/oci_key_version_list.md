@@ -3,13 +3,13 @@
 page_title: "ciphertrust_oci_key_version_list Data Source - terraform-provider-ciphertrust"
 subcategory: ""
 description: |-
-  Use this data source to retrieve a list of CipherTrust Manager key versions.
+  Use this data source to retrieve a list of OCI key versions.
   Give a filter of 'limit=-1' to list more than 10 matches.
 ---
 
 # ciphertrust_oci_key_version_list (Data Source)
 
-Use this data source to retrieve a list of CipherTrust Manager key versions.
+Use this data source to retrieve a list of OCI key versions.
 
 Give a filter of 'limit=-1' to list more than 10 matches.
 
@@ -48,8 +48,8 @@ data "ciphertrust_oci_key_list" "ciphertrust_keys" {
 Read-Only:
 
 - `account` (String) The account which owns this resource.
-- `created_at` (String) Date/time the application was created
-- `hyok_key_version_params` (Attributes) The attributes are related to external (hyok) keys. (see [below for nested schema](#nestedatt--versions--hyok_key_version_params))
+- `byok_key_version_params` (Attributes) The attributes are related to BYOK key versions. (see [below for nested schema](#nestedatt--versions--byok_key_version_params))
+- `created_at` (String) Date/time the key version was created in CipherTrust Manager.
 - `id` (String) The version's CipherTrust Manager resource ID.
 - `key_material_origin` (String) CipherTrust Manager origin of the key version's material.
 - `oci_key_version_params` (Attributes) OCI key version attributes. (see [below for nested schema](#nestedatt--versions--oci_key_version_params))
@@ -57,11 +57,11 @@ Read-Only:
 - `source_key_id` (String) CipherTrust Manager key ID used to create the version.
 - `source_key_name` (String) Name of the key used to create the version.
 - `source_key_tier` (String) Source of the key used to create the version.
-- `updated_at` (String) Date/time the application was updated.
+- `updated_at` (String) Date/time the key version was last updated.
 - `uri` (String) CipherTrust Manager's unique identifier for the resource.
 
-<a id="nestedatt--versions--hyok_key_version_params"></a>
-### Nested Schema for `versions.hyok_key_version_params`
+<a id="nestedatt--versions--byok_key_version_params"></a>
+### Nested Schema for `versions.byok_key_version_params`
 
 Read-Only:
 

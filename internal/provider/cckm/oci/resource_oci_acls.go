@@ -12,11 +12,14 @@ import (
 	"github.com/ThalesGroup/terraform-provider-ciphertrust/internal/provider/cckm/utils"
 	"github.com/ThalesGroup/terraform-provider-ciphertrust/internal/provider/common"
 	"github.com/google/uuid"
+	"github.com/hashicorp/terraform-plugin-framework-validators/setvalidator"
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-log/tflog"
@@ -27,6 +30,7 @@ var (
 	_ resource.Resource                = &resourceCCKMOCIAcl{}
 	_ resource.ResourceWithConfigure   = &resourceCCKMOCIAcl{}
 	_ resource.ResourceWithImportState = &resourceCCKMOCIAcl{}
+	_ resource.ResourceWithModifyPlan  = &resourceCCKMOCIAcl{}
 )
 
 func NewResourceCCKMOCIAcl() resource.Resource {
@@ -70,7 +74,9 @@ const ociACLTable = `The following table lists the accepted values:
 | Delete  (HYOK Key)              |  hyokkeydelete         | Permission to delete an OCI HYOK key (applicable only to unlinked key). |
 | Rotate  (HYOK Key)              |  hyokkeyrotate         | Permission to rotate a HYOK key in CM. |
 
-The "view" or "viewhyokkey" permissions must be included with key or "hyok key" actions respectively.`
+The 'view' or 'viewhyokkey' permissions must be included with 'key' or 'hyok key' actions respectively.
+
+To remove a user or group from the vault ACL entirely, delete the resource.`
 
 func (r *resourceCCKMOCIAcl) Configure(_ context.Context, req resource.ConfigureRequest, resp *resource.ConfigureResponse) {
 	if req.ProviderData == nil {
@@ -89,20 +95,22 @@ func (r *resourceCCKMOCIAcl) Configure(_ context.Context, req resource.Configure
 
 func (r *resourceCCKMOCIAcl) Schema(_ context.Context, _ resource.SchemaRequest, resp *resource.SchemaResponse) {
 	resp.Schema = schema.Schema{
-		Description: "Use this resource to create and manage OCI vault access control lists (ACLs) in CipherTrust Manager.n",
+		Description: "Use this resource to create and manage OCI vault access control lists (ACLs) in CipherTrust Manager.",
 		Attributes: map[string]schema.Attribute{
 			"actions": schema.SetAttribute{
 				Required:            true,
 				ElementType:         types.StringType,
-				MarkdownDescription: ociACLTable,
+				MarkdownDescription: "(Updatable) " + ociACLTable,
+				Validators:          []validator.Set{setvalidator.SizeAtLeast(1)},
 			},
 			"group": schema.StringAttribute{
 				Optional:    true,
 				Description: "The CipherTrust Manager group the ACL applies to. Specify either \"user_id\" or \"group\".",
 			},
 			"id": schema.StringAttribute{
-				Computed:    true,
-				Description: "The CipherTrust Manager vault resource ID concatenated with either the user ID or the group name separated by a semi-colon.",
+				Computed:      true,
+				Description:   "The CipherTrust Manager vault resource ID concatenated with either the user ID or the group name separated by a semi-colon.",
+				PlanModifiers: []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
 			},
 			"user_id": schema.StringAttribute{
 				Optional:    true,
@@ -117,10 +125,14 @@ func (r *resourceCCKMOCIAcl) Schema(_ context.Context, _ resource.SchemaRequest,
 	}
 }
 
+// Create builds a composite resource ID from the vault ID and user/group identity, then grants the
+// specified actions via applyAcls. If actions is empty, no ACL call is made and the resource ID is
+// still committed to state. Once the resource ID is set, subsequent setOCIAclState failures are
+// demoted to warnings only.
 func (r *resourceCCKMOCIAcl) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
 	id := uuid.New().String()
-	tflog.Trace(ctx, common.MSG_METHOD_START+"[resource_oci_acls.go -> Create]["+id+"]")
-	defer tflog.Trace(ctx, common.MSG_METHOD_END+"[resource_oci_acls.go -> Create]["+id+"]")
+	tflog.Debug(ctx, common.MSG_METHOD_START+"[resource_oci_acls.go -> Create]["+id+"]")
+	defer tflog.Debug(ctx, common.MSG_METHOD_END+"[resource_oci_acls.go -> Create]["+id+"]")
 
 	var plan models.VaultAclTFSDK
 	resp.Diagnostics.Append(req.Plan.Get(ctx, &plan)...)
@@ -132,7 +144,7 @@ func (r *resourceCCKMOCIAcl) Create(ctx context.Context, req resource.CreateRequ
 	var actions []string
 	resp.Diagnostics.Append(plan.Actions.ElementsAs(ctx, &actions, false)...)
 	if resp.Diagnostics.HasError() {
-		tflog.Debug(ctx, fmt.Sprintf("Error converting ACL actions: %v", resp.Diagnostics.Errors()))
+		tflog.Error(ctx, fmt.Sprintf("Error converting ACL actions: %v", resp.Diagnostics.Errors()))
 		return
 	}
 	resourceID := acls.EncodeContainerAclID(vaultID, plan.UserID.ValueString(), plan.Group.ValueString())
@@ -148,7 +160,6 @@ func (r *resourceCCKMOCIAcl) Create(ctx context.Context, req resource.CreateRequ
 			if resp.Diagnostics.HasError() {
 				return
 			}
-			tflog.Info(ctx, fmt.Sprintf("Create response: %s", response))
 		}
 	}
 
@@ -164,10 +175,13 @@ func (r *resourceCCKMOCIAcl) Create(ctx context.Context, req resource.CreateRequ
 	resp.Diagnostics.Append(resp.State.Set(ctx, plan)...)
 }
 
+// Read retrieves the vault JSON via getOciVault and extracts the current acls array to
+// refresh state. If the specific user/group ACL entry is absent from the vault ACL list, the resource
+// is removed from state with a warning.
 func (r *resourceCCKMOCIAcl) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
 	id := uuid.New().String()
-	tflog.Trace(ctx, common.MSG_METHOD_START+"[resource_oci_acls.go -> Read]["+id+"]")
-	defer tflog.Trace(ctx, common.MSG_METHOD_END+"[resource_oci_acls.go -> Read]["+id+"]")
+	tflog.Debug(ctx, common.MSG_METHOD_START+"[resource_oci_acls.go -> Read]["+id+"]")
+	defer tflog.Debug(ctx, common.MSG_METHOD_END+"[resource_oci_acls.go -> Read]["+id+"]")
 
 	var state models.VaultAclTFSDK
 	resp.Diagnostics.Append(req.State.Get(ctx, &state)...)
@@ -184,28 +198,28 @@ func (r *resourceCCKMOCIAcl) Read(ctx context.Context, req resource.ReadRequest,
 		return
 	}
 	state.VaultID = types.StringValue(vaultID)
-	response, err := r.client.GetById(ctx, id, vaultID, common.URL_OCI+"/vaults")
-	if err != nil {
-		msg := "Error reading OCI vault."
-		details := utils.ApiError(msg, map[string]interface{}{"error": err.Error(), "vault_id": vaultID})
+	response := getOciVault(ctx, id, r.client, vaultID, "reading", &resp.Diagnostics)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	if !acls.AclExistsInResponse(response, resourceID) {
+		msg := "OCI vault ACL was not found, it will be removed from state."
+		details := utils.ApiError(msg, map[string]interface{}{"vault_id": vaultID, "id": resourceID})
 		tflog.Warn(ctx, details)
 		resp.Diagnostics.AddWarning(details, "")
+		resp.State.RemoveResource(ctx)
+		return
 	}
 	r.setOCIAclState(ctx, resourceID, response, &state, &resp.Diagnostics)
 	resp.Diagnostics.Append(resp.State.Set(ctx, state)...)
 }
 
-func (r *resourceCCKMOCIAcl) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
-	id := uuid.New().String()
-	tflog.Trace(ctx, common.MSG_METHOD_START+"[resource_oci_acls.go -> ImportState]["+id+"]")
-	defer tflog.Trace(ctx, common.MSG_METHOD_END+"[resource_oci_acls.go -> ImportState]["+id+"]")
-	resource.ImportStatePassthroughID(ctx, path.Root("id"), req, resp)
-}
-
+// Update first revokes any actions currently granted that are absent from the new plan
+// (via GetUnPermittedAcl + applyAcls), then grants the new plan actions (via GetPermittedAcl + applyAcls).
 func (r *resourceCCKMOCIAcl) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
 	id := uuid.New().String()
-	tflog.Trace(ctx, common.MSG_METHOD_START+"[resource_oci_acls.go -> Update]["+id+"]")
-	defer tflog.Trace(ctx, common.MSG_METHOD_END+"[resource_oci_acls.go -> Update]["+id+"]")
+	tflog.Debug(ctx, common.MSG_METHOD_START+"[resource_oci_acls.go -> Update]["+id+"]")
+	defer tflog.Debug(ctx, common.MSG_METHOD_END+"[resource_oci_acls.go -> Update]["+id+"]")
 
 	var plan models.VaultAclTFSDK
 	resp.Diagnostics.Append(req.Plan.Get(ctx, &plan)...)
@@ -221,10 +235,13 @@ func (r *resourceCCKMOCIAcl) Update(ctx context.Context, req resource.UpdateRequ
 	vaultID := state.VaultID.ValueString()
 	plan.ID = state.ID
 
-	response, err := r.client.GetById(ctx, id, vaultID, common.URL_OCI+"/vaults")
-	if err != nil {
-		msg := "Error reading OCI vault."
-		details := utils.ApiError(msg, map[string]interface{}{"error": err.Error(), "vault_id": vaultID, "id": resourceID})
+	response := getOciVault(ctx, id, r.client, vaultID, "updating", &resp.Diagnostics)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	if !acls.AclExistsInResponse(response, resourceID) {
+		msg := "OCI vault ACL was not found, cannot update."
+		details := utils.ApiError(msg, map[string]interface{}{"vault_id": vaultID, "id": resourceID})
 		tflog.Error(ctx, details)
 		resp.Diagnostics.AddError(details, "")
 		return
@@ -237,7 +254,7 @@ func (r *resourceCCKMOCIAcl) Update(ctx context.Context, req resource.UpdateRequ
 	var planActions []string
 	resp.Diagnostics.Append(plan.Actions.ElementsAs(ctx, &planActions, false)...)
 	if resp.Diagnostics.HasError() {
-		tflog.Debug(ctx, fmt.Sprintf("Error converting ACL actions: %v", resp.Diagnostics.Errors()))
+		tflog.Error(ctx, fmt.Sprintf("Error converting ACL actions: %v", resp.Diagnostics.Errors()))
 		return
 	}
 
@@ -262,25 +279,22 @@ func (r *resourceCCKMOCIAcl) Update(ctx context.Context, req resource.UpdateRequ
 			if resp.Diagnostics.HasError() {
 				return
 			}
-			tflog.Info(ctx, fmt.Sprintf("Update response: %s", response))
 		}
 	}
 
 	r.setOCIAclState(ctx, resourceID, response, &plan, &resp.Diagnostics)
 	if resp.Diagnostics.HasError() {
-		msg := "Error updating OCI ACL, failed to set resource state."
-		details := utils.ApiError(msg, map[string]interface{}{"id": resourceID})
-		tflog.Error(ctx, details)
-		resp.Diagnostics.AddError(details, "")
 		return
 	}
 	resp.Diagnostics.Append(resp.State.Set(ctx, plan)...)
 }
 
+// Delete revokes all currently-granted actions by calling GetUnPermittedAcl with an empty new-actions
+// slice, then applying the revocation via applyAcls.
 func (r *resourceCCKMOCIAcl) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
 	id := uuid.New().String()
-	tflog.Trace(ctx, common.MSG_METHOD_START+"[resource_oci_acls.go -> Delete]["+id+"]")
-	defer tflog.Trace(ctx, common.MSG_METHOD_END+"[resource_oci_acls.go -> Delete]["+id+"]")
+	tflog.Debug(ctx, common.MSG_METHOD_START+"[resource_oci_acls.go -> Delete]["+id+"]")
+	defer tflog.Debug(ctx, common.MSG_METHOD_END+"[resource_oci_acls.go -> Delete]["+id+"]")
 
 	var state models.VaultAclTFSDK
 	resp.Diagnostics.Append(req.State.Get(ctx, &state)...)
@@ -290,12 +304,15 @@ func (r *resourceCCKMOCIAcl) Delete(ctx context.Context, req resource.DeleteRequ
 	resourceID := state.ID.ValueString()
 	vaultID := state.VaultID.ValueString()
 
-	response, err := r.client.GetById(ctx, id, vaultID, common.URL_OCI+"/vaults")
-	if err != nil {
-		msg := "Error reading OCI vault."
-		details := utils.ApiError(msg, map[string]interface{}{"error": err.Error(), "vault_id": vaultID, "id": resourceID})
-		tflog.Error(ctx, details)
-		resp.Diagnostics.AddError(details, "")
+	response := getOciVault(ctx, id, r.client, vaultID, "deleting", &resp.Diagnostics)
+	if resp.Diagnostics.HasError() || response == "" {
+		return
+	}
+	if !acls.AclExistsInResponse(response, resourceID) {
+		msg := "OCI vault ACL was not found, it will be removed from state."
+		details := utils.ApiError(msg, map[string]interface{}{"vault_id": vaultID, "id": resourceID})
+		tflog.Warn(ctx, details)
+		resp.Diagnostics.AddWarning(details, "")
 		return
 	}
 	var aclsJSON string
@@ -311,10 +328,69 @@ func (r *resourceCCKMOCIAcl) Delete(ctx context.Context, req resource.DeleteRequ
 		if resp.Diagnostics.HasError() {
 			return
 		}
-		tflog.Info(ctx, fmt.Sprintf("Delete response: %s", response))
 	}
 }
 
+// ModifyPlan errors at plan time if any immutable attribute is changed on an existing resource,
+// preventing silent in-place updates to fields that cannot be modified after creation.
+// group, user_id, and vault_id together form the composite resource ID and cannot be changed.
+func (r *resourceCCKMOCIAcl) ModifyPlan(ctx context.Context, req resource.ModifyPlanRequest, resp *resource.ModifyPlanResponse) {
+	// Skip create and destroy operations.
+	if req.Plan.Raw.IsNull() || req.State.Raw.IsNull() {
+		return
+	}
+
+	var plan, state models.VaultAclTFSDK
+
+	resp.Diagnostics.Append(req.Plan.Get(ctx, &plan)...)
+	resp.Diagnostics.Append(req.State.Get(ctx, &state)...)
+
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	var changed []string
+
+	// Guard against false positives when group is not set in config (null in plan)
+	// while state holds an empty string returned by the API (e.g. when user_id was used instead).
+	if !plan.Group.IsNull() && !plan.Group.IsUnknown() && plan.Group != state.Group {
+		changed = append(changed, "group")
+	}
+	// Guard against false positives when user_id is not set in config (null in plan)
+	// while state holds an empty string returned by the API (e.g. when group was used instead).
+	if !plan.UserID.IsNull() && !plan.UserID.IsUnknown() && plan.UserID != state.UserID {
+		changed = append(changed, "user_id")
+	}
+
+	if plan.VaultID != state.VaultID {
+		changed = append(changed, "vault_id")
+	}
+
+	if len(changed) > 0 {
+		resp.Diagnostics.AddError(
+			"Immutable attribute change detected",
+			fmt.Sprintf(
+				"The following attributes cannot be modified after creation: %s. "+
+					"Delete and recreate the resource to apply these changes.",
+				strings.Join(changed, ", "),
+			),
+		)
+	}
+}
+
+// ImportState imports an existing OCI ACL into Terraform state. The import ID must be the composite
+// ACL resource ID in the form {vault_id}::{user|group}::{identity}.
+func (r *resourceCCKMOCIAcl) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
+	id := uuid.New().String()
+	tflog.Debug(ctx, common.MSG_METHOD_START+"[resource_oci_acls.go -> ImportState]["+id+"]")
+	defer tflog.Debug(ctx, common.MSG_METHOD_END+"[resource_oci_acls.go -> ImportState]["+id+"]")
+	resource.ImportStatePassthroughID(ctx, path.Root("id"), req, resp)
+}
+
+// applyAcls is used by Create, Update, and Delete. It acquires a per-vault mutex before posting to
+// POST /oci/vaults/{id}/update-acls. The ignoreNotFoundErrors flag is only set to true by Delete;
+// when set, an NCERRResourceNotFound response from the update-acls endpoint is silently ignored
+// (the vault was already deleted externally).
 func (r *resourceCCKMOCIAcl) applyAcls(ctx context.Context, id string, vaultID string, acl *acls.ContainerAclJSON, diags *diag.Diagnostics, ignoreNotFoundErrors bool) string {
 	mutexKey := fmt.Sprintf("oci-acls-%s", vaultID)
 	mutex.CckmMutex.Lock(mutexKey)
@@ -330,7 +406,7 @@ func (r *resourceCCKMOCIAcl) applyAcls(ctx context.Context, id string, vaultID s
 		diags.AddError(details, "")
 		return ""
 	}
-	response, err := r.client.PostDataV2(ctx, id, common.URL_OCI+"/vaults/"+vaultID+"/update-acls", payloadJSON)
+	response, err := ociPostDataV2WithRetry(ctx, r.client, id, common.URL_OCI+"/vaults/"+vaultID+"/update-acls", payloadJSON)
 	if err != nil {
 		if ignoreNotFoundErrors && strings.Contains(err.Error(), "NCERRResourceNotFound") {
 			return ""
@@ -342,9 +418,12 @@ func (r *resourceCCKMOCIAcl) applyAcls(ctx context.Context, id string, vaultID s
 			return ""
 		}
 	}
+	tflog.Debug(ctx, "[resource_oci_acls.go -> applyAcls][response:"+redactOCIResponse(response)+"]")
 	return response
 }
 
+// setOCIAclState is used only by this resource. It delegates to acls.SetAclCommonState to locate the
+// matching ACL entry within the vault JSON response and populate the state struct.
 func (r *resourceCCKMOCIAcl) setOCIAclState(ctx context.Context, resourceID string, responseJSON string, state *models.VaultAclTFSDK, diags *diag.Diagnostics) {
 	acls.SetAclCommonState(ctx, resourceID, responseJSON, &state.AclTFSDK, diags)
 }

@@ -5,7 +5,7 @@ subcategory: ""
 description: |-
   Use this data source to retrieve a list of CipherTrust Manager AWS key rotations.
   Give a filter of 'limit=-1' to list more than 10 matches.
-  Note: This list is only available for CipherTrust Manager version 2.22 and greater.
+  Note: This list is only available for CipherTrust Manager version 2.20 and greater.
 ---
 
 # ciphertrust_aws_key_rotation_list (Data Source)
@@ -16,7 +16,7 @@ Give a filter of 'limit=-1' to list more than 10 matches.
 
 
 
-Note: This list is only available for CipherTrust Manager version 2.22 and greater.
+Note: This list is only available for CipherTrust Manager version 2.20 and greater.
 
 ## Example Usage
 

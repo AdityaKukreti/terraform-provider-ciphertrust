@@ -137,6 +137,15 @@ func (d *dataSourceCTEClients) Schema(_ context.Context, _ datasource.SchemaRequ
 						"client_warnings": schema.StringAttribute{
 							Computed: true,
 						},
+						"fam_enabled": schema.BoolAttribute{
+							Computed: true,
+						},
+						"fam_state": schema.StringAttribute{
+							Computed: true,
+						},
+						"dps_enabled": schema.BoolAttribute{
+							Computed: true,
+						},
 					},
 				},
 			},
@@ -229,6 +238,9 @@ func (d *dataSourceCTEClients) Read(ctx context.Context, req datasource.ReadRequ
 		clientState.Warnings = types.StringValue(client.Warnings)
 		clientState.ClientErrors = types.StringValue(client.ClientErrors)
 		clientState.ClientWarnings = types.StringValue(client.ClientWarnings)
+		clientState.FamEnabled = types.BoolValue(client.FamEnabled)
+		clientState.FamState = types.StringValue(client.FamState)
+		clientState.DPS_Enabled = types.BoolValue(client.DPS_Enabled)
 		state.Clients = append(state.Clients, clientState)
 	}
 

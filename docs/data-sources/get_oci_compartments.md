@@ -41,7 +41,7 @@ data "ciphertrust_get_oci_compartments" "connection_compartments" {
 
 Read-Only:
 
-- `compartment_id` (String) The compartment's OCID.
+- `compartment_id` (String) The parent compartment's OCID.
 - `defined_tags` (Attributes Set) The defined tags of the compartment. (see [below for nested schema](#nestedatt--compartments--defined_tags))
 - `description` (String) The compartment's description.
 - `freeform_tags` (Map of String) The freeform tags of the compartment.
@@ -57,5 +57,5 @@ Read-Only:
 
 Read-Only:
 
-- `tag` (String)
-- `values` (Map of String)
+- `tag` (String) The tag's namespace.
+- `values` (Map of String) The key:value pairs associated with the tag.

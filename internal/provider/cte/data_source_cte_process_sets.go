@@ -8,6 +8,7 @@ import (
 	"github.com/google/uuid"
 
 	common "github.com/ThalesGroup/terraform-provider-ciphertrust/internal/provider/common"
+	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
 	"github.com/hashicorp/terraform-plugin-framework/datasource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/types"
@@ -62,6 +63,10 @@ func (d *dataSourceCTEProcessSets) Schema(_ context.Context, _ datasource.Schema
 						},
 						"description": schema.StringAttribute{
 							Computed: true,
+						},
+						"labels": schema.MapAttribute{
+							Computed:    true,
+							ElementType: types.StringType,
 						},
 						"processes": schema.ListNestedAttribute{
 							Optional: true,
@@ -128,6 +133,18 @@ func (d *dataSourceCTEProcessSets) Read(ctx context.Context, req datasource.Read
 		processSetState.Name = types.StringValue(processSet.Name)
 		processSetState.UpdatedAt = types.StringValue(processSet.UpdatedAt)
 		processSetState.Description = types.StringValue(processSet.Description)
+
+		labelsMap := make(map[string]attr.Value)
+		for k, v := range processSet.Labels {
+			labelsMap[k] = types.StringValue(fmt.Sprintf("%v", v))
+		}
+
+		labels, diags := types.MapValue(types.StringType, labelsMap)
+		resp.Diagnostics.Append(diags...)
+		if resp.Diagnostics.HasError() {
+			return
+		}
+		processSetState.Labels = labels
 
 		for _, process := range processSet.Processes {
 			_processData := CTEProcessSetListItemTFSDK{

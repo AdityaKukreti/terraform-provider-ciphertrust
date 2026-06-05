@@ -60,11 +60,11 @@ func (d *dataSourceGetOCIVaults) Schema(_ context.Context, _ datasource.SchemaRe
 			},
 			"compartment_id": schema.StringAttribute{
 				Required:    true,
-				Description: "Compartment OICD to get vaults from.",
+				Description: "Compartment OCID to get vaults from.",
 			},
 			"region": schema.StringAttribute{
 				Required:    true,
-				Description: "OCI region OICD to get vaults from.",
+				Description: "OCI region OCID to get vaults from.",
 			},
 			"limit": schema.Int64Attribute{
 				Optional:    true,
@@ -87,12 +87,12 @@ func (d *dataSourceGetOCIVaults) Schema(_ context.Context, _ datasource.SchemaRe
 								Attributes: map[string]schema.Attribute{
 									"tag": schema.StringAttribute{
 										Computed:    true,
-										Description: "The vault's defined tags.",
+										Description: "The tag's namespace.",
 									},
 									"values": schema.MapAttribute{
 										Computed:    true,
 										ElementType: types.StringType,
-										Description: "The key:vault pair's associated with the tag.",
+										Description: "The key:value pairs associated with the tag.",
 									},
 								},
 							},
@@ -120,7 +120,7 @@ func (d *dataSourceGetOCIVaults) Schema(_ context.Context, _ datasource.SchemaRe
 						},
 						"vault_id": schema.StringAttribute{
 							Computed:    true,
-							Description: "The vaults OCID.",
+							Description: "The vault's OCID.",
 						},
 						"vault_type": schema.StringAttribute{
 							Computed:    true,
@@ -133,13 +133,19 @@ func (d *dataSourceGetOCIVaults) Schema(_ context.Context, _ datasource.SchemaRe
 	}
 }
 
+// Read retrieves OCI vaults available to the connection in the given region and
+// compartment by calling the CM get-vaults API. Automatically paginates until all
+// results are returned (or the optional limit is reached).
 func (d *dataSourceGetOCIVaults) Read(ctx context.Context, req datasource.ReadRequest, resp *datasource.ReadResponse) {
-	tflog.Trace(ctx, common.MSG_METHOD_START+"[data_source_get_oci_vaults.go -> Read]")
-	defer tflog.Trace(ctx, common.MSG_METHOD_END+"[data_source_get_oci_vaults.go -> Read]")
 	id := uuid.New().String()
+	tflog.Debug(ctx, common.MSG_METHOD_START+"[data_source_get_oci_vaults.go -> Read]["+id+"]")
+	defer tflog.Debug(ctx, common.MSG_METHOD_END+"[data_source_get_oci_vaults.go -> Read]["+id+"]")
 
 	var state models.DataSourceGetOCIVaultsTFSDK
 	resp.Diagnostics.Append(req.Config.Get(ctx, &state)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
 
 	connection := state.Connection.ValueString()
 	payload := models.GetOCIVaultsPayloadJSON{
@@ -159,7 +165,7 @@ func (d *dataSourceGetOCIVaults) Read(ctx context.Context, req datasource.ReadRe
 	}
 	data = append(data, vaults.Data...)
 	nextPage := vaults.NextPage
-	for i := 0; nextPage != "" && (limit != 0 && int64(len(data)) < limit); i++ {
+	for nextPage != "" && (limit == 0 || int64(len(data)) < limit) {
 		payload.NextPage = &nextPage
 		vaults = d.fetchVaults(ctx, id, payload, &resp.Diagnostics)
 		if resp.Diagnostics.HasError() {
@@ -190,9 +196,10 @@ func (d *dataSourceGetOCIVaults) Read(ctx context.Context, req datasource.ReadRe
 		state.Vaults = append(state.Vaults, ociVault)
 	}
 	resp.Diagnostics.Append(resp.State.Set(ctx, state)...)
-	tflog.Trace(ctx, common.MSG_METHOD_END+"[data_source_oci_get_vaults.go -> Read]["+id+"]")
 }
 
+// fetchVaults marshals payload into JSON, calls the CM OCI get-vaults endpoint,
+// and unmarshals the response. Returns nil and appends an error on any failure.
 func (d *dataSourceGetOCIVaults) fetchVaults(ctx context.Context, id string, payload models.GetOCIVaultsPayloadJSON, diags *diag.Diagnostics) *models.GetOCIVaultsJSON {
 	payloadJSON, err := json.Marshal(payload)
 	if err != nil {

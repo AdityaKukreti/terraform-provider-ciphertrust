@@ -33,6 +33,7 @@ var (
 	_ resource.Resource                = &resourceAWSCustomKeyStore{}
 	_ resource.ResourceWithConfigure   = &resourceAWSCustomKeyStore{}
 	_ resource.ResourceWithImportState = &resourceAWSCustomKeyStore{}
+	_ resource.ResourceWithModifyPlan  = &resourceAWSCustomKeyStore{}
 )
 
 const (
@@ -57,7 +58,21 @@ func (r *resourceAWSCustomKeyStore) Metadata(_ context.Context, req resource.Met
 	resp.TypeName = req.ProviderTypeName + "_aws_custom_keystore"
 }
 
-// Schema defines the schema for the resource.
+func (r *resourceAWSCustomKeyStore) Configure(_ context.Context, req resource.ConfigureRequest, resp *resource.ConfigureResponse) {
+	if req.ProviderData == nil {
+		return
+	}
+	client, ok := req.ProviderData.(*common.Client)
+	if !ok {
+		resp.Diagnostics.AddError(
+			"Error in fetching client from provider",
+			fmt.Sprintf("Expected *provider.Client, got: %T. Please report this issue to the provider developers.", req.ProviderData),
+		)
+		return
+	}
+	r.client = client
+}
+
 func (r *resourceAWSCustomKeyStore) Schema(ctx context.Context, _ resource.SchemaRequest, resp *resource.SchemaResponse) {
 	resp.Schema = schema.Schema{
 		Description: "Use this resource to create and manage Custom Key Stores in CipherTrust Manager.\n\n" +
@@ -122,6 +137,7 @@ func (r *resourceAWSCustomKeyStore) Schema(ctx context.Context, _ resource.Schem
 				Description: "(Updatable) Indicates whether the custom key store is linked with AWS. " +
 					"Applicable to a custom key store of type EXTERNAL_KEY_STORE. Default value is false. " +
 					"When false, creating a custom key store in the CCKM does not trigger the AWS KMS to create a new key store. " +
+					"Once linked, it's not possible to unlink a key store. " +
 					"Also, the new custom key store will not synchronize with any key stores within the AWS KMS until the new key store is linked.",
 			},
 			"connect_disconnect_keystore": schema.StringAttribute{
@@ -245,7 +261,7 @@ func (r *resourceAWSCustomKeyStore) Schema(ctx context.Context, _ resource.Schem
 							Computed: true,
 							Optional: true,
 							Default:  booldefault.StaticBool(false),
-							Description: "(Updatable) Set it to true to enable tls client-side certificate verification — where CipherTrust manager authenticates the AWS KMS client. +" +
+							Description: "(Updatable) Set it to true to enable tls client-side certificate verification  -  where CipherTrust manager authenticates the AWS KMS client. +" +
 								"Default value is false.",
 						},
 						"partition_id": schema.StringAttribute{
@@ -264,11 +280,10 @@ func (r *resourceAWSCustomKeyStore) Schema(ctx context.Context, _ resource.Schem
 							Computed: true,
 						},
 						"source_key_tier": schema.StringAttribute{
-							Optional: true,
-							Computed: true,
-							Description: "This field indicates whether to use Luna HSM (luna-hsm) or Ciphertrust Manager (local) as source for cryptographic keys in this key store. " +
-								"Default value is luna-hsm. The only value supported by the service is 'local'.",
-							Validators: []validator.String{stringvalidator.OneOf([]string{"local", "luna-hsm"}...)},
+							Optional:    true,
+							Computed:    true,
+							Description: "Source for cryptographic keys in this key store. The only supported value is 'local' (CipherTrust Manager).",
+							Validators:  []validator.String{stringvalidator.OneOf([]string{"local"}...)},
 						},
 					},
 				},
@@ -297,11 +312,17 @@ func (r *resourceAWSCustomKeyStore) Schema(ctx context.Context, _ resource.Schem
 	}
 }
 
-// Create creates the resource and sets the initial Terraform state.
+// Create creates a new AWS custom key store in CipherTrust Manager and sets Terraform state.
+// After the key store is successfully created, the following post-creation operations are attempted
+// but only produce warnings (not errors) on failure, ensuring the key store is always saved to state:
+//   - Registering the key store with a CipherTrust Manager scheduled credential rotation job
+//     (enable_credential_rotation block)
+//   - Connecting the key store to AWS (connect_disconnect_keystore = CONNECT_KEYSTORE)
+//   - Refreshing final state from the API after all post-creation operations
 func (r *resourceAWSCustomKeyStore) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
 	id := uuid.New().String()
-	tflog.Trace(ctx, common.MSG_METHOD_START+"[resource_aws_custom_key_store.go -> Create]["+id+"]")
-	defer tflog.Trace(ctx, common.MSG_METHOD_END+"[resource_aws_custom_key_store.go -> Create]["+id+"]")
+	tflog.Debug(ctx, common.MSG_METHOD_START+"[resource_aws_custom_key_store.go -> Create]["+id+"]")
+	defer tflog.Debug(ctx, common.MSG_METHOD_END+"[resource_aws_custom_key_store.go -> Create]["+id+"]")
 	var plan AWSCustomKeyStoreTFSDK
 	var payload AWSCustomKeyStoreJSON
 	resp.Diagnostics.Append(req.Plan.Get(ctx, &plan)...)
@@ -309,18 +330,18 @@ func (r *resourceAWSCustomKeyStore) Create(ctx context.Context, req resource.Cre
 		return
 	}
 
-	timeouts, diags := plan.Timeouts.Create(ctx, 30*time.Minute)
+	createTimeout, diags := plan.Timeouts.Create(ctx, 30*time.Minute)
 	resp.Diagnostics.Append(diags...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
-	ctx, cancel := context.WithTimeout(ctx, timeouts)
+	ctx, cancel := context.WithTimeout(ctx, createTimeout)
 	defer cancel()
 
 	if plan.KMS.ValueString() != "" && plan.KMS.ValueString() != types.StringNull().ValueString() {
 		payload.KMS = common.TrimString(plan.KMS.String())
 	} else {
-		tflog.Debug(ctx, "kms is a mandatory parameter for this operation")
+		tflog.Error(ctx, "kms is a mandatory parameter for this operation")
 		resp.Diagnostics.AddError(
 			"Missing Mandatory Parameter",
 			"KMS name is a mandatory field in the create Custom Key Store Operation",
@@ -330,7 +351,7 @@ func (r *resourceAWSCustomKeyStore) Create(ctx context.Context, req resource.Cre
 	if plan.Name.ValueString() != "" && plan.Name.ValueString() != types.StringNull().ValueString() {
 		payload.Name = common.TrimString(plan.Name.String())
 	} else {
-		tflog.Debug(ctx, "name is a mandatory parameter for this operation")
+		tflog.Error(ctx, "name is a mandatory parameter for this operation")
 		resp.Diagnostics.AddError(
 			"Missing Mandatory Parameter",
 			"Name is a mandatory field in the create Custom Key Store Operation",
@@ -340,7 +361,7 @@ func (r *resourceAWSCustomKeyStore) Create(ctx context.Context, req resource.Cre
 	if plan.Region.ValueString() != "" && plan.Region.ValueString() != types.StringNull().ValueString() {
 		payload.Region = common.TrimString(plan.Region.String())
 	} else {
-		tflog.Debug(ctx, "region is a mandatory parameter for this operation")
+		tflog.Error(ctx, "region is a mandatory parameter for this operation")
 		resp.Diagnostics.AddError(
 			"Missing Mandatory Parameter",
 			"AWS Region is a mandatory field in the create Custom Key Store Operation",
@@ -352,6 +373,20 @@ func (r *resourceAWSCustomKeyStore) Create(ctx context.Context, req resource.Cre
 	}
 	if plan.LinkedState.ValueBool() != types.BoolNull().ValueBool() {
 		payload.LinkedState = plan.LinkedState.ValueBool()
+	}
+	if len(plan.AWSParams.Elements()) == 0 {
+		resp.Diagnostics.AddError(
+			"Missing aws_param block",
+			"The aws_param.custom_key_store_type attribute is required and must be provided.",
+		)
+		return
+	}
+	if len(plan.LocalHostedParams.Elements()) == 0 {
+		resp.Diagnostics.AddError(
+			"Missing local_hosted_params block",
+			"The local_hosted_params block must be provided (it may be empty) to prevent drift.",
+		)
+		return
 	}
 	var awsParamJSON AWSParamJSON
 	var planAWSParamTFSDK AWSCustomKeyStoreParamTFSDK
@@ -384,7 +419,9 @@ func (r *resourceAWSCustomKeyStore) Create(ctx context.Context, req resource.Cre
 	if planAWSParamTFSDK.XKSProxyVPCEndpointServiceName.ValueString() != "" && planAWSParamTFSDK.XKSProxyVPCEndpointServiceName.ValueString() != types.StringNull().ValueString() {
 		awsParamJSON.XKSProxyVPCEndpointServiceName = planAWSParamTFSDK.XKSProxyVPCEndpointServiceName.ValueString()
 	}
-	payload.AWSParams = &awsParamJSON
+	if len(plan.AWSParams.Elements()) > 0 {
+		payload.AWSParams = &awsParamJSON
+	}
 
 	var LocalHostedParams LocalHostedParamsJSON
 	var planLocalHostedParamsTFSDK LocalHostedParamsTFSDK
@@ -432,6 +469,7 @@ func (r *resourceAWSCustomKeyStore) Create(ctx context.Context, req resource.Cre
 		)
 		return
 	}
+	tflog.Debug(ctx, "[resource_aws_custom_key_store.go -> Create][response:"+redactAWSResponse(response)+"]")
 	plan.ID = types.StringValue(gjson.Get(response, "id").String())
 
 	// No error after this
@@ -454,10 +492,10 @@ func (r *resourceAWSCustomKeyStore) Create(ctx context.Context, req resource.Cre
 			}
 			maxOperationRetries := operationTimeOutInSeconds / operationRetryDelay
 
-			payload := AWSCustomKeyStoreConnectPayloadJSON{
+			connectPayload := AWSCustomKeyStoreConnectPayloadJSON{
 				KeyStorePassword: common.TrimString(awsParamJSON.KeyStorePassword),
 			}
-			payloadJSON, err := json.Marshal(payload)
+			payloadJSON, err := json.Marshal(connectPayload)
 			if err != nil {
 				tflog.Debug(ctx, common.ERR_METHOD_END+err.Error()+" [resource_aws_custom_key_store.go -> connect]["+plan.ID.ValueString()+"]")
 				resp.Diagnostics.AddWarning(
@@ -508,7 +546,7 @@ func (r *resourceAWSCustomKeyStore) Create(ctx context.Context, req resource.Cre
 		)
 	} else {
 		response = getResponse
-		tflog.Trace(ctx, "[resource_aws_custom_key_store.go -> Create][response:"+response)
+		tflog.Debug(ctx, "[resource_aws_custom_key_store.go -> Create][response:"+redactAWSResponse(response)+"]")
 	}
 
 	var warningDiags diag.Diagnostics
@@ -519,27 +557,23 @@ func (r *resourceAWSCustomKeyStore) Create(ctx context.Context, req resource.Cre
 	resp.Diagnostics.Append(resp.State.Set(ctx, plan)...)
 }
 
-// Read refreshes the Terraform state with the latest data.
+// Read refreshes the Terraform state for an AWS custom key store from CipherTrust Manager.
+// If the key store is no longer found (404 / notFoundError), it is silently removed from
+// Terraform state rather than returning an error, allowing Terraform to plan its recreation.
 func (r *resourceAWSCustomKeyStore) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
 	id := uuid.New().String()
-	tflog.Trace(ctx, common.MSG_METHOD_START+"[resource_aws_custom_key_store.go -> Read]["+id+"]")
-	defer tflog.Trace(ctx, common.MSG_METHOD_END+"[resource_aws_custom_key_store.go -> Read]["+id+"]")
+	tflog.Debug(ctx, common.MSG_METHOD_START+"[resource_aws_custom_key_store.go -> Read]["+id+"]")
+	defer tflog.Debug(ctx, common.MSG_METHOD_END+"[resource_aws_custom_key_store.go -> Read]["+id+"]")
 
 	var state AWSCustomKeyStoreTFSDK
 	resp.Diagnostics.Append(req.State.Get(ctx, &state)...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
-	response, err := r.client.GetById(ctx, id, state.ID.ValueString(), common.URL_AWS_XKS)
-	if err != nil {
-		tflog.Debug(ctx, common.ERR_METHOD_END+err.Error()+" [resource_aws_custom_key_store.go -> Read]["+state.ID.ValueString()+"]")
-		resp.Diagnostics.AddError(
-			"Error reading AWS Custom Key Store on CipherTrust Manager: ",
-			"Could not read AWS Custom Key Store, unexpected error: "+err.Error(),
-		)
+	response := getAwsCustomKeyStore(ctx, r.client, id, state.ID.ValueString(), "reading", &resp.Diagnostics)
+	if resp.Diagnostics.HasError() {
 		return
 	}
-	tflog.Trace(ctx, "[resource_aws_custom_key_store.go -> Read][response:"+response)
 	r.setCustomKeyStoreState(ctx, response, &state, &state, &resp.Diagnostics)
 	if resp.Diagnostics.HasError() {
 		return
@@ -547,35 +581,60 @@ func (r *resourceAWSCustomKeyStore) Read(ctx context.Context, req resource.ReadR
 	resp.Diagnostics.Append(resp.State.Set(ctx, state)...)
 }
 
-func (r *resourceAWSCustomKeyStore) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
-	id := uuid.New().String()
-	tflog.Trace(ctx, common.MSG_METHOD_START+"[resource_aws_custom_key_store.go.go -> ImportState]["+id+"]")
-	defer tflog.Trace(ctx, common.MSG_METHOD_END+"[resource_aws_custom_key_store.go.go -> ImportState]["+id+"]")
-	resource.ImportStatePassthroughID(ctx, path.Root("id"), req, resp)
-}
-
-// Update updates the resource and sets the updated Terraform state on success.
+// Update applies plan changes to an AWS custom key store. Changes are applied conditionally based on
+// which attributes have changed. The order of precedence is:
+//
+//  1. If name, enable_success_audit_event, or aws_param / local_hosted_params (excluding blocked) changed:
+//     the key store is updated via PATCH, then state is refreshed.
+//
+//  2. Else if local_hosted_params.blocked changed: the key store is blocked or unblocked.
+//
+//  3. Else if linked_state changed from false to true: the key store is linked to AWS.
+//     (Transitioning back from linked to unlinked is not supported.)
+//
+//  4. Else if connect_disconnect_keystore changed: the key store is connected or disconnected.
+//
+//     Additionally, enable_credential_rotation is only evaluated and applied when the key store's
+//     local_hosted_params.linked_state is true; it is silently skipped for unlinked key stores.
 func (r *resourceAWSCustomKeyStore) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
 	id := uuid.New().String()
-	tflog.Trace(ctx, common.MSG_METHOD_START+"[resource_aws_custom_key_store.go.go -> Update]["+id+"]")
-	defer tflog.Trace(ctx, common.MSG_METHOD_END+"[resource_aws_custom_key_store.go.go -> Update]["+id+"]")
+	tflog.Debug(ctx, common.MSG_METHOD_START+"[resource_aws_custom_key_store.go -> Update]["+id+"]")
+	defer tflog.Debug(ctx, common.MSG_METHOD_END+"[resource_aws_custom_key_store.go -> Update]["+id+"]")
 	var plan AWSCustomKeyStoreTFSDK
 	resp.Diagnostics.Append(req.Plan.Get(ctx, &plan)...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
 
-	timeouts, diags := plan.Timeouts.Update(ctx, 30*time.Minute)
+	updateTimeout, diags := plan.Timeouts.Update(ctx, 30*time.Minute)
 	resp.Diagnostics.Append(diags...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
-	ctx, cancel := context.WithTimeout(ctx, timeouts)
+	ctx, cancel := context.WithTimeout(ctx, updateTimeout)
 	defer cancel()
 
 	var state AWSCustomKeyStoreTFSDK
 	resp.Diagnostics.Append(req.State.Get(ctx, &state)...)
 	if resp.Diagnostics.HasError() {
+		return
+	}
+	getAwsCustomKeyStore(ctx, r.client, id, state.ID.ValueString(), "updating", &resp.Diagnostics)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	if len(plan.AWSParams.Elements()) == 0 {
+		resp.Diagnostics.AddError(
+			"Missing aws_param block",
+			"The aws_param.custom_key_store_type attribute is required and must be provided.",
+		)
+		return
+	}
+	if len(plan.LocalHostedParams.Elements()) == 0 {
+		resp.Diagnostics.AddError(
+			"Missing local_hosted_params block",
+			"The local_hosted_params block must be provided (it may be empty) to prevent drift.",
+		)
 		return
 	}
 
@@ -639,7 +698,9 @@ func (r *resourceAWSCustomKeyStore) Update(ctx context.Context, req resource.Upd
 		planAWSParamTFSDK.XKSProxyVPCEndpointServiceName.ValueString() != types.StringNull().ValueString() {
 		awsParamJSON.XKSProxyVPCEndpointServiceName = planAWSParamTFSDK.XKSProxyVPCEndpointServiceName.ValueString()
 	}
-	payload.AWSParams = &awsParamJSON
+	if len(plan.AWSParams.Elements()) > 0 {
+		payload.AWSParams = &awsParamJSON
+	}
 
 	var planLocalHostedParams LocalHostedParamsJSON
 	var planLocalHostedParamsTFSDK LocalHostedParamsTFSDK
@@ -691,12 +752,10 @@ func (r *resourceAWSCustomKeyStore) Update(ctx context.Context, req resource.Upd
 	} else if stateLocalHostedParamsTFSDK.Blocked.ValueBool() != planLocalHostedParamsTFSDK.Blocked.ValueBool() {
 		toBeUpdatedOps = true
 		if toBeBlock := planLocalHostedParamsTFSDK.Blocked.ValueBool(); toBeBlock {
-			var payload []byte
-			response, err := r.client.PostDataV2(
+			response, err := r.client.PostNoData(
 				ctx,
 				plan.ID.ValueString(),
-				common.URL_AWS_XKS+"/"+plan.ID.ValueString()+"/block",
-				payload)
+				common.URL_AWS_XKS+"/"+plan.ID.ValueString()+"/block")
 			if err != nil {
 				tflog.Debug(ctx, common.ERR_METHOD_END+err.Error()+" [resource_aws_custom_key_store.go -> block]["+plan.ID.ValueString()+"]")
 				resp.Diagnostics.AddError(
@@ -707,12 +766,10 @@ func (r *resourceAWSCustomKeyStore) Update(ctx context.Context, req resource.Upd
 			}
 			r.setCustomKeyStoreState(ctx, response, &plan, &state, &resp.Diagnostics)
 		} else {
-			var payload []byte
-			response, err := r.client.PostDataV2(
+			response, err := r.client.PostNoData(
 				ctx,
 				plan.ID.ValueString(),
-				common.URL_AWS_XKS+"/"+plan.ID.ValueString()+"/unblock",
-				payload)
+				common.URL_AWS_XKS+"/"+plan.ID.ValueString()+"/unblock")
 			if err != nil {
 				tflog.Debug(ctx, common.ERR_METHOD_END+err.Error()+" [resource_aws_custom_key_store.go -> unblock]["+plan.ID.ValueString()+"]")
 				resp.Diagnostics.AddError(
@@ -726,16 +783,16 @@ func (r *resourceAWSCustomKeyStore) Update(ctx context.Context, req resource.Upd
 	} else if plan.LinkedState.ValueBool() &&
 		state.LinkedState.ValueBool() != plan.LinkedState.ValueBool() {
 		toBeUpdatedOps = true
-		var payload AWSCustomKeyStoreJSON
-		var awsParamJSON AWSParamJSON
+		var linkPayload AWSCustomKeyStoreJSON
+		var linkAWSParams AWSParamJSON
 		if planAWSParamTFSDK.XKSProxyURIEndpoint.ValueString() != "" && planAWSParamTFSDK.XKSProxyURIEndpoint.ValueString() != types.StringNull().ValueString() {
-			awsParamJSON.XKSProxyURIEndpoint = planAWSParamTFSDK.XKSProxyURIEndpoint.ValueString()
+			linkAWSParams.XKSProxyURIEndpoint = planAWSParamTFSDK.XKSProxyURIEndpoint.ValueString()
 		}
 		if planAWSParamTFSDK.XKSProxyVPCEndpointServiceName.ValueString() != types.StringNull().ValueString() {
-			awsParamJSON.XKSProxyVPCEndpointServiceName = planAWSParamTFSDK.XKSProxyVPCEndpointServiceName.ValueString()
+			linkAWSParams.XKSProxyVPCEndpointServiceName = planAWSParamTFSDK.XKSProxyVPCEndpointServiceName.ValueString()
 		}
-		payload.AWSParams = &awsParamJSON
-		payloadJSON, err := json.Marshal(payload)
+		linkPayload.AWSParams = &linkAWSParams
+		payloadJSON, err := json.Marshal(linkPayload)
 		if err != nil {
 			tflog.Debug(ctx, common.ERR_METHOD_END+err.Error()+" [resource_aws_custom_key_store.go -> link]["+plan.ID.ValueString()+"]")
 			resp.Diagnostics.AddError(
@@ -769,10 +826,10 @@ func (r *resourceAWSCustomKeyStore) Update(ctx context.Context, req resource.Upd
 			}
 			maxOperationRetries := operationTimeOutInSeconds / operationRetryDelay
 
-			payload := AWSCustomKeyStoreConnectPayloadJSON{
+			connectPayload := AWSCustomKeyStoreConnectPayloadJSON{
 				KeyStorePassword: common.TrimString(stateAWSParamTFSDK.KeyStorePassword.ValueString()),
 			}
-			payloadJSON, err := json.Marshal(payload)
+			payloadJSON, err := json.Marshal(connectPayload)
 			if err != nil {
 				tflog.Debug(ctx, common.ERR_METHOD_END+err.Error()+" [resource_aws_custom_key_store.go -> connect]["+plan.ID.ValueString()+"]")
 				resp.Diagnostics.AddError(
@@ -804,19 +861,16 @@ func (r *resourceAWSCustomKeyStore) Update(ctx context.Context, req resource.Upd
 				return
 			}
 			r.setCustomKeyStoreState(ctx, response, &plan, &state, &resp.Diagnostics)
-		}
-		if plan.ConnectDisconnectKeystore.ValueString() == StateDisconnectKeystore {
+		} else if plan.ConnectDisconnectKeystore.ValueString() == StateDisconnectKeystore {
 			toBeUpdatedOps = true
-			var payload []byte
 			if planAWSParamTFSDK.CustomKeystoreType.ValueString() == CustomKeystoreTypeAWSCloudHSM {
 				operationTimeOutInSeconds = 11 * 60
 			}
 			maxOperationRetries := operationTimeOutInSeconds / operationRetryDelay
-			_, err := r.client.PostDataV2(
+			_, err := r.client.PostNoData(
 				ctx,
 				plan.ID.ValueString(),
-				common.URL_AWS_XKS+"/"+plan.ID.ValueString()+"/disconnect",
-				payload)
+				common.URL_AWS_XKS+"/"+plan.ID.ValueString()+"/disconnect")
 			if err != nil {
 				tflog.Debug(ctx, common.ERR_METHOD_END+err.Error()+" [resource_aws_custom_key_store.go -> disconnect]["+plan.ID.ValueString()+"]")
 				resp.Diagnostics.AddError(
@@ -844,6 +898,7 @@ func (r *resourceAWSCustomKeyStore) Update(ctx context.Context, req resource.Upd
 		)
 		return
 	}
+	lastResponse := response
 	linkedState := gjson.Get(response, "local_hosted_params.linked_state").Bool()
 	if linkedState {
 		var dg diag.Diagnostics
@@ -851,36 +906,44 @@ func (r *resourceAWSCustomKeyStore) Update(ctx context.Context, req resource.Upd
 		if dg.HasError() {
 			resp.Diagnostics.Append(dg...)
 		} else if updated {
-			response, err := r.customKeyStoreById(ctx, id, &state)
-			if err != nil {
+			updatedResponse, updatedErr := r.customKeyStoreById(ctx, id, &state)
+			if updatedErr != nil {
 				resp.Diagnostics.AddError(
 					"Error getting AWS Custom Key Store on CipherTrust Manager: ",
-					"Could not get AWS Custom Key Store, unexpected error: "+err.Error(),
+					"Could not get AWS Custom Key Store, unexpected error: "+updatedErr.Error(),
 				)
 				return
 			}
-			r.setCustomKeyStoreState(ctx, response, &plan, &state, &resp.Diagnostics)
+			r.setCustomKeyStoreState(ctx, updatedResponse, &plan, &state, &resp.Diagnostics)
+			lastResponse = updatedResponse
 		}
 	}
 	if !(toBeUpdated || toBeUpdatedOps) {
-		response, err := r.customKeyStoreById(ctx, id, &state)
-		if err != nil {
+		finalResponse, finalErr := r.customKeyStoreById(ctx, id, &state)
+		if finalErr != nil {
 			resp.Diagnostics.AddError(
 				"Error getting AWS Custom Key Store on CipherTrust Manager: ",
-				"Could not get AWS Custom Key Store, unexpected error: "+err.Error(),
+				"Could not get AWS Custom Key Store, unexpected error: "+finalErr.Error(),
 			)
 			return
 		}
-		r.setCustomKeyStoreState(ctx, response, &plan, &state, &resp.Diagnostics)
+		r.setCustomKeyStoreState(ctx, finalResponse, &plan, &state, &resp.Diagnostics)
+		lastResponse = finalResponse
 	}
+	tflog.Debug(ctx, "[resource_aws_custom_key_store.go -> Update][response:"+redactAWSResponse(lastResponse)+"]")
 	resp.Diagnostics.Append(resp.State.Set(ctx, plan)...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
 }
 
-// Delete deletes the resource and removes the Terraform state on success.
+// Delete deletes the AWS custom key store from CipherTrust Manager.
+// If the key store is not found (HTTP 404) when destroy runs, a warning is emitted and the resource is
+// removed from state rather than returning an error.
 func (r *resourceAWSCustomKeyStore) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
+	id := uuid.New().String()
+	tflog.Debug(ctx, common.MSG_METHOD_START+"[resource_aws_custom_key_store.go -> Delete]["+id+"]")
+	defer tflog.Debug(ctx, common.MSG_METHOD_END+"[resource_aws_custom_key_store.go -> Delete]["+id+"]")
 	var state AWSCustomKeyStoreTFSDK
 	diags := req.State.Get(ctx, &state)
 	resp.Diagnostics.Append(diags...)
@@ -888,51 +951,159 @@ func (r *resourceAWSCustomKeyStore) Delete(ctx context.Context, req resource.Del
 		return
 	}
 
-	timeouts, diags := state.Timeouts.Update(ctx, 30*time.Minute)
+	deleteTimeout, diags := state.Timeouts.Delete(ctx, 30*time.Minute)
 	resp.Diagnostics.Append(diags...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
-	ctx, cancel := context.WithTimeout(ctx, timeouts)
+	ctx, cancel := context.WithTimeout(ctx, deleteTimeout)
 	defer cancel()
 
-	// Delete existing order
+	keystoreJSON := getAwsCustomKeyStore(ctx, r.client, id, state.ID.ValueString(), "deleting", &resp.Diagnostics)
+	if resp.Diagnostics.HasError() {
+		return // Non-404 error - key store kept in state.
+	}
+	if keystoreJSON == "" {
+		return // Key store not found (404) - warning already added, Terraform removes from state.
+	}
+
 	url := fmt.Sprintf("%s/%s/%s", r.client.CipherTrustURL, common.URL_AWS_XKS, state.ID.ValueString())
 	output, err := r.client.DeleteByID(ctx, "DELETE", state.ID.ValueString(), url, nil)
-	tflog.Trace(ctx, common.MSG_METHOD_END+"[resource_aws_custom_key_store.go -> Delete]["+state.ID.ValueString()+"]["+output+"]")
+	tflog.Debug(ctx, "[resource_aws_custom_key_store.go -> Delete]["+state.ID.ValueString()+"]["+output+"]")
 	if err != nil {
-		if strings.Contains(err.Error(), "Resource not found") {
-			msg := "AWS custom key stores was not found, it will be removed from state."
-			details := utils.ApiError(msg, map[string]interface{}{"id": state.ID.ValueString()})
-			tflog.Warn(ctx, details)
-			resp.Diagnostics.AddWarning(details, "")
-		} else {
-			resp.Diagnostics.AddError(
-				"Error Deleting AWS Custom Key Store",
-				"Could not delete AWS Custom Key Store, unexpected error: "+err.Error(),
-			)
+		msg := "Error deleting AWS custom key store."
+		details := utils.ApiError(msg, map[string]interface{}{"error": err.Error(), "id": state.ID.ValueString()})
+		tflog.Error(ctx, details)
+		resp.Diagnostics.AddError(details, "")
+	}
+}
+
+// ModifyPlan errors at plan time if any immutable attribute is changed on an existing resource,
+// preventing silent in-place updates to fields that cannot be modified after creation.
+func (r *resourceAWSCustomKeyStore) ModifyPlan(ctx context.Context, req resource.ModifyPlanRequest, resp *resource.ModifyPlanResponse) {
+	// Skip create and destroy operations.
+	if req.Plan.Raw.IsNull() || req.State.Raw.IsNull() {
+		return
+	}
+
+	var plan, state AWSCustomKeyStoreTFSDK
+
+	resp.Diagnostics.Append(req.Plan.Get(ctx, &plan)...)
+	resp.Diagnostics.Append(req.State.Get(ctx, &state)...)
+
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	var changed []string
+
+	// Check immutable fields inside the aws_param block.
+	planAWS := make([]AWSCustomKeyStoreParamTFSDK, 0)
+	stateAWS := make([]AWSCustomKeyStoreParamTFSDK, 0)
+	if len(plan.AWSParams.Elements()) > 0 {
+		resp.Diagnostics.Append(plan.AWSParams.ElementsAs(ctx, &planAWS, false)...)
+	}
+	if len(state.AWSParams.Elements()) > 0 {
+		resp.Diagnostics.Append(state.AWSParams.ElementsAs(ctx, &stateAWS, false)...)
+	}
+	if !resp.Diagnostics.HasError() && len(planAWS) > 0 && len(stateAWS) > 0 {
+		if planAWS[0].CustomKeystoreType != stateAWS[0].CustomKeystoreType {
+			changed = append(changed, "aws_param.custom_key_store_type")
+		}
+		// Guard against false positives when the field was never set in config (null)
+		// but the API returned a value (e.g. empty string after create).
+		if !planAWS[0].TrustAnchorCertificate.IsNull() && !planAWS[0].TrustAnchorCertificate.IsUnknown() &&
+			planAWS[0].TrustAnchorCertificate != stateAWS[0].TrustAnchorCertificate {
+			changed = append(changed, "aws_param.trust_anchor_certificate")
 		}
 	}
-}
 
-func (d *resourceAWSCustomKeyStore) Configure(_ context.Context, req resource.ConfigureRequest, resp *resource.ConfigureResponse) {
-	if req.ProviderData == nil {
-		return
+	if plan.KMS != state.KMS {
+		changed = append(changed, "kms")
 	}
 
-	client, ok := req.ProviderData.(*common.Client)
-	if !ok {
+	// Check immutable fields inside the local_hosted_params block.
+	planLHP := make([]LocalHostedParamsTFSDK, 0)
+	stateLHP := make([]LocalHostedParamsTFSDK, 0)
+	if len(plan.LocalHostedParams.Elements()) > 0 {
+		resp.Diagnostics.Append(plan.LocalHostedParams.ElementsAs(ctx, &planLHP, false)...)
+	}
+	if len(state.LocalHostedParams.Elements()) > 0 {
+		resp.Diagnostics.Append(state.LocalHostedParams.ElementsAs(ctx, &stateLHP, false)...)
+	}
+	if !resp.Diagnostics.HasError() && len(planLHP) > 0 && len(stateLHP) > 0 {
+		// max_credentials is Optional-only; guard against false positives when
+		// the field was never set in config (null) but the API returned a value.
+		if !planLHP[0].MaxCredentials.IsNull() && !stateLHP[0].MaxCredentials.IsNull() &&
+			planLHP[0].MaxCredentials != stateLHP[0].MaxCredentials {
+			changed = append(changed, "local_hosted_params.max_credentials")
+		}
+		// Guard against false positives when the field was never set in config (null)
+		// but the API returned a value (e.g. empty string after create).
+		if !planLHP[0].PartitionID.IsNull() && !planLHP[0].PartitionID.IsUnknown() &&
+			planLHP[0].PartitionID != stateLHP[0].PartitionID {
+			changed = append(changed, "local_hosted_params.partition_id")
+		}
+		if planLHP[0].SourceKeyTier != stateLHP[0].SourceKeyTier {
+			changed = append(changed, "local_hosted_params.source_key_tier")
+		}
+	}
+
+	if plan.Region != state.Region {
+		changed = append(changed, "region")
+	}
+
+	if len(changed) > 0 {
 		resp.Diagnostics.AddError(
-			"Error in fetching client from provider",
-			fmt.Sprintf("Expected *provider.Client, got: %T. Please report this issue to the provider developers.", req.ProviderData),
+			"Immutable attribute change detected",
+			fmt.Sprintf(
+				"The following attributes cannot be modified after creation: %s. "+
+					"Delete and recreate the resource to apply these changes.",
+				strings.Join(changed, ", "),
+			),
 		)
-
-		return
 	}
-
-	d.client = client
 }
 
+// ImportState imports an existing AWS custom key store into Terraform state using its resource ID.
+func (r *resourceAWSCustomKeyStore) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
+	id := uuid.New().String()
+	tflog.Debug(ctx, common.MSG_METHOD_START+"[resource_aws_custom_key_store.go -> ImportState]["+id+"]")
+	defer tflog.Debug(ctx, common.MSG_METHOD_END+"[resource_aws_custom_key_store.go -> ImportState]["+id+"]")
+	resource.ImportStatePassthroughID(ctx, path.Root("id"), req, resp)
+}
+
+// getAwsCustomKeyStore fetches an AWS custom key store from CipherTrust Manager by its ID.
+// On a 404: if op is "deleting", a warning is added and "" is returned;
+// any other op adds an error and returns "".
+// Any non-404 API error always adds an error and returns "".
+func getAwsCustomKeyStore(ctx context.Context, client *common.Client, id string, keystoreID string, op string, diags *diag.Diagnostics) string {
+	response, err := client.GetById(ctx, id, keystoreID, common.URL_AWS_XKS)
+	if err != nil {
+		if strings.Contains(err.Error(), notFoundError) {
+			if op == "deleting" {
+				msg := "AWS custom key store (" + keystoreID + ") was not found. It will be removed from state."
+				details := utils.ApiError(msg, map[string]interface{}{"id": keystoreID})
+				tflog.Warn(ctx, details)
+				diags.AddWarning(details, "")
+			} else {
+				msg := "AWS custom key store (" + keystoreID + ") was not found."
+				details := utils.ApiError(msg, map[string]interface{}{"id": keystoreID})
+				tflog.Error(ctx, details)
+				diags.AddError(details, "")
+			}
+			return ""
+		}
+		msg := "Error " + op + " AWS custom key store, failed to read custom key store."
+		details := utils.ApiError(msg, map[string]interface{}{"error": err.Error(), "id": keystoreID})
+		tflog.Error(ctx, details)
+		diags.AddError(details, "")
+		return ""
+	}
+	return response
+}
+
+// setCustomKeyStoreState populates the Terraform state for a custom key store from an API response JSON string.
 func (r *resourceAWSCustomKeyStore) setCustomKeyStoreState(ctx context.Context, response string, plan *AWSCustomKeyStoreTFSDK, state *AWSCustomKeyStoreTFSDK, diags *diag.Diagnostics) {
 	var (
 		planAWSParamTFSDK          AWSCustomKeyStoreParamTFSDK
@@ -1110,6 +1281,7 @@ func (r *resourceAWSCustomKeyStore) setCustomKeyStoreState(ctx context.Context, 
 	}
 }
 
+// retryOperation polls the custom key store until its connection state matches wantState or the retry limit is reached.
 func (r *resourceAWSCustomKeyStore) retryOperation(ctx context.Context, id string, wantState string, operation func() (string, error), maxRetries int) (string, error) {
 	var (
 		response string
@@ -1131,18 +1303,19 @@ func (r *resourceAWSCustomKeyStore) retryOperation(ctx context.Context, id strin
 		if err := json.Unmarshal([]byte(gjson.Get(response, "aws_param").String()), &awsParamJSONResponse); err != nil {
 			return "", err
 		}
-		tflog.Trace(ctx, fmt.Sprintf("ConnectionState: %s (attempt %d/%d)", awsParamJSONResponse.ConnectionState, attempt, maxRetries))
+		tflog.Debug(ctx, fmt.Sprintf("ConnectionState: %s (attempt %d/%d)", awsParamJSONResponse.ConnectionState, attempt, maxRetries))
 		if awsParamJSONResponse.ConnectionState == wantState {
 			return response, nil
 		}
 		if awsParamJSONResponse.ConnectionState == StateFailed {
-			break
+			return "", fmt.Errorf("operation reached %s state on attempt %d", StateFailed, attempt)
 		}
 	}
 
-	return "", fmt.Errorf("operation failed after %d retries: %v", maxRetries, err)
+	return "", fmt.Errorf("timed out waiting for state %s after %d attempts", wantState, maxRetries)
 }
 
+// customKeyStoreById fetches the current custom key store JSON from CipherTrust Manager by its state ID.
 func (r *resourceAWSCustomKeyStore) customKeyStoreById(ctx context.Context, id string, state *AWSCustomKeyStoreTFSDK) (string, error) {
 	response, err := r.client.GetById(ctx, id, state.ID.ValueString(), common.URL_AWS_XKS)
 	if err != nil {
@@ -1152,9 +1325,13 @@ func (r *resourceAWSCustomKeyStore) customKeyStoreById(ctx context.Context, id s
 	return response, nil
 }
 
+// enableDisableCredentialRotation enables or disables the CipherTrust Manager credential rotation job
+// for the custom key store based on the difference between plan and state. Used by resourceAWSCustomKeyStore (Update).
+// Only applied when local_hosted_params.linked_state is true (silently skipped for unlinked key stores).
+// Returns true if a credential rotation change was made, false otherwise.
 func (r *resourceAWSCustomKeyStore) enableDisableCredentialRotation(ctx context.Context, id string, plan *AWSCustomKeyStoreTFSDK, state *AWSCustomKeyStoreTFSDK, diags *diag.Diagnostics) bool {
-	tflog.Trace(ctx, common.MSG_METHOD_START+"[resource_aws_custom_key_store.go -> enableDisableCredentialRotation]["+id+"]")
-	defer tflog.Trace(ctx, common.MSG_METHOD_END+"[resource_aws_custom_key_store.go -> enableDisableCredentialRotation]["+id+"]")
+	tflog.Debug(ctx, common.MSG_METHOD_START+"[resource_aws_custom_key_store.go -> enableDisableCredentialRotation]["+id+"]")
+	defer tflog.Debug(ctx, common.MSG_METHOD_END+"[resource_aws_custom_key_store.go -> enableDisableCredentialRotation]["+id+"]")
 	planParams := make([]AWSEnableXksCredentialRotationJobTFSDK, 0, len(plan.EnableCredentialRotation.Elements()))
 	if !plan.EnableCredentialRotation.IsUnknown() {
 		diags.Append(plan.EnableCredentialRotation.ElementsAs(ctx, &planParams, false)...)
@@ -1174,8 +1351,7 @@ func (r *resourceAWSCustomKeyStore) enableDisableCredentialRotation(ctx context.
 			return false
 		}
 		updated = true
-	}
-	if !reflect.DeepEqual(planParams, stateParams) {
+	} else if !reflect.DeepEqual(planParams, stateParams) {
 		r.enableCredentialRotation(ctx, id, plan, diags)
 		if diags.HasError() {
 			return false
@@ -1185,6 +1361,7 @@ func (r *resourceAWSCustomKeyStore) enableDisableCredentialRotation(ctx context.
 	return updated
 }
 
+// enableCredentialRotation registers the custom key store with a CipherTrust Manager scheduled credential rotation job.
 func (r *resourceAWSCustomKeyStore) enableCredentialRotation(ctx context.Context, id string, plan *AWSCustomKeyStoreTFSDK, diags *diag.Diagnostics) {
 	rotationParams := make([]AWSEnableXksCredentialRotationJobTFSDK, 0, len(plan.EnableCredentialRotation.Elements()))
 	if !plan.EnableCredentialRotation.IsUnknown() {
@@ -1214,10 +1391,11 @@ func (r *resourceAWSCustomKeyStore) enableCredentialRotation(ctx context.Context
 			diags.AddError(details, "")
 			return
 		}
-		tflog.Trace(ctx, "[resource_aws_custom_key_store.go -> enableCredentialRotation][response:"+response)
+		tflog.Debug(ctx, "[resource_aws_custom_key_store.go -> enableCredentialRotation][response:"+redactAWSResponse(response)+"]")
 	}
 }
 
+// disableCredentialRotation removes the custom key store from its scheduled CipherTrust Manager credential rotation job.
 func (r *resourceAWSCustomKeyStore) disableCredentialRotation(ctx context.Context, id string, plan *AWSCustomKeyStoreTFSDK, diags *diag.Diagnostics) {
 	keyStoreID := plan.ID.ValueString()
 	response, err := r.client.PostNoData(ctx, id, common.URL_AWS_XKS+"/"+keyStoreID+"/disable-credential-rotation-job")
@@ -1228,9 +1406,10 @@ func (r *resourceAWSCustomKeyStore) disableCredentialRotation(ctx context.Contex
 		tflog.Error(ctx, details)
 		return
 	}
-	tflog.Trace(ctx, "[resource_aws_custom_key_store -> disableCredentialRotation][response:"+response)
+	tflog.Debug(ctx, "[resource_aws_custom_key_store.go -> disableCredentialRotation][response:"+redactAWSResponse(response)+"]")
 }
 
+// setKeyStoreLabels parses the custom key store labels from the API response and stores them in Terraform state.
 func setKeyStoreLabels(ctx context.Context, response string, keyStoreID string, stateLabels *types.Map, diags *diag.Diagnostics) {
 	labels := make(map[string]string)
 	if gjson.Get(response, "labels").Exists() {

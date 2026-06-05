@@ -16,6 +16,7 @@ import (
 	common "github.com/ThalesGroup/terraform-provider-ciphertrust/internal/provider/common"
 	"github.com/google/uuid"
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
+	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
@@ -27,8 +28,9 @@ import (
 )
 
 var (
-	_ resource.Resource              = &resourceScheduler{}
-	_ resource.ResourceWithConfigure = &resourceScheduler{}
+	_ resource.Resource                = &resourceScheduler{}
+	_ resource.ResourceWithConfigure   = &resourceScheduler{}
+	_ resource.ResourceWithImportState = &resourceScheduler{}
 
 	runAt = `Described using the cron expression format : "* * * * *" These five values indicate when the job should be executed. They are in order of minute, hour, day of month, month, and day of week. Valid values are 0-59 (minutes), 0-23 (hours), 1-31 (day of month), 1-12 or jan-dec (month), and 0-6 or sun-sat (day of week). Names are case insensitive. For use of special characters, consult the Time Specification description at the top of this page.
 
@@ -208,8 +210,7 @@ func (r *resourceScheduler) Schema(_ context.Context, _ resource.SchemaRequest, 
 				Description: "CCKM XKS credential rotation operation specific arguments.",
 				Attributes: map[string]schema.Attribute{
 					"cloud_name": schema.StringAttribute{
-						Computed:    true,
-						Optional:    true,
+						Required:    true,
 						Description: "Name of the cloud in which the Rotation operation will be triggered. The only supported value is 'aws'.",
 						Validators: []validator.String{
 							stringvalidator.OneOf("aws"),
@@ -236,10 +237,12 @@ func (r *resourceScheduler) Schema(_ context.Context, _ resource.SchemaRequest, 
 							Optional: true,
 							Description: "Retain the alias and timestamp on the archived key after rotation. " +
 								"Applicable only to AWS key rotation.",
+							Computed: true,
 						},
 						"rotate_material": schema.BoolAttribute{
 							Optional:    true,
-							Description: "If true, rotate the key material during the key rotation job.",
+							Description: "If true, rotate the key material during the key rotation job. The attribute is only valid for CipherTrustManager version 2.21 or later.",
+							Computed:    true,
 						},
 						"cloud_name": schema.StringAttribute{
 							Required:    true,
@@ -254,6 +257,7 @@ func (r *resourceScheduler) Schema(_ context.Context, _ resource.SchemaRequest, 
 								"For example, if you want the scheduler to the rotate keys that are expiring within six hours of its run, " +
 								"set expire_in to 6h. Use either 'Xd' for x days or 'Yh' for y hours. " +
 								"To remove the setting, set to an empty string.",
+							Computed: true,
 						},
 						"expire_in": schema.StringAttribute{
 							Optional: true,
@@ -263,6 +267,7 @@ func (r *resourceScheduler) Schema(_ context.Context, _ resource.SchemaRequest, 
 								"For example, if you want the scheduler to rotate the keys that are expiring " +
 								"within six hours of its run, set expire_in to 6h. Use either 'Xd' for x days or 'Yh' for y hours. " +
 								"To remove the setting, set to an empty string.",
+							Computed: true,
 						},
 						"rotation_after": schema.StringAttribute{
 							Optional: true,
@@ -272,6 +277,7 @@ func (r *resourceScheduler) Schema(_ context.Context, _ resource.SchemaRequest, 
 								"For example, if you set rotation_after to 6d, the first key rotation will happen after six days of key creation. " +
 								"Subsequently, the keys will be rotated after every six days. " +
 								"To remove the setting, set to an empty string.",
+							Computed: true,
 						},
 					},
 				},
@@ -347,6 +353,8 @@ func (r *resourceScheduler) Create(ctx context.Context, req resource.CreateReque
 		payload.RunAt = plan.RunAt.ValueString()
 	}
 
+	payload.Disabled = plan.Disabled.ValueBool()
+
 	switch plan.Operation.ValueString() {
 	case "database_backup":
 		dbBackupParams := getDatabaseOperationBackupParams(plan)
@@ -354,13 +362,13 @@ func (r *resourceScheduler) Create(ctx context.Context, req resource.CreateReque
 			payload.DatabaseBackupParams = dbBackupParams
 		}
 	case "cckm_key_rotation":
-		payload.CCKMKeyRotationParams = getCckmKeyRotationOperationParams(ctx, plan, &resp.Diagnostics)
-		if diags.HasError() {
+		payload.CCKMKeyRotationParams = getCckmKeyRotationOperationParams(ctx, plan, nil, &resp.Diagnostics)
+		if resp.Diagnostics.HasError() {
 			return
 		}
 	case "cckm_synchronization":
 		payload.CCKMSynchronizationParams = getCckmSyncParams(ctx, plan, &resp.Diagnostics)
-		if diags.HasError() {
+		if resp.Diagnostics.HasError() {
 			return
 		}
 	case "cckm_xks_credential_rotation":
@@ -419,13 +427,13 @@ func (r *resourceScheduler) Create(ctx context.Context, req resource.CreateReque
 	plan.ID = types.StringValue(gjson.Get(response, "id").String())
 	response, err = r.client.GetById(ctx, id, plan.ID.ValueString(), common.URL_SCHEDULER_JOB_CONFIGS)
 	if err != nil {
-		tflog.Debug(ctx, common.ERR_METHOD_END+err.Error()+" [resource_scheduler.go -> Read]["+id+"]")
+		tflog.Debug(ctx, common.ERR_METHOD_END+err.Error()+" [resource_scheduler.go -> Create]["+id+"]")
 		resp.Diagnostics.AddError("Read Error", "Error fetching scheduler job configs : "+err.Error())
 		return
 	}
 
 	getParamsFromResponse(ctx, response, &plan, &resp.Diagnostics)
-	if diags.HasError() {
+	if resp.Diagnostics.HasError() {
 		return
 	}
 
@@ -452,12 +460,17 @@ func (r *resourceScheduler) Read(ctx context.Context, req resource.ReadRequest, 
 
 	response, err := r.client.GetById(ctx, id, state.ID.ValueString(), common.URL_SCHEDULER_JOB_CONFIGS)
 	if err != nil {
+		if strings.Contains(err.Error(), "404") {
+			tflog.Warn(ctx, "[resource_scheduler.go -> Read][scheduler not found, removing from state][scheduler id: "+state.ID.ValueString()+"]")
+			resp.State.RemoveResource(ctx)
+			return
+		}
 		tflog.Debug(ctx, common.ERR_METHOD_END+err.Error()+" [resource_scheduler.go -> Read]["+id+"]")
 		resp.Diagnostics.AddError("Read Error", "Error fetching scheduler job configs : "+err.Error())
 		return
 	}
 	getParamsFromResponse(ctx, response, &state, &resp.Diagnostics)
-	if diags.HasError() {
+	if resp.Diagnostics.HasError() {
 		return
 	}
 	state.Name = types.StringValue(gjson.Get(response, "name").String())
@@ -487,7 +500,7 @@ func (r *resourceScheduler) Update(ctx context.Context, req resource.UpdateReque
 		return
 	}
 
-	diags = req.Plan.Get(ctx, &state)
+	diags = req.State.Get(ctx, &state)
 	resp.Diagnostics.Append(diags...)
 	if resp.Diagnostics.HasError() {
 		return
@@ -505,6 +518,8 @@ func (r *resourceScheduler) Update(ctx context.Context, req resource.UpdateReque
 		payload.RunAt = plan.RunAt.ValueString()
 	}
 
+	payload.Disabled = plan.Disabled.ValueBool()
+
 	switch plan.Operation.ValueString() {
 	case "database_backup":
 		dbBackupParams := getDatabaseOperationBackupParams(plan)
@@ -512,17 +527,21 @@ func (r *resourceScheduler) Update(ctx context.Context, req resource.UpdateReque
 			payload.DatabaseBackupParams = dbBackupParams
 		}
 	case "cckm_key_rotation":
-		payload.CCKMRotationParams = getCckmKeyRotationOperationParams(ctx, plan, &resp.Diagnostics)
-		if diags.HasError() {
+		payload.CCKMRotationParams = getCckmKeyRotationOperationParams(ctx, plan, &state, &resp.Diagnostics)
+		if resp.Diagnostics.HasError() {
 			return
 		}
-		payload.CCKMRotationParams.CloudName = ""
+		if payload.CCKMRotationParams != nil {
+			payload.CCKMRotationParams.CloudName = ""
+		}
 	case "cckm_synchronization":
 		payload.CCKMSynchronizationParams = getCckmSyncParams(ctx, plan, &resp.Diagnostics)
-		if diags.HasError() {
+		if resp.Diagnostics.HasError() {
 			return
 		}
-		payload.CCKMSynchronizationParams.CloudName = ""
+		if payload.CCKMSynchronizationParams != nil {
+			payload.CCKMSynchronizationParams.CloudName = ""
+		}
 	}
 
 	if plan.StartDate.ValueString() != "" && plan.StartDate.ValueString() != types.StringNull().ValueString() {
@@ -572,7 +591,7 @@ func (r *resourceScheduler) Update(ctx context.Context, req resource.UpdateReque
 	}
 
 	getParamsFromResponse(ctx, response, &plan, &resp.Diagnostics)
-	if diags.HasError() {
+	if resp.Diagnostics.HasError() {
 		return
 	}
 
@@ -607,6 +626,35 @@ func (r *resourceScheduler) Delete(ctx context.Context, req resource.DeleteReque
 	}
 	tflog.Trace(ctx, common.MSG_METHOD_END+"[resource_scheduler.go -> Delete]["+state.ID.ValueString()+"]["+output+"]")
 
+}
+
+func (r *resourceScheduler) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
+	id := uuid.New().String()
+	tflog.Debug(ctx, common.MSG_METHOD_START+"[resource_scheduler.go -> ImportState]["+id+"]")
+
+	// Set the resource id so Read() can fetch the full resource.
+	resource.ImportStatePassthroughID(ctx, path.Root("id"), req, resp)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	// Pre-populate operation from the API response so that Read()'s
+	// getParamsFromResponse can select the correct params block.
+	// Without this, state.Operation is empty during import and the switch
+	// falls through, leaving all params blocks unset.
+	response, err := r.client.GetById(ctx, id, req.ID, common.URL_SCHEDULER_JOB_CONFIGS)
+	if err != nil {
+		resp.Diagnostics.AddError(
+			"Import Error",
+			"Error fetching scheduler job config for import: "+err.Error(),
+		)
+		return
+	}
+	resp.Diagnostics.Append(
+		resp.State.SetAttribute(ctx, path.Root("operation"), gjson.Get(response, "operation").String())...,
+	)
+
+	tflog.Debug(ctx, common.MSG_METHOD_END+"[resource_scheduler.go -> ImportState]["+id+"]")
 }
 
 func (r *resourceScheduler) Configure(_ context.Context, req resource.ConfigureRequest, resp *resource.ConfigureResponse) {
@@ -681,7 +729,7 @@ func getDatabaseOperationBackupParams(plan CreateJobConfigParamsTFSDK) *Database
 	return nil
 }
 
-func getCckmKeyRotationOperationParams(ctx context.Context, plan CreateJobConfigParamsTFSDK, diags *diag.Diagnostics) *CCKMKeyRotationParamsJSON {
+func getCckmKeyRotationOperationParams(ctx context.Context, plan CreateJobConfigParamsTFSDK, state *CreateJobConfigParamsTFSDK, diags *diag.Diagnostics) *CCKMKeyRotationParamsJSON {
 	if len(plan.CCKMKeyRotationParams.Elements()) != 0 {
 		var rotationParams CCKMKeyRotationParamsTFSDK
 		for _, v := range plan.CCKMKeyRotationParams.Elements() {
@@ -697,9 +745,30 @@ func getCckmKeyRotationOperationParams(ctx context.Context, plan CreateJobConfig
 		rotationParamsJSON := CCKMKeyRotationParamsJSON{
 			CloudName:                 rotationParams.CloudName.ValueString(),
 			CCKMRotationAwsParamsJSON: awsParams,
-			Expiration:                rotationParams.Expiration.ValueStringPointer(),
-			ExpireIn:                  rotationParams.ExpireIn.ValueStringPointer(),
-			RotationAfter:             rotationParams.RotationAfter.ValueStringPointer(),
+		}
+		var stateRotationParams CCKMKeyRotationParamsTFSDK
+		if state != nil {
+			for _, v := range state.CCKMKeyRotationParams.Elements() {
+				diags.Append(tfsdk.ValueAs(ctx, v, &stateRotationParams)...)
+				if diags.HasError() {
+					return nil
+				}
+			}
+		}
+		if rotationParams.Expiration.ValueString() != "" {
+			rotationParamsJSON.Expiration = rotationParams.Expiration.ValueStringPointer()
+		} else if state != nil && stateRotationParams.Expiration.ValueString() != "" {
+			rotationParamsJSON.Expiration = rotationParams.Expiration.ValueStringPointer()
+		}
+		if rotationParams.ExpireIn.ValueString() != "" {
+			rotationParamsJSON.ExpireIn = rotationParams.ExpireIn.ValueStringPointer()
+		} else if state != nil && stateRotationParams.ExpireIn.ValueString() != "" {
+			rotationParamsJSON.ExpireIn = rotationParams.ExpireIn.ValueStringPointer()
+		}
+		if rotationParams.RotationAfter.ValueString() != "" {
+			rotationParamsJSON.RotationAfter = rotationParams.RotationAfter.ValueStringPointer()
+		} else if state != nil && stateRotationParams.RotationAfter.ValueString() != "" {
+			rotationParamsJSON.RotationAfter = rotationParams.RotationAfter.ValueStringPointer()
 		}
 		return &rotationParamsJSON
 	}
@@ -788,13 +857,14 @@ func getParamsFromResponse(ctx context.Context, response string, plan *CreateJob
 		}
 		dbParams.Filters = filters
 		plan.DatabaseBackupParams = dbParams
-	case "cckm_key_rotation_params":
+	case "cckm_key_rotation":
 		cckmParams := &CCKMKeyRotationParamsTFSDK{
 			CloudName:      types.StringValue(gjson.Get(response, "job_config_params.cloud_name").String()),
-			RetainAlias:    types.BoolValue(gjson.Get(response, "job_config_params.aw_param.retain_alias").Bool()),
-			RotateMaterial: types.BoolValue(gjson.Get(response, "job_config_params.aw_param.rotate_material").Bool()),
+			RetainAlias:    types.BoolValue(gjson.Get(response, "job_config_params.aws_param.retain_alias").Bool()),
+			RotateMaterial: types.BoolValue(gjson.Get(response, "job_config_params.aws_param.rotate_material").Bool()),
 			Expiration:     types.StringValue(gjson.Get(response, "job_config_params.expiration").String()),
 			ExpireIn:       types.StringValue(gjson.Get(response, "job_config_params.expire_in").String()),
+			RotationAfter:  types.StringValue(gjson.Get(response, "job_config_params.rotation_after").String()),
 		}
 		cckmParamsList := types.ListNull(types.ObjectType{
 			AttrTypes: map[string]attr.Type{
@@ -802,6 +872,8 @@ func getParamsFromResponse(ctx context.Context, response string, plan *CreateJob
 				"aws_retain_alias": types.BoolType,
 				"expiration":       types.StringType,
 				"expire_in":        types.StringType,
+				"rotate_material":  types.BoolType,
+				"rotation_after":   types.StringType,
 			},
 		})
 		diags.Append(tfsdk.ValueFrom(ctx, []CCKMKeyRotationParamsTFSDK{*cckmParams}, cckmParamsList.Type(ctx), &cckmParamsList)...)

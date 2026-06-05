@@ -22,7 +22,7 @@ resource "ciphertrust_cte_client" "test_client_gp" {
   communication_enabled    = true
   client_type              = "FS"
 }
-resource "ciphertrust_cte_policies" "test_policy_gp" {
+resource "ciphertrust_cte_policy" "test_policy_gp" {
   name        = "API_Policy"
   type        = "Standard"
   description = "Temp policy for testing using terrafrom."
@@ -31,11 +31,10 @@ resource "ciphertrust_cte_policies" "test_policy_gp" {
     effect               = "permit"
     action               = "all_ops"
     partial_match        = false
-    exclude_resource_set = true
   }
 }
 
-resource "ciphertrust_cte_policies" "ldt_policy_gp" {
+resource "ciphertrust_cte_policy" "ldt_policy_gp" {
   name        = "LDT_Policy"
   type        = "LDT"
   description = "Temp policy for testing."
@@ -54,11 +53,10 @@ resource "ciphertrust_cte_policies" "ldt_policy_gp" {
     effect               = "permit"
     action               = "all_ops"
     partial_match        = false
-    exclude_resource_set = true
   }
 }
 
-resource "ciphertrust_cte_policies" "idt_policy_gp" {
+resource "ciphertrust_cte_policy" "idt_policy_gp" {
   name        = "IDT_Policy"
   type        = "IDT"
   description = "Temp policy for testing."
@@ -73,12 +71,12 @@ resource "ciphertrust_cte_policies" "idt_policy_gp" {
     effect               = "permit"
     action               = "all_ops"
     partial_match        = false
-    exclude_resource_set = true
   }
 }
 
+
 #Creating an auto_dir guard point
-resource "ciphertrust_cte_guardpoint" "dir_auto_gp" {
+resource "ciphertrust_cte_client_guardpoint" "dir_auto_gp" {
   gp_type       = "directory_auto"
   guard_enabled = true
   guard_paths   = ["/test1", "/test2"]
@@ -87,7 +85,7 @@ resource "ciphertrust_cte_guardpoint" "dir_auto_gp" {
 }
 
 #Creating a man_dir guard point
-resource "ciphertrust_cte_guardpoint" "dir_man_gp" {
+resource "ciphertrust_cte_client_guardpoint" "dir_man_gp" {
   gp_type       = "directory_manual"
   guard_enabled = true
   guard_paths   = ["/test3", "/test4"]
@@ -96,7 +94,7 @@ resource "ciphertrust_cte_guardpoint" "dir_man_gp" {
 }
 
 #Creating a raw_dev_gp guard point
-resource "ciphertrust_cte_guardpoint" "raw_dev_gp" {
+resource "ciphertrust_cte_client_guardpoint" "raw_dev_gp" {
   gp_type       = "rawdevice_auto"
   guard_enabled = true
   guard_paths   = ["/dev/sdb"]
@@ -105,7 +103,7 @@ resource "ciphertrust_cte_guardpoint" "raw_dev_gp" {
 }
 
 #Creating an auto_dir ldt guard point
-resource "ciphertrust_cte_guardpoint" "dir_ldt_auto_gp" {
+resource "ciphertrust_cte_client_guardpoint" "dir_ldt_auto_gp" {
   gp_type       = "directory_auto"
   guard_enabled = true
   guard_paths   = ["/test5"]
@@ -114,7 +112,7 @@ resource "ciphertrust_cte_guardpoint" "dir_ldt_auto_gp" {
 }
 
 #Creating an auto_dir idt guard point
-resource "ciphertrust_cte_guardpoint" "idt_auto_gp" {
+resource "ciphertrust_cte_client_guardpoint" "idt_auto_gp" {
   gp_type               = "rawdevice_auto"
   guard_enabled         = true
   guard_paths           = ["/dev/sdc"]

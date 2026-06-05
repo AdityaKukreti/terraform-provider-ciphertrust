@@ -203,16 +203,13 @@ func (r *resourceCTEClient) Create(ctx context.Context, req resource.CreateReque
 		payload.PasswordCreationMethod = common.TrimString(plan.PasswordCreationMethod.String())
 	}
 	if plan.ProfileIdentifier.ValueString() != "" && plan.ProfileIdentifier.ValueString() != types.StringNull().ValueString() {
-		payload.ProfileIdentifier = common.TrimString(plan.ProfileIdentifier.String())
+		payload.ProfileIdentifier = common.TrimString(plan.ProfileIdentifier.ValueString())
 	}
 	if plan.RegistrationAllowed.ValueBool() != types.BoolNull().ValueBool() {
 		payload.RegistrationAllowed = plan.RegistrationAllowed.ValueBool()
 	}
 	if plan.SystemLocked.ValueBool() != types.BoolNull().ValueBool() {
 		payload.SystemLocked = plan.SystemLocked.ValueBool()
-	}
-	if plan.CommunicationEnabled.ValueBool() != types.BoolNull().ValueBool() {
-		payload.CommunicationEnabled = plan.CommunicationEnabled.ValueBool()
 	}
 
 	payloadJSON, err := json.Marshal(payload)
@@ -278,6 +275,15 @@ func (r *resourceCTEClient) Update(ctx context.Context, req resource.UpdateReque
 	if resp.Diagnostics.HasError() {
 		return
 	}
+
+	var state CTEClientTFSDK
+
+	diags = req.State.Get(ctx, &state)
+	resp.Diagnostics.Append(diags...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	plan.ClientType = state.ClientType
 
 	if plan.ClientLocked.ValueBool() != types.BoolNull().ValueBool() {
 		payload.ClientLocked = plan.ClientLocked.ValueBool()

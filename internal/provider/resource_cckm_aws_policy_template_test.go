@@ -2,6 +2,7 @@ package provider
 
 import (
 	"fmt"
+	"regexp"
 	"testing"
 
 	"github.com/google/uuid"
@@ -39,9 +40,10 @@ func TestCckmAWSPolicyTemplate(t *testing.T) {
 	}
 	users := fmt.Sprintf("\"%s\",\"%s\"", keyUsers[0], keyUsers[1])
 	roles := fmt.Sprintf("\"%s\",\"%s\"", keyRoles[0], keyRoles[1])
-	createConfigEx1 := `
+
+	createJsonencodePolicyConfig := `
 		resource "ciphertrust_aws_policy_template" "policy_template_ex1" {
-			kms    = ciphertrust_aws_kms.kms.id
+			kms    = %s
 			name   = "%s"
 			policy = jsonencode(
 				{
@@ -61,7 +63,7 @@ func TestCckmAWSPolicyTemplate(t *testing.T) {
 				}
 			)
 		}`
-	updateConfigEx1 := `
+	updateJsonencodePolicyConfigToUsersAndRoles := `
 		resource "ciphertrust_aws_policy_template" "policy_template_ex1" {
 			kms         = ciphertrust_aws_kms.kms.id
 			name        = "%s"
@@ -73,10 +75,11 @@ func TestCckmAWSPolicyTemplate(t *testing.T) {
 		}`
 	resourceNameEx1 := "ciphertrust_aws_policy_template.policy_template_ex1"
 	templateNameEx1 := "tf-template-" + uuid.New().String()[:8]
-	createConfigStrEx1 := fmt.Sprintf(createConfigEx1, templateNameEx1)
-	updateConfigStrEx1 := fmt.Sprintf(updateConfigEx1, templateNameEx1, users, users, roles, roles)
+	createConfigStrEx1 := fmt.Sprintf(createJsonencodePolicyConfig, "ciphertrust_aws_kms.kms.id", templateNameEx1)
+	modifyPlanConfigStr := awsConnectionResource + fmt.Sprintf(createJsonencodePolicyConfig, `"tf-fake-kms-id"`, templateNameEx1)
+	updateConfigStrEx1 := fmt.Sprintf(updateJsonencodePolicyConfigToUsersAndRoles, templateNameEx1, users, users, roles, roles)
 
-	createConfigEx2 := `
+	createHeredocPolicyConfig := `
 		variable "policy" {
 			type    = string
 			default = <<-EOT
@@ -90,9 +93,9 @@ func TestCckmAWSPolicyTemplate(t *testing.T) {
 		}`
 	resourceNameEx2 := "ciphertrust_aws_policy_template.policy_template_ex2"
 	templateNameEx2 := "tf-template-" + uuid.New().String()[:8]
-	createConfigStrEx2 := fmt.Sprintf(createConfigEx2, templateNameEx2)
+	createConfigStrEx2 := fmt.Sprintf(createHeredocPolicyConfig, templateNameEx2)
 
-	createConfigEx3 := `
+	ceateHeredocFormattedPolicyConfig := `
 		resource "ciphertrust_aws_policy_template" "policy_template_ex3" {
 			kms    = ciphertrust_aws_kms.kms.id
 			name   = "%s"
@@ -102,9 +105,9 @@ func TestCckmAWSPolicyTemplate(t *testing.T) {
 		}`
 	resourceNameEx3 := "ciphertrust_aws_policy_template.policy_template_ex3"
 	templateNameEx3 := "tf-template-" + uuid.New().String()[:8]
-	createConfigStrEx3 := fmt.Sprintf(createConfigEx3, templateNameEx3, defaultPolicy)
+	createConfigStrEx3 := fmt.Sprintf(ceateHeredocFormattedPolicyConfig, templateNameEx3, defaultPolicy)
 
-	createConfigEx4 := `
+	createUsersAndRolesPolicyConfig := `
 		resource "ciphertrust_aws_policy_template" "policy_template_without_policy" {
 			kms         = ciphertrust_aws_kms.kms.id
 			name        = "%s"
@@ -113,7 +116,7 @@ func TestCckmAWSPolicyTemplate(t *testing.T) {
 			key_admins_roles  = [%s]
 			key_users_roles   = [%s]
 		}`
-	updateConfigEx4 := `
+	updateUsersAndRolesToJsonencodePolicy := `
 		resource "ciphertrust_aws_policy_template" "policy_template_without_policy" {
 			kms    = ciphertrust_aws_kms.kms.id
 			name   = "%s"
@@ -137,10 +140,11 @@ func TestCckmAWSPolicyTemplate(t *testing.T) {
 		}`
 	resourceNameEx4 := "ciphertrust_aws_policy_template.policy_template_without_policy"
 	templateNameEx4 := "tf-template-" + uuid.New().String()[:8]
-	createConfigStrEx4 := fmt.Sprintf(createConfigEx4, templateNameEx4, users, users, roles, roles)
-	updateConfigStrEx4 := fmt.Sprintf(updateConfigEx4, templateNameEx4)
+	createConfigStrEx4 := fmt.Sprintf(createUsersAndRolesPolicyConfig, templateNameEx4, users, users, roles, roles)
+	updateConfigStrEx4 := fmt.Sprintf(updateUsersAndRolesToJsonencodePolicy, templateNameEx4)
 
 	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { cleanupCckmAwsKMS() },
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
 		Steps: []resource.TestStep{
 			{
@@ -148,24 +152,24 @@ func TestCckmAWSPolicyTemplate(t *testing.T) {
 				Check: resource.ComposeTestCheckFunc(
 					resource.TestCheckResourceAttrSet(resourceNameEx1, "id"),
 					resource.TestCheckResourceAttrSet(resourceNameEx1, "policy"),
-					resource.TestCheckResourceAttr(resourceNameEx1, "key_users.%", "0"),
-					resource.TestCheckResourceAttr(resourceNameEx1, "key_users_roles.%", "0"),
-					resource.TestCheckResourceAttr(resourceNameEx1, "key_admins.%", "0"),
-					resource.TestCheckResourceAttr(resourceNameEx1, "key_admins_roles.%", "0"),
+					resource.TestCheckResourceAttr(resourceNameEx1, "key_users.#", "0"),
+					resource.TestCheckResourceAttr(resourceNameEx1, "key_users_roles.#", "0"),
+					resource.TestCheckResourceAttr(resourceNameEx1, "key_admins.#", "0"),
+					resource.TestCheckResourceAttr(resourceNameEx1, "key_admins_roles.#", "0"),
 
 					resource.TestCheckResourceAttrSet(resourceNameEx2, "id"),
 					resource.TestCheckResourceAttrSet(resourceNameEx2, "policy"),
-					resource.TestCheckResourceAttr(resourceNameEx2, "key_users.%", "0"),
-					resource.TestCheckResourceAttr(resourceNameEx2, "key_users_roles.%", "0"),
-					resource.TestCheckResourceAttr(resourceNameEx2, "key_admins.%", "0"),
-					resource.TestCheckResourceAttr(resourceNameEx2, "key_admins_roles.%", "0"),
+					resource.TestCheckResourceAttr(resourceNameEx2, "key_users.#", "0"),
+					resource.TestCheckResourceAttr(resourceNameEx2, "key_users_roles.#", "0"),
+					resource.TestCheckResourceAttr(resourceNameEx2, "key_admins.#", "0"),
+					resource.TestCheckResourceAttr(resourceNameEx2, "key_admins_roles.#", "0"),
 
 					resource.TestCheckResourceAttrSet(resourceNameEx3, "id"),
 					resource.TestCheckResourceAttrSet(resourceNameEx3, "policy"),
-					resource.TestCheckResourceAttr(resourceNameEx3, "key_users.%", "0"),
-					resource.TestCheckResourceAttr(resourceNameEx3, "key_users_roles.%", "0"),
-					resource.TestCheckResourceAttr(resourceNameEx3, "key_admins.%", "0"),
-					resource.TestCheckResourceAttr(resourceNameEx3, "key_admins_roles.%", "0"),
+					resource.TestCheckResourceAttr(resourceNameEx3, "key_users.#", "0"),
+					resource.TestCheckResourceAttr(resourceNameEx3, "key_users_roles.#", "0"),
+					resource.TestCheckResourceAttr(resourceNameEx3, "key_admins.#", "0"),
+					resource.TestCheckResourceAttr(resourceNameEx3, "key_admins_roles.#", "0"),
 
 					resource.TestCheckResourceAttrSet(resourceNameEx4, "id"),
 					resource.TestCheckResourceAttrSet(resourceNameEx4, "policy"),
@@ -175,6 +179,33 @@ func TestCckmAWSPolicyTemplate(t *testing.T) {
 					resource.TestCheckResourceAttr(resourceNameEx4, "key_admins_roles.#", "2"),
 					testCheckAttributeContains(resourceNameEx4, "policy", append(keyUsers, keyRoles...), true),
 				),
+			},
+			// Import all 4 templates immediately after creation to verify round-trip correctness.
+			// policy is ignored because the API returns compacted JSON while the config may use
+			// jsonencode() or a heredoc, producing a different string representation.
+			{
+				ResourceName:            resourceNameEx1,
+				ImportState:             true,
+				ImportStateVerify:       true,
+				ImportStateVerifyIgnore: []string{"policy"},
+			},
+			{
+				ResourceName:            resourceNameEx2,
+				ImportState:             true,
+				ImportStateVerify:       true,
+				ImportStateVerifyIgnore: []string{"policy"},
+			},
+			{
+				ResourceName:            resourceNameEx3,
+				ImportState:             true,
+				ImportStateVerify:       true,
+				ImportStateVerifyIgnore: []string{"policy"},
+			},
+			{
+				ResourceName:            resourceNameEx4,
+				ImportState:             true,
+				ImportStateVerify:       true,
+				ImportStateVerifyIgnore: []string{"policy"},
 			},
 			{
 				Config: awsConnectionResource + updateConfigStrEx1 + updateConfigStrEx4,
@@ -189,10 +220,10 @@ func TestCckmAWSPolicyTemplate(t *testing.T) {
 
 					resource.TestCheckResourceAttrSet(resourceNameEx4, "id"),
 					resource.TestCheckResourceAttrSet(resourceNameEx4, "policy"),
-					resource.TestCheckResourceAttr(resourceNameEx4, "key_users.%", "0"),
-					resource.TestCheckResourceAttr(resourceNameEx4, "key_users_roles.%", "0"),
-					resource.TestCheckResourceAttr(resourceNameEx4, "key_admins.%", "0"),
-					resource.TestCheckResourceAttr(resourceNameEx4, "key_admins_roles.%", "0"),
+					resource.TestCheckResourceAttr(resourceNameEx4, "key_users.#", "0"),
+					resource.TestCheckResourceAttr(resourceNameEx4, "key_users_roles.#", "0"),
+					resource.TestCheckResourceAttr(resourceNameEx4, "key_admins.#", "0"),
+					resource.TestCheckResourceAttr(resourceNameEx4, "key_admins_roles.#", "0"),
 
 					testVerifyResourceDeleted(resourceNameEx2),
 					testVerifyResourceDeleted(resourceNameEx3),
@@ -203,24 +234,24 @@ func TestCckmAWSPolicyTemplate(t *testing.T) {
 				Check: resource.ComposeTestCheckFunc(
 					resource.TestCheckResourceAttrSet(resourceNameEx1, "id"),
 					resource.TestCheckResourceAttrSet(resourceNameEx1, "policy"),
-					resource.TestCheckResourceAttr(resourceNameEx1, "key_users.%", "0"),
-					resource.TestCheckResourceAttr(resourceNameEx1, "key_users_roles.%", "0"),
-					resource.TestCheckResourceAttr(resourceNameEx1, "key_admins.%", "0"),
-					resource.TestCheckResourceAttr(resourceNameEx1, "key_admins_roles.%", "0"),
+					resource.TestCheckResourceAttr(resourceNameEx1, "key_users.#", "0"),
+					resource.TestCheckResourceAttr(resourceNameEx1, "key_users_roles.#", "0"),
+					resource.TestCheckResourceAttr(resourceNameEx1, "key_admins.#", "0"),
+					resource.TestCheckResourceAttr(resourceNameEx1, "key_admins_roles.#", "0"),
 
 					resource.TestCheckResourceAttrSet(resourceNameEx2, "id"),
 					resource.TestCheckResourceAttrSet(resourceNameEx2, "policy"),
-					resource.TestCheckResourceAttr(resourceNameEx2, "key_users.%", "0"),
-					resource.TestCheckResourceAttr(resourceNameEx2, "key_users_roles.%", "0"),
-					resource.TestCheckResourceAttr(resourceNameEx2, "key_admins.%", "0"),
-					resource.TestCheckResourceAttr(resourceNameEx2, "key_admins_roles.%", "0"),
+					resource.TestCheckResourceAttr(resourceNameEx2, "key_users.#", "0"),
+					resource.TestCheckResourceAttr(resourceNameEx2, "key_users_roles.#", "0"),
+					resource.TestCheckResourceAttr(resourceNameEx2, "key_admins.#", "0"),
+					resource.TestCheckResourceAttr(resourceNameEx2, "key_admins_roles.#", "0"),
 
 					resource.TestCheckResourceAttrSet(resourceNameEx3, "id"),
 					resource.TestCheckResourceAttrSet(resourceNameEx3, "policy"),
-					resource.TestCheckResourceAttr(resourceNameEx3, "key_users.%", "0"),
-					resource.TestCheckResourceAttr(resourceNameEx3, "key_users_roles.%", "0"),
-					resource.TestCheckResourceAttr(resourceNameEx3, "key_admins.%", "0"),
-					resource.TestCheckResourceAttr(resourceNameEx3, "key_admins_roles.%", "0"),
+					resource.TestCheckResourceAttr(resourceNameEx3, "key_users.#", "0"),
+					resource.TestCheckResourceAttr(resourceNameEx3, "key_users_roles.#", "0"),
+					resource.TestCheckResourceAttr(resourceNameEx3, "key_admins.#", "0"),
+					resource.TestCheckResourceAttr(resourceNameEx3, "key_admins_roles.#", "0"),
 
 					resource.TestCheckResourceAttrSet(resourceNameEx4, "id"),
 					resource.TestCheckResourceAttrSet(resourceNameEx4, "policy"),
@@ -232,36 +263,10 @@ func TestCckmAWSPolicyTemplate(t *testing.T) {
 				),
 			},
 			{
-				ResourceName:      resourceNameEx1,
-				ImportState:       true,
-				ImportStateVerify: true,
-				ImportStateVerifyIgnore: []string{
-					"policy",
-				},
-			},
-			{
-				ResourceName:      resourceNameEx2,
-				ImportState:       true,
-				ImportStateVerify: true,
-				ImportStateVerifyIgnore: []string{
-					"policy",
-				},
-			},
-			{
-				ResourceName:      resourceNameEx3,
-				ImportState:       true,
-				ImportStateVerify: true,
-				ImportStateVerifyIgnore: []string{
-					"policy",
-				},
-			},
-			{
-				ResourceName:      resourceNameEx4,
-				ImportState:       true,
-				ImportStateVerify: true,
-				ImportStateVerifyIgnore: []string{
-					"policy",
-				},
+				// Verify ModifyPlan fires an error when kms is changed.
+				Config:      modifyPlanConfigStr,
+				PlanOnly:    true,
+				ExpectError: regexp.MustCompile(`Immutable attribute change detected`),
 			},
 		},
 	})

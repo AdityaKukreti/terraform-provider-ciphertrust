@@ -23,10 +23,12 @@ const (
 	URL_LDT_GROUP_COMM_SVC    = "api/v1/transparent-encryption/ldtgroupcommservice"
 	URL_NEW_CLUSTER           = "api/v1/cluster/new"
 	URL_CREATE_CSR            = "api/v1/cluster/csr"
+	URL_NODES                 = "api/v1/nodes"
 	URL_SIGN_CERT             = "api/v1/nodes"
 	URL_CLUSTER_JOIN          = "api/v1/cluster/join"
 	URL_CLUSTER_INFO          = "api/v1/cluster"
 	URL_TRIAL_LICENSE         = "api/v1/licensing/trials"
+	URL_LICENSE               = "api/v1/licensing/licenses"
 	URL_SCP_CONNECTION        = "api/v1/connectionmgmt/services/scp/connections"
 	URL_PROMETHEUS_ENABLE     = "api//v1/system/metrics/prometheus/enable"
 	URL_PROMETHEUS_DISABLE    = "api//v1/system/metrics/prometheus/disable"
@@ -54,4 +56,5 @@ const (
 	URL_OCI_CONNECTION        = "api/v1/connectionmgmt/services/oci/connections"
 	URL_OCI_CONNECTION_TEST   = "api/v1/connectionmgmt/services/oci/connection-test"
 	URL_OCI                   = "api/v1/cckm/oci"
+	URL_SYSTEMINFO            = "api/v1/system/info"
 )

@@ -13,6 +13,7 @@ provider "ciphertrust" {
 	password = "ChangeMe101!"
 }
 
+
 resource "ciphertrust_cte_policy" "standard_policy" {
     name            = "TF_CTE_Policy"
     policy_type     = "Standard"
@@ -21,10 +22,9 @@ resource "ciphertrust_cte_policy" "standard_policy" {
     security_rules  = [{
         effect               = "permit,audit"
         action               = "all_ops"
-        partial_match        = false
-        exclude_resource_set = true
     }]
 }
+
 
 resource "ciphertrust_cte_client" "cte_client" {
     name                        = "TF_CTE_Client"
@@ -38,12 +38,22 @@ resource "ciphertrust_cte_client" "cte_client" {
     }
 }
 
-resource "ciphertrust_cte_guardpoint" "dir_auto_gp" {
-  guard_paths = ["/opt/path1"]
-  client_id = ciphertrust_cte_client.cte_client.id
+
+resource "ciphertrust_cte_client_guardpoint" "dir_auto_gp" {
+guard_paths = ["/test/gp1"]
+client_id = ciphertrust_cte_client.cte_client.id
+
   guard_point_params = {
     guard_point_type = "directory_auto"
-    guard_enabled = true
+
     policy_id = ciphertrust_cte_policy.standard_policy.name
+
+    # This field is ignored during initial terraform apply
+    guard_enabled = true
   }
+  
 }
+
+
+
+

@@ -8,6 +8,7 @@ import (
 	"github.com/google/uuid"
 
 	common "github.com/ThalesGroup/terraform-provider-ciphertrust/internal/provider/common"
+	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
 	"github.com/hashicorp/terraform-plugin-framework/datasource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/types"
@@ -88,6 +89,10 @@ func (d *dataSourceCTESignatureSets) Schema(_ context.Context, _ datasource.Sche
 						"docker_cont_id": schema.StringAttribute{
 							Computed: true,
 						},
+						"labels": schema.MapAttribute{
+							Computed:    true,
+							ElementType: types.StringType,
+						},
 					},
 				},
 			},
@@ -137,6 +142,18 @@ func (d *dataSourceCTESignatureSets) Read(ctx context.Context, req datasource.Re
 		signatureSetState.PercentageComplete = types.Int64Value(signatureSet.PercentageComplete)
 		signatureSetState.DockerImgID = types.StringValue(signatureSet.DockerImgID)
 		signatureSetState.DockerContID = types.StringValue(signatureSet.DockerContID)
+
+		labelsMap := make(map[string]attr.Value)
+		for k, v := range signatureSet.Labels {
+			labelsMap[k] = types.StringValue(fmt.Sprintf("%v", v))
+		}
+
+		labels, diags := types.MapValue(types.StringType, labelsMap)
+		resp.Diagnostics.Append(diags...)
+		if resp.Diagnostics.HasError() {
+			return
+		}
+		signatureSetState.Labels = labels
 
 		for _, source := range signatureSet.SourceList {
 			signatureSetState.SourceList = append(signatureSetState.SourceList, types.StringValue(source))

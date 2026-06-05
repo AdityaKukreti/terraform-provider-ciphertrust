@@ -9,10 +9,12 @@ import (
 	"github.com/tidwall/gjson"
 
 	common "github.com/ThalesGroup/terraform-provider-ciphertrust/internal/provider/common"
+	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-log/tflog"
 )
@@ -60,6 +62,9 @@ func (r *resourceCMSyslog) Schema(_ context.Context, _ resource.SchemaRequest, r
 			"message_format": schema.StringAttribute{
 				Optional:    true,
 				Description: "The log message format for new log messages: rfc5424 (default) plain_message cef leef.",
+				Validators: []validator.String{
+					stringvalidator.OneOf("rfc5424", "plain_message", "cef", "leef"),
+				},
 			},
 			"port": schema.Int64Attribute{
 				Optional:    true,
@@ -274,6 +279,19 @@ func (r *resourceCMSyslog) Update(ctx context.Context, req resource.UpdateReques
 		return
 	}
 	plan.UpdatedAt = types.StringValue(gjson.Get(response, "updatedAt").String())
+	plan.Host = types.StringValue(gjson.Get(response, "host").String())
+	plan.Transport = types.StringValue(gjson.Get(response, "transport").String())
+	if !plan.CACert.IsNull() {
+		if caCert := gjson.Get(response, "caCert"); caCert.Exists() && caCert.String() != "" {
+			plan.CACert = types.StringValue(caCert.String())
+		}
+	}
+	if !plan.MessageFormat.IsNull() {
+		plan.MessageFormat = types.StringValue(gjson.Get(response, "messageFormat").String())
+	}
+	if !plan.Port.IsNull() {
+		plan.Port = types.Int64Value(gjson.Get(response, "port").Int())
+	}
 	diags = resp.State.Set(ctx, plan)
 	resp.Diagnostics.Append(diags...)
 	if resp.Diagnostics.HasError() {

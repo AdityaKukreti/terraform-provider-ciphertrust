@@ -78,20 +78,17 @@ output "oci_connection_details" {
 <a id="nestedatt--oci"></a>
 ### Nested Schema for `oci`
 
-Optional:
-
-- `description` (String) Description about the connection
-- `meta` (Map of String) Optional end-user or service data stored with the connection.
-
 Read-Only:
 
 - `account` (String)
 - `category` (String)
 - `created_at` (String) Date and time the connection was created.
+- `description` (String) Description about the connection.
 - `id` (String) CipherTrust Manager resource ID of the connection.
 - `last_connection_at` (String)
 - `last_connection_error` (String)
 - `last_connection_ok` (Boolean)
+- `meta` (Map of String) Optional end-user or service data stored with the connection.
 - `name` (String) Connection name.
 - `products` (List of String) Array of the CipherTrust products associated with the connection. Default is 'cckm'.
 - `pub_key_fingerprint` (String) Fingerprint of the public key added to the OCI user.

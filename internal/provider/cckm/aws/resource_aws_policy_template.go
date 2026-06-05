@@ -28,6 +28,7 @@ var (
 	_ resource.Resource                = &resourceAWSPolicyTemplate{}
 	_ resource.ResourceWithConfigure   = &resourceAWSPolicyTemplate{}
 	_ resource.ResourceWithImportState = &resourceAWSPolicyTemplate{}
+	_ resource.ResourceWithModifyPlan  = &resourceAWSPolicyTemplate{}
 )
 
 func NewResourceAWSPolicyTemplate() resource.Resource {
@@ -59,7 +60,7 @@ func (r *resourceAWSPolicyTemplate) Configure(_ context.Context, req resource.Co
 
 func (r *resourceAWSPolicyTemplate) Schema(_ context.Context, _ resource.SchemaRequest, resp *resource.SchemaResponse) {
 	resp.Schema = schema.Schema{
-		Description: "Use this resource to create and managa AWS key policy templates that can be used by multiple AWS keys.",
+		Description: "Use this resource to create and manage AWS key policy templates that can be used by multiple AWS keys.",
 		Attributes: map[string]schema.Attribute{
 			"id": schema.StringAttribute{
 				Computed: true,
@@ -70,7 +71,7 @@ func (r *resourceAWSPolicyTemplate) Schema(_ context.Context, _ resource.SchemaR
 			"account_id": schema.StringAttribute{
 				Computed:    true,
 				Optional:    true,
-				Description: "The AWS account which owns this resource.",
+				Description: "AWS account used to create the key policy.",
 			},
 			"auto_push": schema.BoolAttribute{
 				Computed:    true,
@@ -85,7 +86,7 @@ func (r *resourceAWSPolicyTemplate) Schema(_ context.Context, _ resource.SchemaR
 			"external_accounts": schema.SetAttribute{
 				Optional:    true,
 				ElementType: types.StringType,
-				Description: "(Updatable) Other AWS accounts that can access to the key.",
+				Description: "(Updatable) AWS accounts that can use this key. External accounts are mutually exclusive to policy. If no policy parameters are specified the default policy is created.",
 			},
 			"key_admins": schema.SetAttribute{
 				Optional:    true,
@@ -110,11 +111,11 @@ func (r *resourceAWSPolicyTemplate) Schema(_ context.Context, _ resource.SchemaR
 			"kms": schema.StringAttribute{
 				Optional:    true,
 				Computed:    true,
-				Description: "Name or ID of the KMS to which the template belongs.",
+				Description: "Name or ID of the KMS to which the template belongs, 'account_id', 'external_accounts' or 'kms' must be provided.",
 			},
 			"name": schema.StringAttribute{
 				Required:    true,
-				Description: "A name for the template.",
+				Description: "Name for the policy template.",
 			},
 			"policy": schema.StringAttribute{
 				Computed: true,
@@ -137,10 +138,11 @@ func (r *resourceAWSPolicyTemplate) Schema(_ context.Context, _ resource.SchemaR
 	}
 }
 
+// Create creates a new AWS key policy template in CipherTrust Manager and sets Terraform state.
 func (r *resourceAWSPolicyTemplate) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
 	id := uuid.New().String()
-	tflog.Trace(ctx, common.MSG_METHOD_START+"[resource_aws_policy_template.go -> Create]["+id+"]")
-	defer tflog.Trace(ctx, common.MSG_METHOD_END+"[resource_aws_policy_template -> Create]["+id+"]")
+	tflog.Debug(ctx, common.MSG_METHOD_START+"[resource_aws_policy_template.go -> Create]["+id+"]")
+	defer tflog.Debug(ctx, common.MSG_METHOD_END+"[resource_aws_policy_template.go -> Create]["+id+"]")
 	var plan AWSKeyPolicyTemplateTFSDK
 	resp.Diagnostics.Append(req.Plan.Get(ctx, &plan)...)
 	if resp.Diagnostics.HasError() {
@@ -148,20 +150,6 @@ func (r *resourceAWSPolicyTemplate) Create(ctx context.Context, req resource.Cre
 	}
 	keyPolicyParams := r.getCreatePolicyTemplateParams(ctx, &plan, &resp.Diagnostics)
 	if resp.Diagnostics.HasError() {
-		return
-	}
-	if !plan.Policy.IsUnknown() && len(plan.Policy.String()) != 0 {
-		if keyPolicyParams == nil {
-			keyPolicyParams = new(KeyPolicyParamsJSON)
-		}
-		policy := plan.Policy.ValueString()
-		policyBytes := json.RawMessage(policy)
-		keyPolicyParams.Policy = &policyBytes
-	}
-	if keyPolicyParams == nil {
-		msg := "Error creating AWS key policy template, invalid data input."
-		tflog.Error(ctx, msg)
-		resp.Diagnostics.AddError(msg, "")
 		return
 	}
 	payload := PolicyTemplatePayloadJSON{
@@ -186,9 +174,9 @@ func (r *resourceAWSPolicyTemplate) Create(ctx context.Context, req resource.Cre
 		resp.Diagnostics.AddError(details, "")
 		return
 	}
+	tflog.Debug(ctx, "[resource_aws_policy_template.go -> Create][response:"+redactAWSResponse(response)+"]")
 	plan.ID = types.StringValue(gjson.Get(response, "id").String())
 
-	tflog.Trace(ctx, common.MSG_METHOD_START+"[resource_aws_policy_template.go -> Create]["+id+"]")
 	var diags diag.Diagnostics
 	r.setPolicyTemplateState(ctx, response, &plan, &diags)
 	for _, d := range diags {
@@ -197,10 +185,13 @@ func (r *resourceAWSPolicyTemplate) Create(ctx context.Context, req resource.Cre
 	resp.Diagnostics.Append(resp.State.Set(ctx, plan)...)
 }
 
+// Read refreshes the Terraform state for an AWS key policy template by fetching it from CipherTrust Manager.
+// If the policy template is no longer found (HTTP 404), it is silently removed from Terraform state rather
+// than returning an error, allowing Terraform to plan its recreation.
 func (r *resourceAWSPolicyTemplate) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
 	id := uuid.New().String()
-	tflog.Trace(ctx, common.MSG_METHOD_START+"[resource_aws_policy_template.go -> Read]["+id+"]")
-	defer tflog.Trace(ctx, common.MSG_METHOD_END+"[resource_aws_policy_template -> Read]["+id+"]")
+	tflog.Debug(ctx, common.MSG_METHOD_START+"[resource_aws_policy_template.go -> Read]["+id+"]")
+	defer tflog.Debug(ctx, common.MSG_METHOD_END+"[resource_aws_policy_template.go -> Read]["+id+"]")
 	var state AWSKeyPolicyTemplateTFSDK
 	resp.Diagnostics.Append(req.State.Get(ctx, &state)...)
 	if resp.Diagnostics.HasError() {
@@ -209,13 +200,17 @@ func (r *resourceAWSPolicyTemplate) Read(ctx context.Context, req resource.ReadR
 	templateID := state.ID.ValueString()
 	response, err := r.client.GetById(ctx, id, templateID, common.URL_AWS_POLICY_TEMPLATES)
 	if err != nil {
+		if strings.Contains(err.Error(), notFoundError) {
+			tflog.Warn(ctx, "[resource_aws_policy_template.go -> Read][template not found, removing from state][template id: "+templateID+"]")
+			resp.State.RemoveResource(ctx)
+			return
+		}
 		msg := "Error reading AWS key policy template."
 		details := utils.ApiError(msg, map[string]interface{}{"error": err.Error(), "template id": templateID})
 		tflog.Error(ctx, details)
 		resp.Diagnostics.AddError(details, "")
 		return
 	}
-	tflog.Trace(ctx, "[resource_aws_policy_template.go -> Read][response:"+response)
 	r.setPolicyTemplateState(ctx, response, &state, &resp.Diagnostics)
 	if resp.Diagnostics.HasError() {
 		return
@@ -227,17 +222,11 @@ func (r *resourceAWSPolicyTemplate) Read(ctx context.Context, req resource.ReadR
 	resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
 }
 
-func (r *resourceAWSPolicyTemplate) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
-	id := uuid.New().String()
-	tflog.Trace(ctx, common.MSG_METHOD_START+"[resource_aws_policy_template.go -> ImportState]["+id+"]")
-	defer tflog.Trace(ctx, common.MSG_METHOD_END+"[resource_aws_policy_template.go -> ImportState]["+id+"]")
-	resource.ImportStatePassthroughID(ctx, path.Root("id"), req, resp)
-}
-
+// Update applies plan changes to an AWS key policy template and optionally pushes changes to associated keys.
 func (r *resourceAWSPolicyTemplate) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
 	id := uuid.New().String()
-	tflog.Trace(ctx, common.MSG_METHOD_START+"[resource_aws_policy_template -> Update]["+id+"]")
-	defer tflog.Trace(ctx, common.MSG_METHOD_END+"[resource_aws_policy_template -> Update]["+id+"]")
+	tflog.Debug(ctx, common.MSG_METHOD_START+"[resource_aws_policy_template.go -> Update]["+id+"]")
+	defer tflog.Debug(ctx, common.MSG_METHOD_END+"[resource_aws_policy_template.go -> Update]["+id+"]")
 
 	var plan AWSKeyPolicyTemplateTFSDK
 	resp.Diagnostics.Append(req.Plan.Get(ctx, &plan)...)
@@ -259,7 +248,6 @@ func (r *resourceAWSPolicyTemplate) Update(ctx context.Context, req resource.Upd
 		resp.Diagnostics.AddError(details, "")
 		return
 	}
-	tflog.Trace(ctx, "[resource_aws_policy_template.go -> Update][response:"+response)
 
 	keyPolicyParams := r.getUpdatePolicyTemplateParams(ctx, &plan, &state, &resp.Diagnostics)
 	if resp.Diagnostics.HasError() {
@@ -270,7 +258,7 @@ func (r *resourceAWSPolicyTemplate) Update(ctx context.Context, req resource.Upd
 		keyPolicyParams.KeyAdmins == nil && keyPolicyParams.KeyAdminsRoles == nil &&
 		keyPolicyParams.KeyUsers == nil && keyPolicyParams.KeyUsersRoles == nil {
 		// terraform import can lead to this
-		tflog.Trace(ctx, "[resource_aws_policy_template.go -> Update][nothing to update")
+		tflog.Debug(ctx, "[resource_aws_policy_template.go -> Update][nothing to update]")
 		r.setPolicyTemplateState(ctx, response, &plan, &resp.Diagnostics)
 		resp.Diagnostics.Append(resp.State.Set(ctx, plan)...)
 		return
@@ -298,6 +286,7 @@ func (r *resourceAWSPolicyTemplate) Update(ctx context.Context, req resource.Upd
 		resp.Diagnostics.AddError(details, "")
 		return
 	}
+	tflog.Debug(ctx, "[resource_aws_policy_template.go -> Update][response:"+redactAWSResponse(response)+"]")
 
 	r.setPolicyTemplateState(ctx, response, &plan, &resp.Diagnostics)
 	if resp.Diagnostics.HasError() {
@@ -306,15 +295,36 @@ func (r *resourceAWSPolicyTemplate) Update(ctx context.Context, req resource.Upd
 	resp.Diagnostics.Append(resp.State.Set(ctx, plan)...)
 }
 
+// Delete removes an AWS key policy template from CipherTrust Manager if no keys are associated with it.
+// If the template is not found (HTTP 404) when destroy runs, a warning is emitted and the resource is
+// removed from state rather than returning an error.
 func (r *resourceAWSPolicyTemplate) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
 	id := uuid.New().String()
-	tflog.Trace(ctx, common.MSG_METHOD_START+"[resource_aws_policy_template -> Delete]["+id+"]")
-	defer tflog.Trace(ctx, common.MSG_METHOD_END+"[resource_aws_policy_template -> Delete]["+id+"]")
+	tflog.Debug(ctx, common.MSG_METHOD_START+"[resource_aws_policy_template.go -> Delete]["+id+"]")
+	defer tflog.Debug(ctx, common.MSG_METHOD_END+"[resource_aws_policy_template.go -> Delete]["+id+"]")
 	var state AWSKeyPolicyTemplateTFSDK
 	diags := req.State.Get(ctx, &state)
 	resp.Diagnostics.Append(diags...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
 	templateID := state.ID.ValueString()
-	_, err := r.client.DeleteByURL(ctx, templateID, common.URL_AWS_POLICY_TEMPLATES+"/"+templateID)
+	_, err := r.client.GetById(ctx, id, templateID, common.URL_AWS_POLICY_TEMPLATES)
+	if err != nil {
+		if strings.Contains(err.Error(), notFoundError) {
+			msg := "AWS policy template was not found, it will be removed from state."
+			details := utils.ApiError(msg, map[string]interface{}{"id": state.ID.ValueString()})
+			tflog.Warn(ctx, details)
+			resp.Diagnostics.AddWarning(details, "")
+		} else {
+			msg := "Error reading AWS key policy template."
+			details := utils.ApiError(msg, map[string]interface{}{"error": err.Error(), "template_id": templateID})
+			tflog.Error(ctx, details)
+			resp.Diagnostics.AddError(details, "")
+		}
+		return
+	}
+	_, err = r.client.DeleteByURL(ctx, templateID, common.URL_AWS_POLICY_TEMPLATES+"/"+templateID)
 	if err != nil {
 		if strings.Contains(err.Error(), "has one or more key associated") {
 			msg := "AWS policy template " + templateID + " has one or more keys associated with it so it can't be deleted. This includes keys scheduled for deletion."
@@ -330,6 +340,60 @@ func (r *resourceAWSPolicyTemplate) Delete(ctx context.Context, req resource.Del
 	}
 }
 
+// ModifyPlan errors at plan time if any immutable attribute is changed on an existing resource,
+// preventing silent in-place updates to fields that cannot be modified after creation.
+func (r *resourceAWSPolicyTemplate) ModifyPlan(ctx context.Context, req resource.ModifyPlanRequest, resp *resource.ModifyPlanResponse) {
+	// Skip create and destroy operations.
+	if req.Plan.Raw.IsNull() || req.State.Raw.IsNull() {
+		return
+	}
+
+	var plan, state AWSKeyPolicyTemplateTFSDK
+
+	resp.Diagnostics.Append(req.Plan.Get(ctx, &plan)...)
+	resp.Diagnostics.Append(req.State.Get(ctx, &state)...)
+
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	var changed []string
+
+	// Guard against false positives when account_id is not set in config (null in plan)
+	// but has a value in state (set by the API after create).
+	if !plan.AccountID.IsNull() && !plan.AccountID.IsUnknown() && plan.AccountID != state.AccountID {
+		changed = append(changed, "account_id")
+	}
+	// Guard against false positives when kms is not set in config (null in plan)
+	// but has a value in state (set by the API after create).
+	if !plan.Kms.IsNull() && !plan.Kms.IsUnknown() && plan.Kms != state.Kms {
+		changed = append(changed, "kms")
+	}
+	if plan.Name != state.Name {
+		changed = append(changed, "name")
+	}
+
+	if len(changed) > 0 {
+		resp.Diagnostics.AddError(
+			"Immutable attribute change detected",
+			fmt.Sprintf(
+				"The following attributes cannot be modified after creation: %s. "+
+					"Delete and recreate the resource to apply these changes.",
+				strings.Join(changed, ", "),
+			),
+		)
+	}
+}
+
+// ImportState imports an existing AWS key policy template into Terraform state using its resource ID.
+func (r *resourceAWSPolicyTemplate) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
+	id := uuid.New().String()
+	tflog.Debug(ctx, common.MSG_METHOD_START+"[resource_aws_policy_template.go -> ImportState]["+id+"]")
+	defer tflog.Debug(ctx, common.MSG_METHOD_END+"[resource_aws_policy_template.go -> ImportState]["+id+"]")
+	resource.ImportStatePassthroughID(ctx, path.Root("id"), req, resp)
+}
+
+// getCreatePolicyTemplateParams builds the key policy parameters payload for creating a new policy template.
 func (r *resourceAWSPolicyTemplate) getCreatePolicyTemplateParams(ctx context.Context, plan *AWSKeyPolicyTemplateTFSDK, diags *diag.Diagnostics) *KeyPolicyParamsJSON {
 	var keyPolicyParams KeyPolicyParamsJSON
 	if !plan.ExternalAccounts.IsNull() && len(plan.ExternalAccounts.Elements()) != 0 {
@@ -380,6 +444,7 @@ func (r *resourceAWSPolicyTemplate) getCreatePolicyTemplateParams(ctx context.Co
 	return &keyPolicyParams
 }
 
+// getUpdatePolicyTemplateParams builds the key policy parameters payload for updating an existing policy template, clearing removed fields.
 func (r *resourceAWSPolicyTemplate) getUpdatePolicyTemplateParams(ctx context.Context, plan *AWSKeyPolicyTemplateTFSDK, state *AWSKeyPolicyTemplateTFSDK, diags *diag.Diagnostics) *KeyPolicyParamsJSON {
 	var keyPolicyParams KeyPolicyParamsJSON
 	emptySlice := []string{}
@@ -441,6 +506,7 @@ func (r *resourceAWSPolicyTemplate) getUpdatePolicyTemplateParams(ctx context.Co
 	return &keyPolicyParams
 }
 
+// setPolicyTemplateState populates Terraform state for an AWS key policy template from an API response JSON string.
 func (r *resourceAWSPolicyTemplate) setPolicyTemplateState(ctx context.Context, response string, state *AWSKeyPolicyTemplateTFSDK, diags *diag.Diagnostics) {
 	state.AccountID = types.StringValue(gjson.Get(response, "account_id").String())
 	state.Kms = types.StringValue(gjson.Get(response, "kms").String())
@@ -448,23 +514,33 @@ func (r *resourceAWSPolicyTemplate) setPolicyTemplateState(ctx context.Context, 
 	externalAccounts := gjson.Get(response, "external_accounts").Array()
 	if len(externalAccounts) != 0 {
 		state.ExternalAccounts = utils.StringSliceJSONToSetValue(externalAccounts, diags)
+	} else {
+		state.ExternalAccounts = types.SetNull(types.StringType)
 	}
 	state.IsVerified = types.BoolValue(gjson.Get(response, "is_verified").Bool())
 	keyAdmins := gjson.Get(response, "key_admins").Array()
 	if len(keyAdmins) != 0 {
 		state.KeyAdmins = utils.StringSliceJSONToSetValue(keyAdmins, diags)
+	} else {
+		state.KeyAdmins = types.SetNull(types.StringType)
 	}
 	keyAdminsRoles := gjson.Get(response, "key_admins_roles").Array()
 	if len(keyAdminsRoles) != 0 {
 		state.KeyAdminsRoles = utils.StringSliceJSONToSetValue(keyAdminsRoles, diags)
+	} else {
+		state.KeyAdminsRoles = types.SetNull(types.StringType)
 	}
 	keyUsers := gjson.Get(response, "key_users").Array()
 	if len(keyUsers) != 0 {
 		state.KeyUsers = utils.StringSliceJSONToSetValue(keyUsers, diags)
+	} else {
+		state.KeyUsers = types.SetNull(types.StringType)
 	}
 	keyUsersRoles := gjson.Get(response, "key_users_roles").Array()
 	if len(keyUsersRoles) != 0 {
 		state.KeyUsersRoles = utils.StringSliceJSONToSetValue(keyUsersRoles, diags)
+	} else {
+		state.KeyUsersRoles = types.SetNull(types.StringType)
 	}
 	equivalent := getPoliciesAreEqual(ctx, gjson.Get(response, "policy").String(), state.Policy.ValueString(), diags)
 	if !equivalent {
@@ -472,6 +548,7 @@ func (r *resourceAWSPolicyTemplate) setPolicyTemplateState(ctx context.Context, 
 	}
 }
 
+// getPoliciesAreEqual reports whether two AWS key policy JSON strings are semantically equal after normalisation.
 func getPoliciesAreEqual(ctx context.Context, policy string, planPolicy string, diags *diag.Diagnostics) bool {
 	p, err := normalizePolicy(policy)
 	if err != nil {
@@ -497,6 +574,7 @@ func getPoliciesAreEqual(ctx context.Context, policy string, planPolicy string, 
 	return equivalent
 }
 
+// normalizePolicy marshals a JSON policy string to a canonical form, returning an empty string for nil or empty input.
 func normalizePolicy(jsonString interface{}) (string, error) {
 	var j interface{}
 	if jsonString == nil {
@@ -517,6 +595,7 @@ func normalizePolicy(jsonString interface{}) (string, error) {
 	return string(bytes[:]), nil
 }
 
+// policyBytesEqual reports whether two JSON policy byte slices are deeply equal after unmarshalling.
 func policyBytesEqual(a []byte, b []byte) (bool, error) {
 	var j, j2 interface{}
 	if len(a) != len(b) {

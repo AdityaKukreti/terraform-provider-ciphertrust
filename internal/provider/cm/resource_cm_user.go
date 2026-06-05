@@ -288,9 +288,17 @@ func (r *resourceCMUser) Update(ctx context.Context, req resource.UpdateRequest,
 	var payload CMUserJSON
 	loginFlags.PreventUILogin = plan.PreventUILogin.ValueBool()
 
-	payload.Email = common.TrimString(plan.Email.ValueString())
-	payload.Name = common.TrimString(plan.Name.ValueString())
-	payload.Nickname = common.TrimString(plan.Nickname.ValueString())
+	// Only include optional string fields in the PATCH payload when they have
+	// a non-empty value. Omitting them lets the API preserve existing values.
+	if email := common.TrimString(plan.Email.ValueString()); email != "" {
+		payload.Email = email
+	}
+	if name := common.TrimString(plan.Name.ValueString()); name != "" {
+		payload.Name = name
+	}
+	if nickname := common.TrimString(plan.Nickname.ValueString()); nickname != "" {
+		payload.Nickname = nickname
+	}
 	payload.UserName = common.TrimString(plan.UserName.ValueString())
 
 	// Only include password in the update if it has changed
@@ -346,7 +354,7 @@ func (r *resourceCMUser) Update(ctx context.Context, req resource.UpdateRequest,
 		if json.Unmarshal([]byte(userResponse), &user) == nil {
 			plan.Nickname = types.StringValue(user.Nickname)
 			plan.Name = types.StringValue(user.Name)
-			plan.Email = types.StringValue(user.Email) 
+			plan.Email = types.StringValue(user.Email)
 		}
 	}
 
