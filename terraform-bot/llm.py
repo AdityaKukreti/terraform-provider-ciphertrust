@@ -25,5 +25,7 @@ def summarize(issue):
 
 def duplicate_reason(issue,cands):
     p='Find true duplicate issues. Return JSON only: {"duplicates":[{"issue_number":0,"confidence":0.0,"reason":""}]}. New: '+issue.get('title','')+'\nCandidates: '+json.dumps(cands)[:5000]
-    try:return json.loads(ask(p)[ask(p).find('{'):ask(p).rfind('}')+1]).get('duplicates',[])
+    try:
+        txt=ask(p);obj=json.loads(txt[txt.find('{'):txt.rfind('}')+1])
+        return obj.get('duplicates',[])
     except Exception:return []
