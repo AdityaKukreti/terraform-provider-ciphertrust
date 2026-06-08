@@ -1,13 +1,8 @@
-import json, os, requests
-
-
-e = json.load(open(os.environ["GITHUB_EVENT_PATH"], encoding="utf-8"))
-r = e["repository"]["full_name"]
-i = e.get("issue")
-if not i or "pull_request" in i:
-    raise SystemExit(0)
-
-t = (i.get("title", "") + " " + (i.get("body") or "")).lower()
-rules = {
-    "bug": ["bug", "error", "fail", "crash"],
-    "enhancement": ["feature
+import json,os,requests as R
+e=json.load(open(os.environ['GITHUB_EVENT_PATH']))
+i=e.get('issue')or{}
+if not i or 'pull_request' in i:quit()
+s=(i.get('title','')+' '+(i.get('body')or'')).lower()
+m={'bug':'bug error fail crash','documentation':'docs documentation readme','enhancement':'feature enhancement improve'}
+l=[k for k,v in m.items()if any(w in s for w in v.split())]
+if l:R.post
