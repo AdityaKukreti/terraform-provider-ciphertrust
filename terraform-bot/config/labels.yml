@@ -1,9 +1,25 @@
 labels:
   bug:
     color: d73a4a
-    description: Something is not working as expected.
-    keywords: [bug, broken, error, exception, panic, crash, fail, failure, regression, unexpected, invalid, unable, cannot]
+    description: Something is not working.
+    keywords:
+      - bug
+      - error
+      - fail
+      - crash
   enhancement:
     color: a2eeef
-    description: New feature or improvement request.
-    keywords: [feature, enhancement, improve, improvement, support, add, request,
+    description: Feature or improvement request.
+    keywords:
+      - feature
+      - enhancement
+      - improve
+  documentation:
+    color: 0075ca
+    description: Documentation or example issue.
+    keywords:
+      - docs
+      - documentation
+      - readme
+  question:
+    color: d876
