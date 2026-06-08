@@ -1065,7 +1065,6 @@ type CTECSIGroupTFSDK struct {
 	ClientProfile types.String                        `tfsdk:"client_profile"`
 	Name          types.String                        `tfsdk:"name"`
 	Description   types.String                        `tfsdk:"description"`
-	ClientList    []types.String                      `tfsdk:"client_list"`
 	OpType        types.String                        `tfsdk:"op_type"`
 	GuardPolicies map[string]CSIGroupGuardPolicyTFSDK `tfsdk:"guard_policies"`
 }
@@ -1077,9 +1076,7 @@ type CTECSIGroupJSON struct {
 	ClientProfile string   `json:"client_profile"`
 	Name          string   `json:"name"`
 	Description   string   `json:"description"`
-	ClientList    []string `json:"client_list"`
 	PolicyList    []string `json:"policy_list"`
-	ClientID      string   `json:"client_id"`
 	GuardEnabled  bool     `json:"guard_enabled"`
 	OpType        string   `json:"op_type"`
 }

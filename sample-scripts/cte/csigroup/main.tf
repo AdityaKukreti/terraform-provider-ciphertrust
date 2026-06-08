@@ -13,6 +13,26 @@ provider "ciphertrust" {
   password = "ChangeMe101!"
 }
 
+# Create CSI Policy
+resource "ciphertrust_cte_policy" "csi_policy1" {
+  name = "csi_policy1"
+  policy_type = "CSI"
+  never_deny  = true 
+  key_rules = [{
+    key_id = "clear_key"
+  }]
+  security_rules = [ {effect = "deny"} ] 
+  description = "Temp CSI policy for testing purpose."
+}
+
+resource "ciphertrust_cte_policy" "csi_policy2" {
+  name = "csi_policy2"
+  policy_type = "CSI"
+  never_deny  = true 
+  security_rules = [ {effect = "permit"} ] 
+  description = "Temp CSI policy for testing purpose."
+}
+
 # Create CSI Group
 resource "ciphertrust_cte_csigroup" "test_csi_group" {
   name                     = "TF_CSI_GROUP"
@@ -22,13 +42,11 @@ resource "ciphertrust_cte_csigroup" "test_csi_group" {
   kubernetes_storage_class = "standard"
 
   description    = "tf test csi group.."
- 
-  guard_policies = {
-        test-csi1 = {},
-        test-csi2 = {},
-        test-csi3 = {},
-  }
 
+  guard_policies = {
+        (ciphertrust_cte_policy.csi_policy1.name) = {},
+        (ciphertrust_cte_policy.csi_policy2.name) = {},
+  }
 
   ############################################################
   # Operation type to perform on the CSI Group
@@ -39,31 +57,17 @@ resource "ciphertrust_cte_csigroup" "test_csi_group" {
   #
   # Supported values:
   # - update                : Update description / client_profile
-  # - add-clients           : Add clients to CSI group
-  # - remove-clients        : Remove clients from CSI group
   # - update-guard-policies : Add/remove/Enable/Disable guard policies
  
-  # op_type = "add-clients/remove-clients/update/update-guard-policies"
+  # op_type = "update/update-guard-policies"
 
-  # List of clients to operate on
-  #
-  # NOTE:
-  # - Used ONLY for client-related operations: op_type = add-clients/remove-clients
-  # - Ignored for other op_type values
-  /*
-  client_list = [
-    "client1",   # Client name / hostname / UUID
-    "client2"
-  ]
-  */
 
   # NOTE:
   # - when op_type = "update-guard-policies" (Using this op_type, we can add new policies or enable/disable/remove existing ones)
 /*
  guard_policies = {
-	test-csi1 = {},
-	test-csi2 = {guard_enabled = false},
-	test-csi3 = {},
+        ciphertrust_cte_policy.csi_policy1.name = {},
+        ciphertrust_cte_policy.csi_policy2.name = {guard_enabled = false},
 }
 */
 
@@ -78,5 +82,6 @@ resource "ciphertrust_cte_csigroup" "test_csi_group" {
   description    = "updated description"
   client_profile = "updated-profile"
 */
+
 
 }

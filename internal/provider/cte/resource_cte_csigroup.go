@@ -11,11 +11,9 @@ import (
 	common "github.com/ThalesGroup/terraform-provider-ciphertrust/internal/provider/common"
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/attr"
-	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/booldefault"
-	"github.com/hashicorp/terraform-plugin-framework/resource/schema/listdefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/mapdefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringdefault"
@@ -60,9 +58,7 @@ func (r *resourceCTECSIGroup) Schema(_ context.Context, _ resource.SchemaRequest
 				Validators: []validator.String{
 					stringvalidator.OneOf([]string{
 						"update",
-						"update-guard-policies",
-						"add-clients",
-						"remove-clients"}...),
+						"update-guard-policies"}...),
 				},
 			},
 			"kubernetes_namespace": schema.StringAttribute{
@@ -88,14 +84,6 @@ func (r *resourceCTECSIGroup) Schema(_ context.Context, _ resource.SchemaRequest
 				Computed:    true,
 				Default:     stringdefault.StaticString(""),
 				Description: "Optional description for the storage group.",
-			},
-			// Add clients to the group
-			"client_list": schema.ListAttribute{
-				Optional:    true,
-				Computed:    true,
-				Default:     listdefault.StaticValue(types.ListValueMust(types.StringType, []attr.Value{})),
-				ElementType: types.StringType,
-				Description: "List of identifiers of clients to be associated with the client group. This identifier can be the name or UUID.",
 			},
 			"guard_policies": schema.MapNestedAttribute{
 				Optional: true,
@@ -321,33 +309,6 @@ func (r *resourceCTECSIGroup) Read(ctx context.Context, req resource.ReadRequest
 
 	state.GuardPolicies = refreshedPolicies
 
-	//get client list of the storage group
-	clientsResponse, err := r.client.GetById(
-		ctx,
-		id,
-		state.ID.ValueString()+"/clients",
-		common.URL_CTE_CSIGROUP,
-	)
-	if err != nil {
-		tflog.Debug(ctx, common.ERR_METHOD_END+err.Error()+" [resource_cte_csigroup.go -> Read]["+id+"]")
-		resp.Diagnostics.AddError(
-			"Error reading CSI Group clients on CipherTrust Manager:",
-			"Could not read clients for CSI Group id: "+state.ID.ValueString()+" unexpected error: "+err.Error(),
-		)
-		return
-	}
-	var clientListJSON CTECSIGroupClientListJSON
-	if err := json.Unmarshal([]byte(clientsResponse), &clientListJSON); err != nil {
-		resp.Diagnostics.AddError("Error parsing clients list response", err.Error())
-		return
-	}
-
-	refreshedClients := make([]types.String, 0, len(clientListJSON.Resources))
-	for _, c := range clientListJSON.Resources {
-		refreshedClients = append(refreshedClients, types.StringValue(c.Name))
-	}
-	state.ClientList = refreshedClients
-
 	tflog.Trace(ctx, common.MSG_METHOD_END+"[resource_cte_csigroup.go -> Read]["+id+"]")
 	diags = resp.State.Set(ctx, state)
 	resp.Diagnostics.Append(diags...)
@@ -378,9 +339,6 @@ func (r *resourceCTECSIGroup) Update(ctx context.Context, req resource.UpdateReq
 				resp.Diagnostics.AddError("Cannot change guard policies using op_type = update.", "Use op_type = update-guard-policies")
 				return
 			}
-			if !reflect.DeepEqual(plan.ClientList, state.ClientList) {
-				resp.Diagnostics.AddError("Cannot update client list using op_type = update", "Use op_type = add-clients/remove-clients")
-			}
 			if plan.Description.ValueString() != "" && plan.Description.ValueString() != types.StringNull().ValueString() {
 				payload.Description = common.TrimString(plan.Description.String())
 			}
@@ -408,23 +366,7 @@ func (r *resourceCTECSIGroup) Update(ctx context.Context, req resource.UpdateReq
 				return
 			}
 			plan.ID = types.StringValue(response)
-		} else if plan.OpType.ValueString() == "add-clients" || plan.OpType.ValueString() == "remove-clients" {
-			if !reflect.DeepEqual(plan.GuardPolicies, state.GuardPolicies) {
-				resp.Diagnostics.AddError("Cannot change guard policies using op_type = add-clients/remove-clients.", "Use op_type = update-guard-policies")
-				return
-			}
-			if plan.Description.ValueString() != state.Description.ValueString() || plan.ClientProfile.ValueString() != state.ClientProfile.ValueString() {
-				resp.Diagnostics.AddError("Cannot change description/Client Profile using op_type = add-clients/remove-clients", "Use op_type = update")
-				return
-			}
-			CSIGroupSyncClients(r, ctx, &plan, &state, &resp.Diagnostics)
-			if resp.Diagnostics.HasError() {
-				return
-			}
 		} else if plan.OpType.ValueString() == "update-guard-policies" {
-			if !reflect.DeepEqual(plan.ClientList, state.ClientList) {
-				resp.Diagnostics.AddError("Cannot update client list using op_type = update-guard-policies", "Use op_type = add-clients/remove-clients")
-			}
 			if plan.Description.ValueString() != state.Description.ValueString() || plan.ClientProfile.ValueString() != state.ClientProfile.ValueString() {
 				resp.Diagnostics.AddError("Cannot change description/Client Profile using op_type = update-guard-policies", "Use op_type = update")
 				return
@@ -555,79 +497,6 @@ func (r *resourceCTECSIGroup) Delete(ctx context.Context, req resource.DeleteReq
 	}
 }
 
-func CSIGroupSyncClients(r *resourceCTECSIGroup, ctx context.Context, plan *CTECSIGroupTFSDK, state *CTECSIGroupTFSDK, diag *diag.Diagnostics) {
-	id := uuid.New().String()
-
-	stateSet := make(map[string]bool)
-	for _, s := range state.ClientList {
-		stateSet[s.ValueString()] = true
-	}
-
-	planSet := make(map[string]bool)
-	for _, s := range plan.ClientList {
-		planSet[s.ValueString()] = true
-	}
-
-	// Find added elements
-	var addedList []string
-	for k := range planSet {
-		if !stateSet[k] {
-			addedList = append(addedList, k)
-		}
-	}
-
-	// Find removed elements
-	var removedList []string
-	for k := range stateSet {
-		if !planSet[k] {
-			removedList = append(removedList, k)
-		}
-	}
-
-	if len(removedList) > 0 {
-		for _, clientID := range removedList {
-			_, err := r.client.DeleteByURL(
-				ctx,
-				plan.ID.ValueString(),
-				common.URL_CTE_CSIGROUP+"/"+plan.ID.ValueString()+"/clients/"+clientID,
-			)
-			if err != nil {
-				tflog.Debug(ctx, common.ERR_METHOD_END+err.Error()+" [resource_cte_csigroup.go -> remove-client]["+plan.ID.ValueString()+"]")
-				diag.AddError(
-					"Error removing client from CSIGroup on CipherTrust Manager: ",
-					"Could not remove client "+clientID+", unexpected error: "+err.Error(),
-				)
-				return
-			}
-			tflog.Debug(ctx, "Removed client: "+clientID)
-		}
-	}
-
-	if len(addedList) > 0 {
-		payload := CTECSIGroupJSON{ClientList: addedList}
-		payloadJSON, err := json.Marshal(payload)
-		if err != nil {
-			tflog.Debug(ctx, common.ERR_METHOD_END+err.Error()+" [resource_cte_csigroup.go -> add-clients]["+plan.ID.ValueString()+"]")
-			diag.AddError("Invalid data input: CSIGroup Add Clients", err.Error())
-			return
-		}
-		_, err = r.client.PostDataV2(
-			ctx,
-			id,
-			common.URL_CTE_CSIGROUP+"/"+plan.ID.ValueString()+"/clients",
-			payloadJSON,
-		)
-		if err != nil {
-			tflog.Debug(ctx, common.ERR_METHOD_END+err.Error()+" [resource_cte_csigroup.go -> add-clients]["+plan.ID.ValueString()+"]")
-			diag.AddError(
-				"Error adding clients to CSIGroup on CipherTrust Manager: ",
-				"Could not add clients, unexpected error: "+err.Error(),
-			)
-			return
-		}
-		tflog.Debug(ctx, fmt.Sprintf("Added clients: %v", addedList))
-	}
-}
 func (d *resourceCTECSIGroup) Configure(_ context.Context, req resource.ConfigureRequest, resp *resource.ConfigureResponse) {
 	if req.ProviderData == nil {
 		return
