@@ -24,3 +24,17 @@ labels:
     keywords:
       - feature
       - enhancement
+      - improve
+      - improvement
+      - support
+      - add
+      - request
+      - should
+      - would like
+
+  documentation:
+    color: 0075ca
+    description: Documentation, examples, or README changes.
+    keywords:
+      - docs
+      -
