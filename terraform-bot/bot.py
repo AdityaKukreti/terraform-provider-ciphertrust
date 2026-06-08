@@ -1,22 +1,13 @@
-import json
-import os
-import re
-from pathlib import Path
-
-import requests
-import yaml
-
-BOT_MARKER = "<!-- terraform-issue-bot -->"
-BASE = "https://api.github.com"
+import json, os, requests
 
 
-def load_event():
-    with open(os.environ["GITHUB_EVENT_PATH"], "r", encoding="utf-8") as f:
-        return json.load(f)
+e = json.load(open(os.environ["GITHUB_EVENT_PATH"], encoding="utf-8"))
+r = e["repository"]["full_name"]
+i = e.get("issue")
+if not i or "pull_request" in i:
+    raise SystemExit(0)
 
-
-def headers():
-    return {
-        "Authorization": f"Bearer {os.environ['GITHUB_TOKEN']}",
-        "Accept": "application/vnd.github+json",
-        "X-GitHub-Api
+t = (i.get("title", "") + " " + (i.get("body") or "")).lower()
+rules = {
+    "bug": ["bug", "error", "fail", "crash"],
+    "enhancement": ["feature
