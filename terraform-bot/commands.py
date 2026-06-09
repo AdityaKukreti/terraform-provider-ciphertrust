@@ -3,11 +3,13 @@ import os
 import urllib.request
 import llm
 import labeler
+import triage
+import github_api as gh
 ALLOWED={'OWNER','MEMBER','COLLABORATOR'}
 TRIGGERS=('@ciphertrust-bot',)
 FEATURES_URL='https://github.com/AdityaKukreti/terraform-provider-ciphertrust/blob/main/terraform-bot/FEATURES.md'
-HELP='''Terraform bot commands:\n- `@ciphertrust-bot help`\n- `@ciphertrust-bot features` show available bot features and config guide\n- `@ciphertrust-bot label` auto-detect labels\n- `@ciphertrust-bot label bug` add one label manually\n- `@ciphertrust-bot needs-repro`\n- `@ciphertrust-bot duplicate #123`\n- `@ciphertrust-bot summarize`\n- `@ciphertrust-bot groq-check`\n'''
-FEATURES='''CipherTrust Terraform Bot features:\n\n1. Auto-label issues from title/body\n2. Auto-label PRs from title/body/changed files\n3. Maintainer commands through `@ciphertrust-bot ...`\n4. Duplicate issue detection\n5. Helpful next-step PR comments\n6. Stale PR and issue cleanup\n7. Reviewer assignment by folder ownership\n8. Safe auto-merge, disabled by default\n9. Groq-backed summaries and checks\n\nFull feature and configuration guide:\n'''+FEATURES_URL
+HELP='''Terraform bot commands:\n- `@ciphertrust-bot help`\n- `@ciphertrust-bot features` show available bot features and config guide\n- `@ciphertrust-bot risk` show deterministic risk assessment\n- `@ciphertrust-bot label` auto-detect labels\n- `@ciphertrust-bot label bug` add one label manually\n- `@ciphertrust-bot needs-repro`\n- `@ciphertrust-bot duplicate #123`\n- `@ciphertrust-bot summarize`\n- `@ciphertrust-bot groq-check`\n'''
+FEATURES='''CipherTrust Terraform Bot features:\n\n1. Auto-label issues from title/body\n2. Auto-label PRs from title/body/changed files\n3. Missing test detector for provider/internal code changes\n4. Missing docs/examples detector for user-facing changes\n5. Terraform provider-specific labels: auth, provider-config, resource, data-source, key-management, regression\n6. Issue quality triage: needs-info and needs-repro\n7. Maintainer commands through `@ciphertrust-bot ...`\n8. Duplicate issue detection with keyword search, error/resource signals, and optional Groq reasoning\n9. Helpful next-step PR comments\n10. First-time contributor PR comments\n11. Stale PR and issue cleanup\n12. Reviewer assignment by folder ownership\n13. Safe auto-merge, disabled by default\n14. Groq-backed summaries and checks\n\nFull feature and configuration guide:\n'''+FEATURES_URL
 
 def log(msg):
     print('[terraform-bot][commands] '+msg,flush=True)
@@ -51,6 +53,15 @@ def label_result(n,labels):
     if failed:parts.append('Failed labels: '+', '.join(failed))
     return comment(n,'\n'.join(parts) if parts else 'No labels changed.')
 
+def risk_result(issue):
+    files=[]
+    if 'pull_request' in issue:
+        try:
+            files=gh.pr_files(issue['number'])
+        except Exception as e:
+            log('failed fetching PR files for risk command: '+type(e).__name__+': '+str(e)[:300])
+    return triage.risk_markdown(issue,files)
+
 def run(issue,c):
     p=parse_command(c.get('body',''))
     if p is None:
@@ -64,6 +75,8 @@ def run(issue,c):
     cmd=p[0]
     if cmd in ('features','docs','guide'):
         return comment(n,FEATURES)
+    if cmd=='risk':
+        return comment(n,risk_result(issue))
     if cmd=='groq-check':return comment(n,llm.status())
     if cmd=='summarize':
         msg=llm.summarize(issue) or ('LLM summary unavailable. '+llm.LAST_ERROR)
