@@ -2,28 +2,16 @@ import os
 import fnmatch
 import github_api as gh
 import labeler
+import triage
 
 AUTO_MERGE=os.getenv('BOT_AUTO_MERGE','false').lower()=='true'
 AUTO_MERGE_LABEL=os.getenv('BOT_AUTO_MERGE_LABEL','automerge')
 AUTO_MERGE_METHOD=os.getenv('BOT_AUTO_MERGE_METHOD','squash')
 TRUSTED_ASSOCIATIONS={'OWNER','MEMBER','COLLABORATOR'}
 SAFE_AUTHOR_ASSOCIATIONS=set(os.getenv('BOT_AUTO_MERGE_TRUSTED_ASSOCIATIONS','OWNER,MEMBER,COLLABORATOR').split(','))
-HIGH_RISK_PATTERNS=[
-    '.github/workflows/**',
-    'terraform-bot/**',
-    'go.mod',
-    'go.sum',
-    '**/*auth*',
-    '**/*credential*',
-    '**/*token*',
-    '**/*secret*',
-]
-LOW_RISK_PATTERNS=[
-    'docs/**',
-    'examples/**',
-    '*.md',
-    '**/*.md',
-]
+HIGH_RISK_PATTERNS=triage.HIGH_RISK_PATTERNS
+LOW_RISK_PATTERNS=triage.DOC_PATTERNS
+FIRST_TIMER_ASSOCIATIONS={'FIRST_TIMER','FIRST_TIME_CONTRIBUTOR'}
 
 # Simple ownership map. Replace reviewers with real GitHub usernames when ready.
 OWNERS={
@@ -53,6 +41,7 @@ def labels_from_files(files):
             labels.add('provider')
         if 'test' in low:
             labels.add('tests')
+    labels.update(triage.provider_labels_from_files(files))
     return sorted(labels)
 
 
@@ -110,6 +99,17 @@ def checks_green(sha):
     if bad:
         return False,'checks failed: '+', '.join(bad[:5])
     return True,'checks passed'
+
+
+def first_time_contributor_comment(pr):
+    if pr.get('author_association') not in FIRST_TIMER_ASSOCIATIONS:
+        return
+    body=(
+        'Thanks for your first contribution to this repository.\n\n'
+        'A maintainer will review it soon. Please make sure the PR description includes what changed, why it changed, and how it was tested.\n\n'
+        '_Handled by ciphertrust-bot._'
+    )
+    gh.add_comment(pr['number'],body)
 
 
 def next_steps(pr,files,labels):
@@ -180,7 +180,9 @@ def try_auto_merge(pr,files):
 def run(pr,action):
     num=pr['number']
     files=gh.pr_files(num)
-    labels=sorted(set(labeler.suggest(pr)+labels_from_files(files)))
+    risk=triage.risk_report(pr,files)
+    missing_labels,missing_reasons=triage.missing_tests_docs(files)
+    labels=sorted(set(labeler.suggest(pr)+labels_from_files(files)+risk.get('labels',[])+missing_labels))
     if labels:
         for l in labels:
             gh.ensure_label(l)
@@ -193,4 +195,14 @@ def run(pr,action):
             gh.log('reviewers','failed requesting reviewers on PR #'+str(num)+': '+type(e).__name__+': '+str(e)[:300])
     if action=='opened':
         next_steps(pr,files,labels)
+        try:
+            first_time_contributor_comment(pr)
+        except Exception as e:
+            gh.log('first-time','failed first-time contributor comment on PR #'+str(num)+': '+type(e).__name__+': '+str(e)[:300])
+    quality_msg=triage.pr_quality_comment(missing_reasons,risk)
+    if quality_msg and action in ('opened','synchronize','ready_for_review'):
+        try:
+            gh.add_comment(num,quality_msg)
+        except Exception as e:
+            gh.log('quality','failed PR quality comment on #'+str(num)+': '+type(e).__name__+': '+str(e)[:300])
     try_auto_merge(pr,files)
