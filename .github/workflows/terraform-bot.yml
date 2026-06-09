@@ -5,11 +5,14 @@ on:
     types: [opened, edited]
   issue_comment:
     types: [created]
+  schedule:
+    - cron: '0 3 * * *'
+  workflow_dispatch:
 
 permissions:
   contents: read
   issues: write
-  pull-requests: read
+  pull-requests: write
 
 jobs:
   terraform-bot:
@@ -34,6 +37,8 @@ jobs:
           GH_TOKEN: ${{ secrets.CIPHERBOT_PAT }}
           GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
           GROQ_MODEL: llama-3.1-8b-instant
+          STALE_PR_DAYS: '30'
+          STALE_PR_LABEL: stale
           GITHUB_EVENT_NAME: ${{ github.event_name }}
           GITHUB_EVENT_PATH: ${{ github.event_path }}
         run: python terraform-bot/bot.py
