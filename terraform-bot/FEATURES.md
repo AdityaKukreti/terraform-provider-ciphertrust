@@ -21,13 +21,47 @@ The workflow currently runs on:
 - `schedule`: daily at `03:00 UTC`
 - `workflow_dispatch`: manual run from the Actions UI
 
+## Command quick reference
+
+```text
+@ciphertrust-bot help
+@ciphertrust-bot features
+@ciphertrust-bot risk
+@ciphertrust-bot label
+@ciphertrust-bot label bug
+@ciphertrust-bot needs-repro
+@ciphertrust-bot duplicate #123
+@ciphertrust-bot summarize
+@ciphertrust-bot groq-check
+```
+
+Only maintainers/collaborators can run commands. `/bot` and `@cipherbot` are intentionally not supported.
+
+## AI usage
+
+The bot is mostly deterministic and auditable. AI/Groq is only used for:
+
+- optional issue label classification
+- issue/PR summaries
+- duplicate issue reasoning
+
+The following features are deterministic and do not depend on AI:
+
+- stale closing
+- missing tests/docs detection
+- risk scoring
+- reviewer assignment
+- safe auto-merge gates
+- first-time contributor comments
+- command parsing
+
 ## 1. Auto-label issues
 
-**Where:** `terraform-bot/labeler.py`
+**Where:** `terraform-bot/labeler.py`, `terraform-bot/triage.py`
 
-When an issue is opened or edited, the bot reads the issue title and body, then applies labels based on keyword rules and optional LLM classification.
+When an issue is opened or edited, the bot reads the issue title/body and applies labels using keyword rules, provider-specific rules, and optional Groq classification.
 
-Current examples:
+Examples:
 
 | Signal | Label |
 | --- | --- |
@@ -35,12 +69,15 @@ Current examples:
 | `docs`, `readme`, `example` | `documentation` |
 | `feature`, `enhance`, `improve` | `enhancement` |
 | `how`, `why`, `question`, `help` | `question` |
-
-The bot also ensures known labels exist before applying them where supported.
+| `auth`, `token`, `credential`, `unauthorized` | `auth`, `security-review-required` |
+| `provider config`, `provider block` | `provider-config` |
+| `resource`, `data source` | `resource`, `data-source` |
+| `key`, `kms`, `encrypt`, `decrypt`, `rotation` | `key-management` |
+| `regression`, `worked before`, `after upgrade` | `regression` |
 
 ## 2. Auto-label PRs from title, body, and changed files
 
-**Where:** `terraform-bot/pr_bot.py`
+**Where:** `terraform-bot/pr_bot.py`, `terraform-bot/triage.py`
 
 When a PR is opened, edited, synchronized, reopened, marked ready, or labeled, the bot looks at:
 
@@ -57,10 +94,94 @@ File-based labels include:
 | `.github/**` | `ci` |
 | `*.go` | `go` |
 | `*.tf` | `terraform` |
-| files containing `provider` | `provider` |
-| files containing `test` | `tests` |
+| `provider/**`, `*provider*` | `provider`, `provider-config` |
+| `resource_*.go` | `resource` |
+| `data_source_*.go` | `data-source` |
+| `*_test.go`, `*acctest*` | `tests`, `acceptance-test` |
+| `go.mod`, `go.sum` | `dependencies` |
 
-## 3. Maintainer commands
+## 3. Missing test detector
+
+**Where:** `terraform-bot/triage.py`, `terraform-bot/pr_bot.py`
+
+If a PR changes provider/internal Go code but does not change tests, the bot applies:
+
+```text
+needs-tests
+```
+
+It also comments with the reason, for example:
+
+```text
+provider/internal Go code changed but no test files were changed
+```
+
+This is deterministic and does not use AI.
+
+## 4. Missing docs/examples detector
+
+**Where:** `terraform-bot/triage.py`, `terraform-bot/pr_bot.py`
+
+If a PR appears to change user-facing provider/resource behavior but does not update docs or examples, the bot applies:
+
+```text
+needs-docs
+```
+
+It comments with the reason, for example:
+
+```text
+user-facing provider/resource behavior may have changed but docs/examples were not updated
+```
+
+This is deterministic and does not use AI.
+
+## 5. Terraform provider-specific labeler
+
+**Where:** `terraform-bot/triage.py`
+
+The bot now understands provider-specific areas:
+
+```text
+auth
+provider-config
+ciphertrust-manager
+key-management
+resource
+data-source
+regression
+acceptance-test
+security-review-required
+breaking-change
+risk/high
+risk/medium
+risk/low
+```
+
+These labels are derived from title/body text and changed file paths.
+
+## 6. Auto-triage issue quality
+
+**Where:** `terraform-bot/triage.py`, `terraform-bot/labeler.py`
+
+For issues, the bot checks whether the report includes signals for:
+
+- Terraform version
+- Provider version
+- Steps to reproduce
+- Expected behavior
+- Actual behavior or error output
+
+If details are missing, it applies:
+
+```text
+needs-info
+needs-repro
+```
+
+and comments asking the author to add the missing details.
+
+## 7. Maintainer commands
 
 **Where:** `terraform-bot/commands.py`
 
@@ -70,6 +191,8 @@ Supported commands:
 
 ```text
 @ciphertrust-bot help
+@ciphertrust-bot features
+@ciphertrust-bot risk
 @ciphertrust-bot label
 @ciphertrust-bot label bug
 @ciphertrust-bot needs-repro
@@ -78,25 +201,54 @@ Supported commands:
 @ciphertrust-bot groq-check
 ```
 
-Notes:
+## 8. Risk command
 
-- `/bot` and `@cipherbot` have intentionally been removed.
-- The only supported trigger is `@ciphertrust-bot`.
+**Where:** `terraform-bot/commands.py`, `terraform-bot/triage.py`
 
-## 4. Duplicate issue detection
+Use:
+
+```text
+@ciphertrust-bot risk
+```
+
+On issues, it reads the title/body. On PRs, it also reads changed files.
+
+It returns:
+
+- risk level: `low`, `medium`, `high`, or `unknown`
+- reasons
+- suggested risk/security labels
+
+Risk examples:
+
+| Signal | Risk result |
+| --- | --- |
+| docs/examples only | `risk/low` |
+| provider/internal Go code | `risk/medium` |
+| auth/token/credential/secret/TLS files or wording | `risk/high`, `security-review-required` |
+| workflow/bot/go.mod/go.sum changes | `risk/high` |
+| breaking-change wording | `risk/high`, `breaking-change` |
+
+## 9. Duplicate issue detection
 
 **Where:** `terraform-bot/duplicates.py`
 
-When a new issue is opened, the bot searches existing issues using important words from the issue title.
+When a new issue is opened, the bot searches existing issues using:
+
+- title keywords
+- body keywords
+- Terraform resource/data-source names
+- auth/token/error signals
+- similar error wording
 
 It then tries:
 
-1. LLM duplicate reasoning using Groq, if available.
-2. Fallback title-similarity scoring.
+1. Groq duplicate reasoning, if available.
+2. Deterministic fallback scoring using overlapping words, resources, auth signals, and error wording.
 
-If possible duplicates are found, the bot comments with a short list of candidate issues.
+If possible duplicates are found, the bot comments with candidate issues.
 
-## 5. Helpful next-step comments
+## 10. Helpful next-step PR comments
 
 **Where:** `terraform-bot/pr_bot.py`
 
@@ -106,29 +258,29 @@ When a PR is opened, the bot comments with a first-pass maintainer checklist:
 - confirm docs/examples are updated if user-facing behavior changed
 - wait for CI to pass before merge
 
-This gives contributors and maintainers a consistent checklist early in the PR lifecycle.
+## 11. First-time contributor comments
 
-## 6. Stale PR and stale issue cleanup
+**Where:** `terraform-bot/pr_bot.py`
+
+If GitHub marks the PR author as `FIRST_TIMER` or `FIRST_TIME_CONTRIBUTOR`, the bot posts a friendly onboarding comment asking for:
+
+- what changed
+- why it changed
+- how it was tested
+
+This is deterministic and does not use AI.
+
+## 12. Stale PR and stale issue cleanup
 
 **Where:** `terraform-bot/stale_prs.py`
 
 The scheduled/manual stale job scans open PRs and issues.
 
-### PR behavior
-
-If a PR has had no activity beyond the configured threshold, the bot:
+If a PR or issue has had no activity beyond the configured threshold, the bot:
 
 1. Adds the stale label.
 2. Comments explaining why it is being closed.
-3. Closes the PR.
-
-### Issue behavior
-
-If an issue has had no activity beyond the configured threshold, the bot:
-
-1. Adds the stale label.
-2. Comments explaining why it is being closed.
-3. Closes the issue.
+3. Closes it.
 
 ### Configuration
 
@@ -158,7 +310,7 @@ stale_pr_minutes = 5
 
 That closes PRs inactive for 5+ minutes. Leave `stale_pr_minutes` empty in normal use.
 
-## 7. Reviewer assignment by folder ownership
+## 13. Reviewer assignment by folder ownership
 
 **Where:** `terraform-bot/pr_bot.py`
 
@@ -188,7 +340,7 @@ OWNERS={
 
 When a changed file matches a pattern, the bot requests those reviewers.
 
-## 8. Safe auto-merge
+## 14. Safe auto-merge
 
 **Where:** `terraform-bot/pr_bot.py`
 
@@ -227,6 +379,7 @@ go.sum
 **/*credential*
 **/*token*
 **/*secret*
+**/*tls*
 ```
 
 ### Low-risk files
@@ -240,9 +393,9 @@ examples/**
 **/*.md
 ```
 
-This is intentional. For now, provider code and security-sensitive areas should require human merge.
+This is intentional. Provider code and security-sensitive areas should require human merge.
 
-## 9. Groq-backed summaries and checks
+## 15. Groq-backed summaries and checks
 
 **Where:** `terraform-bot/llm.py`
 
@@ -257,6 +410,45 @@ use Groq when `GROQ_API_KEY` is configured.
 
 `groq-check` verifies that the key/model path is working.
 
+## Natural-language command support: recommended design
+
+Natural language should be added as a controlled intent router, not as direct LLM-to-GitHub mutation.
+
+Recommended flow:
+
+1. Comment starts with `@ciphertrust-bot`.
+2. Existing explicit commands are checked first.
+3. If no explicit command matches, send the remaining text to an LLM intent classifier.
+4. The LLM returns a strict JSON intent, for example:
+
+```json
+{
+  "intent": "apply_label",
+  "confidence": 0.86,
+  "args": {"label": "needs-tests"}
+}
+```
+
+5. The bot validates the intent against an allowlist.
+6. The bot validates the user is a maintainer/collaborator.
+7. The bot executes only safe mapped functions.
+8. If confidence is low, the bot asks for clarification instead of acting.
+
+Recommended allowed intents:
+
+```text
+show_help
+show_features
+summarize
+risk
+label
+needs_repro
+mark_duplicate
+triage
+```
+
+Do not allow natural language to directly trigger destructive actions like closing issues, merging PRs, or changing workflow files without explicit command syntax and strict confirmation.
+
 ## Testing checklist
 
 ### Test command parsing
@@ -269,6 +461,22 @@ Comment on an issue:
 
 Expected: bot replies with supported commands.
 
+### Test features command
+
+```text
+@ciphertrust-bot features
+```
+
+Expected: bot replies with feature summary and link to this file.
+
+### Test risk command
+
+```text
+@ciphertrust-bot risk
+```
+
+Expected: bot replies with deterministic risk level and reasons.
+
 ### Test label detection
 
 Create or edit an issue with text like:
@@ -277,19 +485,31 @@ Create or edit an issue with text like:
 Terraform plan fails with authentication token error
 ```
 
-Expected: bot applies `bug`.
+Expected: bot applies `bug`, `auth`, and possibly `security-review-required`.
+
+### Test issue quality triage
+
+Create an issue without reproduction steps or version details.
+
+Expected: bot applies `needs-info` / `needs-repro` and asks for missing details.
 
 ### Test duplicate detection
 
-Create a new issue with a title similar to an older issue.
+Create a new issue with a title/body/error similar to an older issue.
 
 Expected: bot comments with possible duplicate issues.
 
-### Test PR labeling
+### Test PR labeling and quality checks
 
-Open a PR that changes `docs/` or `examples/`.
+Open a PR that changes `provider/*.go` without tests/docs.
 
-Expected: bot applies `documentation` or `examples` labels and posts a maintainer checklist.
+Expected: bot applies provider-specific labels plus `needs-tests` and possibly `needs-docs`.
+
+### Test first-time contributor comment
+
+Open a PR from an account GitHub marks as first-time contributor.
+
+Expected: bot posts onboarding guidance.
 
 ### Test stale PR cleanup in minutes
 
@@ -323,3 +543,4 @@ The bot is intentionally conservative:
 - High-risk files always block auto-merge.
 - Commands only run for maintainers/collaborators.
 - Stale cleanup is scheduled but configurable.
+- Natural-language command support should be added with allowlisted intents only.
