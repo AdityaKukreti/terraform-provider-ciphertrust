@@ -78,6 +78,10 @@ def close_pr(pr_number):
     log('prs','closed PR #'+str(pr_number))
 
 
+def get_pr(pr_number):
+    return api('/pulls/'+str(pr_number),area='prs')
+
+
 def list_open_prs():
     prs=[]; page=1
     while True:
@@ -109,6 +113,25 @@ def pr_files(pr_number):
         if len(batch)<100:break
         page+=1
     return files
+
+
+def pr_reviews(pr_number):
+    reviews=[]; page=1
+    while True:
+        batch=api('/pulls/'+str(pr_number)+'/reviews?per_page=100&page='+str(page),area='reviews')
+        if not batch:break
+        reviews.extend(batch)
+        if len(batch)<100:break
+        page+=1
+    return reviews
+
+
+def combined_status(sha):
+    return api('/commits/'+sha+'/status',area='status')
+
+
+def check_runs(sha):
+    return api('/commits/'+sha+'/check-runs',area='checks').get('check_runs',[])
 
 
 def request_reviewers(pr_number,reviewers):
