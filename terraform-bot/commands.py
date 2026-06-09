@@ -1,12 +1,11 @@
 import json
 import os
-import subprocess as s
 import urllib.request
 import llm
 import labeler
 ALLOWED={'OWNER','MEMBER','COLLABORATOR'}
-TRIGGERS=('/bot','@cipherbot','@ciphertrust-bot')
-HELP='''Terraform bot commands:\n- `/bot help`, `@cipherbot help`, or `@ciphertrust-bot help`\n- `/bot label`, `@cipherbot label`, or `@ciphertrust-bot label` auto-detect labels\n- `/bot label bug`, `@cipherbot label bug`, or `@ciphertrust-bot label bug` add one label manually\n- `/bot needs-repro`, `@cipherbot needs-repro`, or `@ciphertrust-bot needs-repro`\n- `/bot duplicate #123`, `@cipherbot duplicate #123`, or `@ciphertrust-bot duplicate #123`\n- `/bot summarize`, `@cipherbot summarize`, or `@ciphertrust-bot summarize`\n- `/bot groq-check`, `@cipherbot groq-check`, or `@ciphertrust-bot groq-check`\n'''
+TRIGGERS=('@ciphertrust-bot',)
+HELP='''Terraform bot commands:\n- `@ciphertrust-bot help`\n- `@ciphertrust-bot label` auto-detect labels\n- `@ciphertrust-bot label bug` add one label manually\n- `@ciphertrust-bot needs-repro`\n- `@ciphertrust-bot duplicate #123`\n- `@ciphertrust-bot summarize`\n- `@ciphertrust-bot groq-check`\n'''
 
 def log(msg):
     print('[terraform-bot][commands] '+msg,flush=True)
