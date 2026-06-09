@@ -4,14 +4,16 @@ import urllib.parse
 import urllib.request
 from datetime import datetime, timezone
 
-STALE_DAYS=int(os.getenv('STALE_PR_DAYS','30'))
+STALE_PR_DAYS=int(os.getenv('STALE_PR_DAYS','30'))
+STALE_ISSUE_DAYS=int(os.getenv('STALE_ISSUE_DAYS','60'))
 STALE_MINUTES=os.getenv('STALE_PR_MINUTES','').strip()
-STALE_LABEL=os.getenv('STALE_PR_LABEL','stale')
-BOT_NAME='terraform-bot/stale-prs'
+STALE_PR_LABEL=os.getenv('STALE_PR_LABEL','stale')
+STALE_ISSUE_LABEL=os.getenv('STALE_ISSUE_LABEL','stale')
+BOT_NAME='terraform-bot/stale'
 
 
 def log(msg):
-    print('[terraform-bot][stale-prs] '+msg,flush=True)
+    print('[terraform-bot][stale] '+msg,flush=True)
 
 
 def token():
@@ -40,37 +42,46 @@ def api(path,method='GET',body=None):
         return json.loads(raw) if raw else None
 
 
-def threshold_seconds():
+def pr_threshold_seconds():
     if STALE_MINUTES:
         return int(STALE_MINUTES)*60,'minute(s)',int(STALE_MINUTES)
-    return STALE_DAYS*24*60*60,'day(s)',STALE_DAYS
+    return STALE_PR_DAYS*24*60*60,'day(s)',STALE_PR_DAYS
 
 
-def ensure_label():
+def issue_threshold_seconds():
+    return STALE_ISSUE_DAYS*24*60*60,'day(s)',STALE_ISSUE_DAYS
+
+
+def ensure_label(label,description):
     try:
-        api('/labels/'+urllib.parse.quote(STALE_LABEL),method='GET')
+        api('/labels/'+urllib.parse.quote(label),method='GET')
         return
     except Exception:
         pass
     try:
         api('/labels',method='POST',body={
-            'name':STALE_LABEL,
+            'name':label,
             'color':'d73a4a',
-            'description':'PR closed automatically after long inactivity'
+            'description':description
         })
-        log('created label '+STALE_LABEL)
+        log('created label '+label)
     except Exception as e:
-        log('could not create label '+STALE_LABEL+': '+type(e).__name__+': '+str(e)[:300])
+        log('could not create label '+label+': '+type(e).__name__+': '+str(e)[:300])
 
 
-def comment(issue_number,body):
+def comment(issue_number,body,kind):
     api('/issues/'+str(issue_number)+'/comments',method='POST',body={'body':body})
-    log('commented on PR #'+str(issue_number))
+    log('commented on '+kind+' #'+str(issue_number))
 
 
-def add_label(issue_number):
-    api('/issues/'+str(issue_number)+'/labels',method='POST',body={'labels':[STALE_LABEL]})
-    log('added label '+STALE_LABEL+' to PR #'+str(issue_number))
+def add_label(issue_number,label,kind):
+    api('/issues/'+str(issue_number)+'/labels',method='POST',body={'labels':[label]})
+    log('added label '+label+' to '+kind+' #'+str(issue_number))
+
+
+def close_issue(issue_number,kind='issue'):
+    api('/issues/'+str(issue_number),method='PATCH',body={'state':'closed'})
+    log('closed '+kind+' #'+str(issue_number))
 
 
 def close_pr(pr_number):
@@ -93,6 +104,17 @@ def list_open_prs():
     return prs
 
 
+def list_open_issues():
+    items=[]; page=1
+    while True:
+        batch=api('/issues?state=open&sort=updated&direction=asc&per_page=100&page='+str(page))
+        if not batch:break
+        items.extend([x for x in batch if 'pull_request' not in x])
+        if len(batch)<100:break
+        page+=1
+    return items
+
+
 def human_age(seconds):
     minutes=int(seconds//60)
     if minutes<60:return str(minutes)+' minute(s)'
@@ -101,10 +123,9 @@ def human_age(seconds):
     return str(int(hours//24))+' day(s)'
 
 
-def run():
-    now=datetime.now(timezone.utc)
-    threshold,unit,value=threshold_seconds()
-    ensure_label()
+def handle_prs(now):
+    threshold,unit,value=pr_threshold_seconds()
+    ensure_label(STALE_PR_LABEL,'PR closed automatically after long inactivity')
     prs=list_open_prs()
     log('scanning '+str(len(prs))+' open PR(s); stale threshold='+str(value)+' '+unit)
     closed=0
@@ -123,10 +144,46 @@ def run():
             '_Handled by ciphertrust-bot._'
         )
         try:
-            add_label(num)
-            comment(num,body)
+            add_label(num,STALE_PR_LABEL,'PR')
+            comment(num,body,'PR')
             close_pr(num)
             closed+=1
         except Exception as e:
             log('failed handling PR #'+str(num)+': '+type(e).__name__+': '+str(e)[:500])
     log('stale PR scan complete; closed='+str(closed))
+
+
+def handle_issues(now):
+    threshold,unit,value=issue_threshold_seconds()
+    ensure_label(STALE_ISSUE_LABEL,'Issue closed automatically after long inactivity')
+    issues=list_open_issues()
+    log('scanning '+str(len(issues))+' open issue(s); stale threshold='+str(value)+' '+unit)
+    closed=0
+    for issue in issues:
+        num=issue['number']
+        updated=parse_time(issue['updated_at'])
+        age_seconds=(now-updated).total_seconds()
+        title=issue.get('title','')
+        if age_seconds<threshold:
+            log('skip issue #'+str(num)+' age='+human_age(age_seconds)+' title='+title)
+            continue
+        body=(
+            'Closing this issue automatically because it has had no activity for '
+            +human_age(age_seconds)+'.\n\n'
+            'If this is still relevant, please reopen it with updated details.\n\n'
+            '_Handled by ciphertrust-bot._'
+        )
+        try:
+            add_label(num,STALE_ISSUE_LABEL,'issue')
+            comment(num,body,'issue')
+            close_issue(num,'issue')
+            closed+=1
+        except Exception as e:
+            log('failed handling issue #'+str(num)+': '+type(e).__name__+': '+str(e)[:500])
+    log('stale issue scan complete; closed='+str(closed))
+
+
+def run():
+    now=datetime.now(timezone.utc)
+    handle_prs(now)
+    handle_issues(now)
