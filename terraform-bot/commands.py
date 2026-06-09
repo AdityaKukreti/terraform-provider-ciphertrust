@@ -5,7 +5,9 @@ import llm
 import labeler
 ALLOWED={'OWNER','MEMBER','COLLABORATOR'}
 TRIGGERS=('@ciphertrust-bot',)
-HELP='''Terraform bot commands:\n- `@ciphertrust-bot help`\n- `@ciphertrust-bot label` auto-detect labels\n- `@ciphertrust-bot label bug` add one label manually\n- `@ciphertrust-bot needs-repro`\n- `@ciphertrust-bot duplicate #123`\n- `@ciphertrust-bot summarize`\n- `@ciphertrust-bot groq-check`\n'''
+FEATURES_URL='https://github.com/AdityaKukreti/terraform-provider-ciphertrust/blob/main/terraform-bot/FEATURES.md'
+HELP='''Terraform bot commands:\n- `@ciphertrust-bot help`\n- `@ciphertrust-bot features` show available bot features and config guide\n- `@ciphertrust-bot label` auto-detect labels\n- `@ciphertrust-bot label bug` add one label manually\n- `@ciphertrust-bot needs-repro`\n- `@ciphertrust-bot duplicate #123`\n- `@ciphertrust-bot summarize`\n- `@ciphertrust-bot groq-check`\n'''
+FEATURES='''CipherTrust Terraform Bot features:\n\n1. Auto-label issues from title/body\n2. Auto-label PRs from title/body/changed files\n3. Maintainer commands through `@ciphertrust-bot ...`\n4. Duplicate issue detection\n5. Helpful next-step PR comments\n6. Stale PR and issue cleanup\n7. Reviewer assignment by folder ownership\n8. Safe auto-merge, disabled by default\n9. Groq-backed summaries and checks\n\nFull feature and configuration guide:\n'''+FEATURES_URL
 
 def log(msg):
     print('[terraform-bot][commands] '+msg,flush=True)
@@ -60,6 +62,8 @@ def run(issue,c):
         return comment(n,'Only repo collaborators can run bot commands.')
     if len(p)<1 or p[0]=='help':return comment(n,HELP)
     cmd=p[0]
+    if cmd in ('features','docs','guide'):
+        return comment(n,FEATURES)
     if cmd=='groq-check':return comment(n,llm.status())
     if cmd=='summarize':
         msg=llm.summarize(issue) or ('LLM summary unavailable. '+llm.LAST_ERROR)
