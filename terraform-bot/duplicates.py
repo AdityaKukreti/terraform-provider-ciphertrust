@@ -1,5 +1,6 @@
 import json,subprocess as s
 import llm
+import github_api as gh
 STOP=set('the a an and or to of for in on with when from into this that is are be by'.split())
 
 def words(x):
@@ -27,4 +28,7 @@ def run(issue):
             score=len(base&words(x['title']))/max(1,len(base|words(x['title'])))
             if score>=.35:msg.append('- #'+str(x['number'])+' '+x['title']+' '+x['url'])
     if msg:
-        s.run(['gh','issue','comment',str(issue['number']),'--body','Possible duplicate issues:\n'+'\n'.join(msg[:3])],check=False)
+        try:
+            gh.add_comment(issue['number'],'Possible duplicate issues:\n'+'\n'.join(msg[:3]))
+        except Exception as e:
+            gh.log('duplicates','failed commenting on #'+str(issue['number'])+': '+type(e).__name__+': '+str(e)[:300])
