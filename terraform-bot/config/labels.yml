@@ -1,0 +1,23 @@
+labels:
+  bug:
+    color: d73a4a
+    description: Something is not working.
+    keywords:
+      - bug
+      - error
+      - fail
+      - crash
+  enhancement:
+    color: a2eeef
+    description: Feature or improvement request.
+    keywords:
+      - feature
+      - enhancement
+      - improve
+  documentation:
+    color: 0075ca
+    description: Documentation or example issue.
+    keywords:
+      - docs
+      - documentation
+      - readme
