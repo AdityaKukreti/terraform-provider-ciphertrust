@@ -8,11 +8,71 @@ import github_api as gh
 ALLOWED={'OWNER','MEMBER','COLLABORATOR'}
 TRIGGERS=('@ciphertrust-bot',)
 FEATURES_URL='https://github.com/AdityaKukreti/terraform-provider-ciphertrust/blob/main/terraform-bot/FEATURES.md'
-HELP='''Terraform bot commands:\n- `@ciphertrust-bot help`\n- `@ciphertrust-bot features` show available bot features and config guide\n- `@ciphertrust-bot risk` show deterministic risk assessment\n- `@ciphertrust-bot label` auto-detect labels\n- `@ciphertrust-bot label bug` add one label manually\n- `@ciphertrust-bot check-labels` safely check missing/wrong bot-managed labels\n- `@ciphertrust-bot clean-labels` remove only inappropriate bot-managed labels\n- `@ciphertrust-bot triage` re-run labels and issue quality checks\n- `@ciphertrust-bot needs-repro`\n- `@ciphertrust-bot duplicate #123`\n- `@ciphertrust-bot summarize`\n- `@ciphertrust-bot groq-check`\n\nNatural language examples:\n- `@ciphertrust-bot can you check the labels?`\n- `@ciphertrust-bot clean up wrong labels`\n- `@ciphertrust-bot what is the risk here?`\n- `@ciphertrust-bot can you summarize this?`\n'''
-FEATURES='''CipherTrust Terraform Bot features:\n\n1. Auto-label issues from title/body\n2. Auto-label PRs from title/body/changed files\n3. Missing test detector for provider/internal code changes\n4. Missing docs/examples detector for user-facing changes\n5. Terraform provider-specific labels: auth, provider-config, resource, data-source, key-management, regression\n6. Issue quality triage: needs-info and needs-repro\n7. Safe label checking: adds missing bot-managed labels, reports questionable ones\n8. Conservative label cleanup: removes only inappropriate bot-managed labels when explicitly requested\n9. Maintainer commands through `@ciphertrust-bot ...`\n10. Duplicate issue detection with keyword search, error/resource signals, and optional Groq reasoning\n11. Helpful next-step PR comments\n12. First-time contributor PR comments\n13. Stale PR and issue cleanup\n14. Reviewer assignment by folder ownership\n15. Safe auto-merge, disabled by default\n16. Groq-backed summaries, checks, and safe natural-language intent routing\n\nFull feature and configuration guide:\n'''+FEATURES_URL
+HELP='''## CipherTrust Bot Commands
+
+| Command | Purpose |
+| --- | --- |
+| `@ciphertrust-bot help` | Show this help message |
+| `@ciphertrust-bot features` | Show available bot features and config guide |
+| `@ciphertrust-bot risk` | Show deterministic risk assessment |
+| `@ciphertrust-bot label` | Auto-detect labels |
+| `@ciphertrust-bot label bug` | Add one label manually |
+| `@ciphertrust-bot check-labels` | Safely check missing/wrong bot-managed labels |
+| `@ciphertrust-bot clean-labels` | Remove only inappropriate bot-managed labels |
+| `@ciphertrust-bot triage` | Re-run labels and issue quality checks |
+| `@ciphertrust-bot needs-repro` | Ask for reproduction details |
+| `@ciphertrust-bot duplicate #123` | Mark as possible duplicate |
+| `@ciphertrust-bot summarize` | Generate a maintainer summary |
+| `@ciphertrust-bot groq-check` | Check Groq connectivity |
+
+### Natural language examples
+
+- `@ciphertrust-bot can you check the labels?`
+- `@ciphertrust-bot clean up wrong labels`
+- `@ciphertrust-bot what is the risk here?`
+- `@ciphertrust-bot can you summarize this?`
+
+_Handled by ciphertrust-bot._
+'''
+FEATURES='''## CipherTrust Terraform Bot Features
+
+1. **Auto-label issues** from title/body
+2. **Auto-label PRs** from title/body/changed files
+3. **Missing test detector** for provider/internal code changes
+4. **Missing docs/examples detector** for user-facing changes
+5. **Terraform provider-specific labels**: `auth`, `provider-config`, `resource`, `data-source`, `key-management`, `regression`
+6. **Issue quality triage**: `needs-info` and `needs-repro`
+7. **Safe label checking**: adds missing bot-managed labels, reports questionable ones
+8. **Conservative label cleanup**: removes only inappropriate bot-managed labels when explicitly requested
+9. **Maintainer commands** through `@ciphertrust-bot ...`
+10. **Duplicate issue detection** with keyword search, error/resource signals, and optional Groq reasoning
+11. **Helpful next-step PR comments**
+12. **First-time contributor PR comments**
+13. **Stale PR and issue cleanup**
+14. **Reviewer assignment** by folder ownership
+15. **Safe auto-merge**, disabled by default
+16. **Groq-backed summaries, checks, and safe natural-language intent routing**
+
+Full feature and configuration guide: '''+FEATURES_URL+'''
+
+_Handled by ciphertrust-bot._
+'''
 
 def log(msg):
     print('[terraform-bot][commands] '+msg,flush=True)
+
+def md_label(label):
+    return '`'+str(label)+'`'
+
+def md_list(items):
+    items=[str(x) for x in items if str(x)]
+    if not items:return '- none'
+    return '\n'.join('- '+x for x in items)
+
+def md_label_list(labels):
+    labels=sorted([str(x) for x in labels if str(x)])
+    if not labels:return '- none'
+    return '\n'.join('- '+md_label(x) for x in labels)
 
 def comment(n,msg):
     repo=os.getenv('GITHUB_REPOSITORY')
@@ -81,10 +141,14 @@ def bot_managed_labels():
 
 def label_result(n,labels):
     added,failed=labeler.add_labels(n,labels)
-    parts=[]
-    if added:parts.append('Added labels: '+', '.join(added))
-    if failed:parts.append('Failed labels: '+', '.join(failed))
-    return comment(n,'\n'.join(parts) if parts else 'No labels changed.')
+    parts=['## Label Update']
+    parts.append('### Added')
+    parts.append(md_label_list(added))
+    if failed:
+        parts.append('\n### Failed')
+        parts.append(md_list(failed))
+    parts.append('\n_Handled by ciphertrust-bot._')
+    return comment(n,'\n'.join(parts))
 
 def suggested_labels(issue):
     labels=labeler.suggest(issue)
@@ -103,18 +167,23 @@ def label_state(issue):
 def check_labels_result(issue):
     current,suggested,missing,questionable,missing_info=label_state(issue)
     added,failed=labeler.add_labels(issue['number'],missing) if missing else ([],[])
-    parts=['Label check complete.']
-    parts.append('Current labels: '+(', '.join(sorted(current)) if current else 'none'))
-    parts.append('Suggested bot-managed labels: '+(', '.join(sorted(suggested)) if suggested else 'none'))
-    if added:parts.append('Added missing labels: '+', '.join(added))
-    if questionable:
-        parts.append('Possibly inappropriate bot-managed labels, not removed: '+', '.join(questionable))
-    else:
-        parts.append('No questionable bot-managed labels found.')
+    parts=['## Label Check Complete']
+    parts.append('### Current labels')
+    parts.append(md_label_list(current))
+    parts.append('\n### Suggested bot-managed labels')
+    parts.append(md_label_list(suggested))
+    parts.append('\n### Added missing labels')
+    parts.append(md_label_list(added))
+    parts.append('\n### Possibly inappropriate bot-managed labels')
+    parts.append(md_label_list(questionable))
     if missing_info:
-        parts.append('Missing issue details: '+', '.join(missing_info))
-    if failed:parts.append('Failed labels: '+', '.join(failed))
-    parts.append('\nI did not remove any labels. Manual/non-bot labels are preserved.')
+        parts.append('\n### Missing issue details')
+        parts.append(md_list(missing_info))
+    if failed:
+        parts.append('\n### Failures')
+        parts.append(md_list(failed))
+    parts.append('\n> No labels were removed. Manual/non-bot labels are preserved. Use `@ciphertrust-bot clean-labels` to remove only inappropriate bot-managed labels.')
+    parts.append('\n_Handled by ciphertrust-bot._')
     return '\n'.join(parts)
 
 def clean_labels_result(issue):
@@ -128,12 +197,19 @@ def clean_labels_result(issue):
             failed.append(label+': '+type(e).__name__+': '+str(e)[:200])
     added,add_failed=labeler.add_labels(issue['number'],missing) if missing else ([],[])
     failed.extend(add_failed)
-    parts=['Clean-labels complete.']
-    parts.append('Removed inappropriate bot-managed labels: '+(', '.join(removed) if removed else 'none'))
-    if added:parts.append('Added missing bot-managed labels: '+', '.join(added))
-    parts.append('Preserved manual/custom labels: '+(', '.join(sorted([x for x in current if x not in bot_managed_labels()])) or 'none'))
-    if failed:parts.append('Failures: '+', '.join(failed))
-    parts.append('\nOnly bot-managed labels were eligible for removal.')
+    preserved=sorted([x for x in current if x not in bot_managed_labels()])
+    parts=['## Clean Labels Complete']
+    parts.append('### Removed inappropriate bot-managed labels')
+    parts.append(md_label_list(removed))
+    parts.append('\n### Added missing bot-managed labels')
+    parts.append(md_label_list(added))
+    parts.append('\n### Preserved manual/custom labels')
+    parts.append(md_label_list(preserved))
+    if failed:
+        parts.append('\n### Failures')
+        parts.append(md_list(failed))
+    parts.append('\n> Only bot-managed labels were eligible for removal.')
+    parts.append('\n_Handled by ciphertrust-bot._')
     return '\n'.join(parts)
 
 def risk_result(issue):
@@ -149,12 +225,18 @@ def triage_result(issue):
     added,failed=labeler.run(issue)
     labels=labeler.suggest(issue)
     quality_labels,missing=triage.issue_quality(issue)
-    parts=['Triage complete.']
-    if added:parts.append('Added labels: '+', '.join(added))
-    if labels or quality_labels:parts.append('Suggested labels: '+', '.join(sorted(set(labels+quality_labels))))
-    if missing:parts.append('Missing issue details: '+', '.join(missing))
-    if failed:parts.append('Failed labels: '+', '.join(failed))
-    if len(parts)==1:parts.append('No label changes detected.')
+    parts=['## Triage Complete']
+    parts.append('### Added labels')
+    parts.append(md_label_list(added))
+    parts.append('\n### Suggested labels')
+    parts.append(md_label_list(sorted(set(labels+quality_labels))))
+    if missing:
+        parts.append('\n### Missing issue details')
+        parts.append(md_list(missing))
+    if failed:
+        parts.append('\n### Failures')
+        parts.append(md_list(failed))
+    parts.append('\n_Handled by ciphertrust-bot._')
     return '\n'.join(parts)
 
 def run(issue,c):
@@ -165,7 +247,7 @@ def run(issue,c):
     n=issue['number']
     log('matched command on #'+str(n)+': '+' '.join(p))
     if c.get('author_association') not in ALLOWED:
-        return comment(n,'Only repo collaborators can run bot commands.')
+        return comment(n,'> Only repo collaborators can run bot commands.')
     if len(p)<1 or p[0]=='help':return comment(n,HELP)
     cmd=p[0]
     if cmd in ('features','docs','guide'):
@@ -179,13 +261,13 @@ def run(issue,c):
     if cmd in ('label','labels','triage'):
         if cmd=='label' and len(p)>1:return label_result(n,[' '.join(p[1:])])
         return comment(n,triage_result(issue))
-    if cmd=='groq-check':return comment(n,llm.status())
+    if cmd=='groq-check':return comment(n,'## Groq Check\n\n'+llm.status()+'\n\n_Handled by ciphertrust-bot._')
     if cmd in ('summarize','summary'):
         msg=llm.summarize(issue) or ('LLM summary unavailable. '+llm.LAST_ERROR)
-        return comment(n,msg)
+        return comment(n,'## Summary\n\n'+msg+'\n\n_Handled by ciphertrust-bot._')
     if cmd=='needs-repro':
         msg=llm.summarize(issue) or 'Please add reproduction steps, expected/actual behavior, and provider/Terraform versions.'
-        labeler.add_labels(n,['needs-repro']);return comment(n,msg)
+        labeler.add_labels(n,['needs-repro']);return comment(n,'## Reproduction Details Needed\n\n'+msg+'\n\n_Handled by ciphertrust-bot._')
     if cmd=='duplicate' and len(p)>1:
-        labeler.add_labels(n,['duplicate']);return comment(n,'Possible duplicate of '+p[1])
-    return comment(n,'I did not understand that command. Try `@ciphertrust-bot help` or `@ciphertrust-bot features`.')
+        labeler.add_labels(n,['duplicate']);return comment(n,'## Possible Duplicate\n\nMarked as possible duplicate of '+md_label(p[1])+'.\n\n_Handled by ciphertrust-bot._')
+    return comment(n,'> I did not understand that command. Try `@ciphertrust-bot help` or `@ciphertrust-bot features`.')
