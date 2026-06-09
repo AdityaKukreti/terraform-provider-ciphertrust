@@ -34,11 +34,18 @@ resource "ciphertrust_cte_client_group" "cte_client_group" {
 
 resource "ciphertrust_cte_clientgroup_guardpoint" "dir_auto_gp_cg" {
   client_group_id = ciphertrust_cte_client_group.cte_client_group.id
-
-  guard_paths = ["/test/gp_cg1"]
-
-  guard_point_params = {
-    guard_point_type = "directory_auto"
-    policy_id        = ciphertrust_cte_policy.standard_policy.name
+  guard_points = {
+    "/test/gp_cg1" = {
+      guard_point_params = {
+       guard_point_type = "directory_manual"
+        policy_id        = ciphertrust_cte_policy.standard_policy.name
+        #mfa_enabled = true
+        #guard_enabled = false
+      }
+    }
   }
 }
+
+# These fields are ignored during intitial apply but can be updated, their default values are set (mfa_enabled=false, guard_enabled-true)
+  #mfa_enabled = true
+  #guard_enabled = false

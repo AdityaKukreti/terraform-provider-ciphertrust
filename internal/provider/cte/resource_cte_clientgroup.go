@@ -8,12 +8,17 @@ import (
 	"strings"
 
 	"github.com/google/uuid"
+	"github.com/tidwall/gjson"
 
 	common "github.com/ThalesGroup/terraform-provider-ciphertrust/internal/provider/common"
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
+	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/booldefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/setdefault"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringdefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
@@ -63,6 +68,8 @@ func (r *resourceCTEClientGroup) Schema(_ context.Context, _ resource.SchemaRequ
 			},
 			"communication_enabled": schema.BoolAttribute{
 				Optional:    true,
+				Computed:    true,
+				Default:     booldefault.StaticBool(false),
 				Description: "Whether the File System communication is enabled.",
 			},
 			"description": schema.StringAttribute{
@@ -79,7 +86,9 @@ func (r *resourceCTEClientGroup) Schema(_ context.Context, _ resource.SchemaRequ
 			},
 			"password_creation_method": schema.StringAttribute{
 				Optional:    true,
+				Computed:    true,
 				Description: "Password creation method, GENERATE or MANUAL.",
+				Default:     stringdefault.StaticString("GENERATE"),
 				Validators: []validator.String{
 					stringvalidator.OneOf([]string{
 						"GENERATE",
@@ -87,7 +96,11 @@ func (r *resourceCTEClientGroup) Schema(_ context.Context, _ resource.SchemaRequ
 				},
 			},
 			"profile_id": schema.StringAttribute{
-				Optional:    true,
+				Optional: true,
+				Computed: true,
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.UseStateForUnknown(),
+				},
 				Description: "ID of the client group profile that is used to schedule custom configuration for logger, logging, and Quality of Service (QoS).",
 			},
 			"op_type": schema.StringAttribute{
@@ -107,10 +120,14 @@ func (r *resourceCTEClientGroup) Schema(_ context.Context, _ resource.SchemaRequ
 			// Update the Client Group Attributes
 			"client_locked": schema.BoolAttribute{
 				Optional:    true,
+				Computed:    true,
+				Default:     booldefault.StaticBool(false),
 				Description: "Is FS Agent locked? Enables locking the configuration of the File System Agent on the client. This will prevent updates to any policies on the client. Default value is false.",
 			},
 			"enable_domain_sharing": schema.BoolAttribute{
 				Optional:    true,
+				Computed:    true,
+				Default:     booldefault.StaticBool(false),
 				Description: "Whether to enable domain sharing for ClientGroup.",
 			},
 			"enabled_capabilities": schema.StringAttribute{
@@ -124,6 +141,8 @@ func (r *resourceCTEClientGroup) Schema(_ context.Context, _ resource.SchemaRequ
 			},
 			"system_locked": schema.BoolAttribute{
 				Optional:    true,
+				Computed:    true,
+				Default:     booldefault.StaticBool(false),
 				Description: "Whether the system is locked. The default value is false. Enable this option to lock the important operating system files of the client. When enabled, patches to the operating system of the client will fail due to the protection of these files.",
 			},
 			// Update Auth Binaries for the client group
@@ -135,11 +154,13 @@ func (r *resourceCTEClientGroup) Schema(_ context.Context, _ resource.SchemaRequ
 				Optional:    true,
 				Description: "Whether to re-sign the client settings.",
 			},
-			// Add clients to the group
-			"client_list": schema.ListAttribute{
-				Optional:    true,
+			"client_list": schema.SetAttribute{
+				Optional: true,
+				Computed: true,
+				Default: setdefault.StaticValue(
+					types.SetValueMust(types.StringType, []attr.Value{}),
+				),
 				ElementType: types.StringType,
-				Description: "List of Client identifier which are to be associated with clientgroup. This identifier can be the Name, ID (a UUIDv4), URI, or slug of the client.",
 			},
 			"inherit_attributes": schema.BoolAttribute{
 				Optional:    true,
@@ -213,7 +234,7 @@ func (r *resourceCTEClientGroup) Create(ctx context.Context, req resource.Create
 		return
 	}
 
-	response, err := r.client.PostData(ctx, id, common.URL_CTE_CLIENT_GROUP, payloadJSON, "id")
+	response, err := r.client.PostDataV2(ctx, id, common.URL_CTE_CLIENT_GROUP, payloadJSON)
 	if err != nil {
 		tflog.Debug(ctx, common.ERR_METHOD_END+err.Error()+" [resource_cte_clientgroup.go -> Create]["+id+"]")
 		resp.Diagnostics.AddError(
@@ -222,8 +243,10 @@ func (r *resourceCTEClientGroup) Create(ctx context.Context, req resource.Create
 		)
 		return
 	}
-
-	plan.ID = types.StringValue(response)
+	plan.ID = types.StringValue(gjson.Get(response, "id").String())
+	if plan.ProfileID.ValueString() == "" || plan.ProfileID.ValueString() == types.StringNull().ValueString() {
+		plan.ProfileID = types.StringValue(gjson.Get(response, "profile_id").String())
+	}
 
 	tflog.Trace(ctx, common.MSG_METHOD_END+"[resource_cte_clientgroup.go -> Create]["+id+"]")
 	diags = resp.State.Set(ctx, plan)
@@ -238,22 +261,65 @@ func (r *resourceCTEClientGroup) Read(ctx context.Context, req resource.ReadRequ
 	var state CTEClientGroupTFSDK
 	id := uuid.New().String()
 
+	tflog.Trace(
+		ctx,
+		common.MSG_METHOD_START+
+			"[resource_cte_clientgroup.go -> Read]["+id+"]",
+	)
+
 	diags := req.State.Get(ctx, &state)
 	resp.Diagnostics.Append(diags...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
-	_, err := r.client.GetById(ctx, id, state.ID.ValueString(), common.URL_CTE_CLIENT_GROUP)
+	response, err := r.client.GetById(ctx, id, state.ID.ValueString(), common.URL_CTE_CLIENT_GROUP)
+
+	if response == "" {
+		resp.State.RemoveResource(ctx)
+		return
+	}
+
+	var apiResp CTEClientGroupJSON
+
+	err = json.Unmarshal([]byte(response), &apiResp)
 	if err != nil {
-		tflog.Debug(ctx, common.ERR_METHOD_END+err.Error()+" [resource_cte_clientgroup.go -> Read]["+id+"]")
 		resp.Diagnostics.AddError(
-			"Error reading CTE Client Group on CipherTrust Manager: ",
-			"Could not read CTE Client Group id : ,"+state.ID.ValueString()+"unexpected error: "+err.Error(),
+			"Error parsing API response",
+			err.Error(),
 		)
 		return
 	}
 
-	tflog.Trace(ctx, common.MSG_METHOD_END+"[resource_cte_clientgroup.go -> Read]["+id+"]")
+	clientsResponse, err := r.client.GetById(ctx, id, state.ID.ValueString()+"/clients", common.URL_CTE_CLIENT_GROUP)
+	if err != nil {
+		tflog.Debug(ctx, "Error fetching clients for CTE client group: "+err.Error()+" [resource_cte_clientgroup.go -> Read]["+id+"]")
+	} else if clientsResponse != "" {
+		var clientsResp CTEClientGroupClientsJSON
+		if jsonErr := json.Unmarshal([]byte(clientsResponse), &clientsResp); jsonErr != nil {
+			tflog.Debug(ctx, "Error parsing clients response: "+jsonErr.Error()+" [resource_cte_clientgroup.go -> Read]["+id+"]")
+		} else {
+			for _, c := range clientsResp.Resources {
+				apiResp.ClientList = append(apiResp.ClientList, c.Name)
+			}
+		}
+	}
+	setCTEClientGroupState(&state, &apiResp)
+
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	diags = resp.State.Set(ctx, &state)
+	resp.Diagnostics.Append(diags...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	tflog.Trace(
+		ctx,
+		common.MSG_METHOD_END+
+			"[resource_cte_clientgroup.go -> Read]["+id+"]",
+	)
 }
 
 // Update updates the resource and sets the updated Terraform state on success.
@@ -429,20 +495,36 @@ func (r *resourceCTEClientGroup) Update(ctx context.Context, req resource.Update
 			}
 			plan.ID = types.StringValue(response)
 		} else if plan.OpType.ValueString() == "remove-client" {
-			for _, client := range plan.ClientList {
-				response, err := r.client.DeleteByURL(
-					ctx,
-					plan.ID.ValueString(),
-					common.URL_CTE_CLIENT_GROUP+"/"+plan.ID.ValueString()+"/clients/"+client.ValueString())
-				if err != nil {
-					tflog.Debug(ctx, common.ERR_METHOD_END+err.Error()+" [resource_cte_clientgroup.go -> remove-client]["+plan.ID.ValueString()+"]")
-					resp.Diagnostics.AddError(
-						"Error deleting client from CTE Client Group on CipherTrust Manager: ",
-						"Could not delete client "+client.ValueString()+" from CTE Client Group, unexpected error: "+err.Error(),
-					)
-				}
-				plan.ID = types.StringValue(response + plan.ID.ValueString())
+			// clients in state but not in plan = to be removed
+			planSet := make(map[string]bool)
+			for _, c := range plan.ClientList {
+				planSet[c.ValueString()] = true
 			}
+
+			for _, c := range state.ClientList {
+				if !planSet[c.ValueString()] {
+					_, err := r.client.DeleteByURL(
+						ctx,
+						plan.ID.ValueString(),
+						common.URL_CTE_CLIENT_GROUP+"/"+plan.ID.ValueString()+"/clients/"+c.ValueString())
+					if err != nil {
+						tflog.Debug(ctx, common.ERR_METHOD_END+err.Error()+" [resource_cte_clientgroup.go -> remove-client]["+plan.ID.ValueString()+"]")
+						resp.Diagnostics.AddError(
+							"Error deleting client from CTE Client Group on CipherTrust Manager: ",
+							"Could not delete client "+c.ValueString()+" from CTE Client Group, unexpected error: "+err.Error(),
+						)
+						return
+					}
+				}
+			}
+
+			// plan.ClientList already reflects desired end state, just save it
+			state.ClientList = plan.ClientList
+			state.InheritAttributes = types.BoolNull()
+			state.OpType = plan.OpType
+			diags = resp.State.Set(ctx, state)
+			resp.Diagnostics.Append(diags...)
+			return
 		} else if plan.OpType.ValueString() == "add-client" {
 			var clientsArr, stateClientsArr []string
 			for _, client := range state.ClientList {
@@ -582,4 +664,67 @@ func (d *resourceCTEClientGroup) Configure(_ context.Context, req resource.Confi
 	}
 
 	d.client = client
+}
+
+func setCTEClientGroupState(
+	state *CTEClientGroupTFSDK,
+	apiResp *CTEClientGroupJSON,
+) {
+	state.ID = types.StringValue(apiResp.ID)
+	state.Name = types.StringValue(apiResp.Name)
+	state.ClusterType = types.StringValue(apiResp.ClusterType)
+	state.CommunicationEnabled = types.BoolValue(apiResp.CommunicationEnabled)
+	state.ClientLocked = types.BoolValue(apiResp.ClientLocked)
+	state.SystemLocked = types.BoolValue(apiResp.SystemLocked)
+	state.EnableDomainSharing = types.BoolValue(apiResp.EnableDomainSharing)
+
+	if apiResp.Description != "" {
+		state.Description = types.StringValue(apiResp.Description)
+	} else {
+		state.Description = types.StringNull()
+	}
+
+	if apiResp.LDTDesignatedPrimarySet != "" {
+		state.LDTDesignatedPrimarySet = types.StringValue(apiResp.LDTDesignatedPrimarySet)
+	} else {
+		state.LDTDesignatedPrimarySet = types.StringNull()
+	}
+
+	if apiResp.PasswordCreationMethod != "" {
+		state.PasswordCreationMethod = types.StringValue(apiResp.PasswordCreationMethod)
+	} else {
+		state.PasswordCreationMethod = types.StringNull()
+	}
+
+	if state.ProfileID.ValueString() == "" || state.ProfileID.ValueString() == types.StringNull().ValueString() {
+		if apiResp.ProfileID != "" {
+			state.ProfileID = types.StringValue(apiResp.ProfileID)
+		}
+	}
+
+	if apiResp.EnabledCapabilities != "" {
+		state.EnabledCapabilities = types.StringValue(apiResp.EnabledCapabilities)
+	} else {
+		state.EnabledCapabilities = types.StringNull()
+	}
+
+	if apiResp.AuthBinaries != "" {
+		state.AuthBinaries = types.StringValue(apiResp.AuthBinaries)
+	} else {
+		state.AuthBinaries = types.StringNull()
+	}
+
+	// SharedDomainList
+	var sharedDomainList []types.String
+	for _, d := range apiResp.SharedDomainList {
+		sharedDomainList = append(sharedDomainList, types.StringValue(d))
+	}
+	state.SharedDomainList = sharedDomainList
+
+	// ClientList
+	clientList := make([]types.String, 0)
+	for _, c := range apiResp.ClientList {
+		clientList = append(clientList, types.StringValue(c))
+	}
+	state.ClientList = clientList
 }

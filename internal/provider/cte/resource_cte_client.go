@@ -8,23 +8,29 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
+	"github.com/hashicorp/terraform-plugin-framework/attr"
+	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/booldefault"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/int64default"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringdefault"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 
 	// "github.com/hashicorp/terraform-plugin-framework/resource/schema/stringdefault"
 	common "github.com/ThalesGroup/terraform-provider-ciphertrust/internal/provider/common"
-	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-log/tflog"
 )
 
 var (
-	_                           resource.Resource              = &resourceCTEClient{}
-	_                           resource.ResourceWithConfigure = &resourceCTEClient{}
-	CtePasswordGenarationMethod                                = []string{"GENERATE", "MANUAL"}
-	CteClientType                                              = []string{"FS", "CTE-U"}
+	_                           resource.Resource                   = &resourceCTEClient{}
+	_                           resource.ResourceWithConfigure      = &resourceCTEClient{}
+	_                           resource.ResourceWithValidateConfig = &resourceCTEClient{}
+	CtePasswordGenarationMethod                                     = []string{"GENERATE", "MANUAL"}
+	CteClientType                                                   = []string{"FS", "CTE-U"}
 
 	CTEResourceDescription = `CipherTrust Transparent Encryption (CTE) delivers data-at-rest encryption with centralized key management, privileged user access control, and detailed data access audit logging. This protects data wherever it resides—on-premises, across multiple clouds, and within big data.
 
@@ -54,11 +60,11 @@ func (r *resourceCTEClient) Schema(_ context.Context, _ resource.SchemaRequest, 
 		Description: CTEResourceDescription,
 		Attributes: map[string]schema.Attribute{
 			"id": schema.StringAttribute{
-				Computed:    true,
-				Description: "Identifier of a CTE client to be generated on successful creation of Client",
+				Computed: true,
 				PlanModifiers: []planmodifier.String{
 					stringplanmodifier.UseStateForUnknown(),
 				},
+				Description: "Identifier of a CTE client to be generated on successful creation of Client",
 			},
 			"name": schema.StringAttribute{
 				Required:    true,
@@ -66,11 +72,14 @@ func (r *resourceCTEClient) Schema(_ context.Context, _ resource.SchemaRequest, 
 			},
 			"client_locked": schema.BoolAttribute{
 				Optional:    true,
+				Computed:    true,
+				Default:     booldefault.StaticBool(false),
 				Description: "Whether the CTE client is locked. The default value is false. Enable this option to lock the configuration of the CTE Agent on the client. Set to true to lock the configuration, set to false to unlock. Locking the Agent configuration prevents updates to any policies on the client.",
 			},
 			"client_type": schema.StringAttribute{
 				Optional:    true,
 				Computed:    true,
+				Default:     stringdefault.StaticString("FS"),
 				Description: "Type of CTE Client. The default value is FS. Valid values are CTE-U and FS.",
 				Validators: []validator.String{
 					stringvalidator.OneOf(CteClientType...),
@@ -78,6 +87,8 @@ func (r *resourceCTEClient) Schema(_ context.Context, _ resource.SchemaRequest, 
 			},
 			"communication_enabled": schema.BoolAttribute{
 				Optional:    true,
+				Computed:    true,
+				Default:     booldefault.StaticBool(false),
 				Description: "Whether communication with the client is enabled. The default value is false. Can be set to true only if registration_allowed is true.",
 			},
 			"description": schema.StringAttribute{
@@ -89,7 +100,9 @@ func (r *resourceCTEClient) Schema(_ context.Context, _ resource.SchemaRequest, 
 				Description: "Password for the client. Required when password_creation_method is MANUAL.",
 			},
 			"password_creation_method": schema.StringAttribute{
-				Required:    true,
+				Optional:    true,
+				Computed:    true,
+				Default:     stringdefault.StaticString("GENERATE"),
 				Description: "Password creation method for the client. Valid values are MANUAL and GENERATE. The default value is GENERATE.",
 				Validators: []validator.String{
 					stringvalidator.OneOf(CtePasswordGenarationMethod...),
@@ -99,20 +112,32 @@ func (r *resourceCTEClient) Schema(_ context.Context, _ resource.SchemaRequest, 
 				Optional:    true,
 				Description: "Identifier of the Client Profile to be associated with the client. If not provided, the default profile will be linked.",
 			},
+			"profile_name": schema.StringAttribute{
+				Computed:    true,
+				Description: "Name of the Client Profile to be associated with the client. If not provided, the default profile will be linked.",
+			},
 			"registration_allowed": schema.BoolAttribute{
 				Optional:    true,
+				Computed:    true,
+				Default:     booldefault.StaticBool(false),
 				Description: "Whether client's registration with the CipherTrust Manager is allowed. The default value is false. Set to true to allow registration.",
 			},
 			"system_locked": schema.BoolAttribute{
 				Optional:    true,
+				Computed:    true,
+				Default:     booldefault.StaticBool(false),
 				Description: "Whether the system is locked. The default value is false. Enable this option to lock the important operating system files of the client. When enabled, patches to the operating system of the client will fail due to the protection of these files.",
 			},
 			"client_mfa_enabled": schema.BoolAttribute{
 				Optional:    true,
+				Computed:    true,
+				Default:     booldefault.StaticBool(false),
 				Description: "Whether MFA is enabled on the client.",
 			},
 			"del_client": schema.BoolAttribute{
 				Optional:    true,
+				Computed:    true,
+				Default:     booldefault.StaticBool(false),
 				Description: "Whether to mark the client for deletion from the CipherTrust Manager. The default value is false.",
 			},
 			"disable_capability": schema.StringAttribute{
@@ -125,10 +150,14 @@ func (r *resourceCTEClient) Schema(_ context.Context, _ resource.SchemaRequest, 
 			},
 			"enable_domain_sharing": schema.BoolAttribute{
 				Optional:    true,
+				Computed:    true,
+				Default:     booldefault.StaticBool(false),
 				Description: "Whether domain sharing is enabled for the client.",
 			},
 			"enabled_capabilities": schema.StringAttribute{
 				Optional:    true,
+				Computed:    true,
+				Default:     stringdefault.StaticString(""),
 				Description: "Client capabilities to be enabled. Separate values with comma. Valid values are LDT and EKP",
 			},
 			"labels": schema.MapAttribute{
@@ -142,14 +171,19 @@ func (r *resourceCTEClient) Schema(_ context.Context, _ resource.SchemaRequest, 
 			},
 			"max_num_cache_log": schema.Int64Attribute{
 				Optional:    true,
+				Computed:    true,
+				Default:     int64default.StaticInt64(0),
 				Description: "Maximum number of logs to cache.",
 			},
 			"max_space_cache_log": schema.Int64Attribute{
 				Optional:    true,
+				Computed:    true,
+				Default:     int64default.StaticInt64(0),
 				Description: "Maximum space for the cached logs.",
 			},
 			"profile_id": schema.StringAttribute{
 				Optional:    true,
+				Computed:    true,
 				Description: "ID of the profile that contains logger, logging, and QOS configuration.",
 			},
 			"protection_mode": schema.StringAttribute{
@@ -181,15 +215,20 @@ func (r *resourceCTEClient) Create(ctx context.Context, req resource.CreateReque
 	}
 
 	payload.Name = common.TrimString(plan.Name.ValueString())
-	if plan.ClientLocked.ValueBool() != types.BoolNull().ValueBool() {
-		payload.ClientLocked = plan.ClientLocked.ValueBool()
+
+	payload.ClientType = common.TrimString(plan.ClientType.ValueString())
+
+	if plan.ClientType.ValueString() != "CTE-U" {
+		if !plan.ClientLocked.IsNull() && !plan.ClientLocked.IsUnknown() {
+			v := plan.ClientLocked.ValueBool()
+			payload.ClientLocked = &v
+		}
+		if !plan.SystemLocked.IsNull() && !plan.SystemLocked.IsUnknown() {
+			v := plan.SystemLocked.ValueBool()
+			payload.SystemLocked = &v
+		}
 	}
-	if plan.ClientType.ValueString() != "" && plan.ClientType.ValueString() != types.StringNull().ValueString() {
-		payload.ClientType = common.TrimString(plan.ClientType.String())
-	} else {
-		plan.ClientType = types.StringValue("FS")
-		payload.ClientType = common.TrimString(plan.ClientType.String())
-	}
+
 	if plan.CommunicationEnabled.ValueBool() != types.BoolNull().ValueBool() {
 		payload.CommunicationEnabled = plan.CommunicationEnabled.ValueBool()
 	}
@@ -208,9 +247,6 @@ func (r *resourceCTEClient) Create(ctx context.Context, req resource.CreateReque
 	if plan.RegistrationAllowed.ValueBool() != types.BoolNull().ValueBool() {
 		payload.RegistrationAllowed = plan.RegistrationAllowed.ValueBool()
 	}
-	if plan.SystemLocked.ValueBool() != types.BoolNull().ValueBool() {
-		payload.SystemLocked = plan.SystemLocked.ValueBool()
-	}
 
 	payloadJSON, err := json.Marshal(payload)
 	if err != nil {
@@ -222,7 +258,7 @@ func (r *resourceCTEClient) Create(ctx context.Context, req resource.CreateReque
 		return
 	}
 
-	response, err := r.client.PostData(ctx, id, common.URL_CTE_CLIENT, payloadJSON, "id")
+	response, err := r.client.PostDataV2(ctx, id, common.URL_CTE_CLIENT, payloadJSON)
 	if err != nil {
 		tflog.Debug(ctx, common.ERR_METHOD_END+err.Error()+" [resource_cte_client.go -> Create]["+id+"]")
 		resp.Diagnostics.AddError(
@@ -231,8 +267,16 @@ func (r *resourceCTEClient) Create(ctx context.Context, req resource.CreateReque
 		)
 		return
 	}
+	var clientData CTEClientsListJSON
+	err = json.Unmarshal([]byte(response), &clientData)
+	if err != nil {
+		resp.Diagnostics.AddError("Error parsing CTE Client response", err.Error())
+		return
+	}
 
-	plan.ID = types.StringValue(response)
+	plan.ID = types.StringValue(clientData.ID)
+	plan.ProfileID = types.StringValue(clientData.ProfileID)
+	plan.ProfileName = types.StringValue(clientData.ProfileName)
 
 	tflog.Trace(ctx, common.MSG_METHOD_END+"[resource_cte_client.go -> Create]["+id+"]")
 	diags = resp.State.Set(ctx, plan)
@@ -245,24 +289,58 @@ func (r *resourceCTEClient) Create(ctx context.Context, req resource.CreateReque
 // Read refreshes the Terraform state with the latest data.
 func (r *resourceCTEClient) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
 	var state CTEClientTFSDK
+
 	id := uuid.New().String()
+
+	tflog.Trace(
+		ctx,
+		common.MSG_METHOD_START+
+			"[resource_cte_client.go -> Read]["+id+"]",
+	)
 
 	diags := req.State.Get(ctx, &state)
 	resp.Diagnostics.Append(diags...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
-	_, err := r.client.GetById(ctx, id, state.ID.ValueString(), common.URL_CTE_CLIENT)
+
+	response, err := r.client.GetById(
+		ctx,
+		id,
+		state.ID.ValueString(),
+		common.URL_CTE_CLIENT,
+	)
+	if response == "" {
+		resp.State.RemoveResource(ctx)
+		return
+	}
+
+	var apiResp CTEClientsListJSON
+	err = json.Unmarshal([]byte(response), &apiResp)
 	if err != nil {
-		tflog.Debug(ctx, common.ERR_METHOD_END+err.Error()+" [resource_cte_client.go -> Read]["+id+"]")
 		resp.Diagnostics.AddError(
-			"Error reading CTE Client on CipherTrust Manager: ",
-			"Could not read CTE Client id : ,"+state.ID.ValueString()+"unexpected error: "+err.Error(),
+			"Error parsing API response",
+			err.Error(),
 		)
 		return
 	}
 
-	tflog.Trace(ctx, common.MSG_METHOD_END+"[resource_cte_client.go -> Read]["+id+"]")
+	setCTEClientState(&state, &apiResp, resp)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	diags = resp.State.Set(ctx, &state)
+	resp.Diagnostics.Append(diags...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	tflog.Trace(
+		ctx,
+		common.MSG_METHOD_END+
+			"[resource_cte_client.go -> Read]["+id+"]",
+	)
 }
 
 // Update updates the resource and sets the updated Terraform state on success.
@@ -283,11 +361,17 @@ func (r *resourceCTEClient) Update(ctx context.Context, req resource.UpdateReque
 	if resp.Diagnostics.HasError() {
 		return
 	}
-	plan.ClientType = state.ClientType
-
-	if plan.ClientLocked.ValueBool() != types.BoolNull().ValueBool() {
-		payload.ClientLocked = plan.ClientLocked.ValueBool()
+	if state.ClientType.ValueString() != "CTE-U" {
+		if !plan.ClientLocked.IsNull() && !plan.ClientLocked.IsUnknown() {
+			v := plan.ClientLocked.ValueBool()
+			payload.ClientLocked = &v
+		}
+		if !plan.SystemLocked.IsNull() && !plan.SystemLocked.IsUnknown() {
+			v := plan.SystemLocked.ValueBool()
+			payload.SystemLocked = &v
+		}
 	}
+
 	if plan.CommunicationEnabled.ValueBool() != types.BoolNull().ValueBool() {
 		payload.CommunicationEnabled = plan.CommunicationEnabled.ValueBool()
 	}
@@ -302,9 +386,6 @@ func (r *resourceCTEClient) Update(ctx context.Context, req resource.UpdateReque
 	}
 	if plan.RegistrationAllowed.ValueBool() != types.BoolNull().ValueBool() {
 		payload.RegistrationAllowed = plan.RegistrationAllowed.ValueBool()
-	}
-	if plan.SystemLocked.ValueBool() != types.BoolNull().ValueBool() {
-		payload.SystemLocked = plan.SystemLocked.ValueBool()
 	}
 	if plan.ClientMFAEnabled.ValueBool() != types.BoolNull().ValueBool() {
 		payload.ClientMFAEnabled = plan.ClientMFAEnabled.ValueBool()
@@ -361,7 +442,7 @@ func (r *resourceCTEClient) Update(ctx context.Context, req resource.UpdateReque
 		return
 	}
 
-	response, err := r.client.UpdateData(ctx, plan.ID.ValueString(), common.URL_CTE_CLIENT, payloadJSON, "id")
+	response, err := r.client.UpdateDataV2(ctx, plan.ID.ValueString(), common.URL_CTE_CLIENT, payloadJSON)
 	if err != nil {
 		tflog.Debug(ctx, common.ERR_METHOD_END+err.Error()+" [resource_cte_client.go -> Update]["+plan.ID.ValueString()+"]")
 		resp.Diagnostics.AddError(
@@ -370,7 +451,15 @@ func (r *resourceCTEClient) Update(ctx context.Context, req resource.UpdateReque
 		)
 		return
 	}
-	plan.ID = types.StringValue(response)
+	var clientData CTEClientsListJSON
+	err = json.Unmarshal([]byte(response), &clientData)
+	if err != nil {
+		resp.Diagnostics.AddError("Error parsing CTE Client response", err.Error())
+		return
+	}
+	plan.ID = types.StringValue(clientData.ID)
+	plan.ProfileID = types.StringValue(clientData.ProfileID)
+	plan.ProfileName = types.StringValue(clientData.ProfileName)
 	diags = resp.State.Set(ctx, plan)
 	resp.Diagnostics.Append(diags...)
 	if resp.Diagnostics.HasError() {
@@ -430,4 +519,85 @@ func (d *resourceCTEClient) Configure(_ context.Context, req resource.ConfigureR
 	}
 
 	d.client = client
+}
+
+func validateCTEUClientConfig(ctx context.Context, req resource.ValidateConfigRequest, resp *resource.ValidateConfigResponse) {
+	var clientType types.String
+	var clientLocked types.Bool
+	var systemLocked types.Bool
+
+	resp.Diagnostics.Append(req.Config.GetAttribute(ctx, path.Root("client_type"), &clientType)...)
+	resp.Diagnostics.Append(req.Config.GetAttribute(ctx, path.Root("client_locked"), &clientLocked)...)
+	resp.Diagnostics.Append(req.Config.GetAttribute(ctx, path.Root("system_locked"), &systemLocked)...)
+
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	if clientType.ValueString() == "CTE-U" {
+		if !clientLocked.IsNull() && !clientLocked.IsUnknown() {
+			resp.Diagnostics.AddAttributeError(
+				path.Root("client_locked"),
+				"Unsupported Field for CTE-U Client",
+				"client_locked is not supported when client_type is CTE-U. Remove this field or change client_type to FS.",
+			)
+		}
+		if !systemLocked.IsNull() && !systemLocked.IsUnknown() {
+			resp.Diagnostics.AddAttributeError(
+				path.Root("system_locked"),
+				"Unsupported Field for CTE-U Client",
+				"system_locked is not supported when client_type is CTE-U. Remove this field or change client_type to FS.",
+			)
+		}
+	}
+}
+
+func (r *resourceCTEClient) ValidateConfig(ctx context.Context, req resource.ValidateConfigRequest, resp *resource.ValidateConfigResponse) {
+	validateCTEUClientConfig(ctx, req, resp)
+}
+
+func setCTEClientState(
+	state *CTEClientTFSDK,
+	apiResp *CTEClientsListJSON,
+	resp *resource.ReadResponse,
+) {
+
+	state.ID = types.StringValue(apiResp.ID)
+	if apiResp.Description != "" {
+		state.Description = types.StringValue(apiResp.Description)
+	} else {
+		state.Description = types.StringNull()
+	}
+	state.ClientLocked = types.BoolValue(apiResp.ClientLocked)
+	state.ClientType = types.StringValue(apiResp.ClientType)
+	state.CommunicationEnabled = types.BoolValue(apiResp.CommunicationEnabled)
+	state.PasswordCreationMethod = types.StringValue(apiResp.PasswordCreationMethod)
+	state.RegistrationAllowed = types.BoolValue(apiResp.RegistrationAllowed)
+	state.SystemLocked = types.BoolValue(apiResp.SystemLocked)
+	state.ClientMFAEnabled = types.BoolValue(apiResp.ClientMFAEnabled)
+	state.DelClient = types.BoolValue(apiResp.DelClient)
+	state.EnableDomainSharing = types.BoolValue(apiResp.EnableDomainSharing)
+	state.EnabledCapabilities = types.StringValue(apiResp.EnabledCapabilities)
+	state.ProfileID = types.StringValue(apiResp.ProfileID)
+	state.ProfileName = types.StringValue(apiResp.ProfileName)
+	//state.ProtectionMode = types.StringValue(apiResp.ProtectionMode)
+
+	state.MaxNumCacheLog = types.Int64Value(apiResp.MaxNumCacheLog)
+	state.MaxSpaceCacheLog = types.Int64Value(apiResp.MaxSpaceCacheLog)
+
+	if apiResp.Labels != nil {
+		labelsMap := map[string]attr.Value{}
+		for k, v := range apiResp.Labels {
+			if strVal, ok := v.(string); ok {
+				labelsMap[k] = types.StringValue(strVal)
+			}
+		}
+		labels, diags := types.MapValue(types.StringType, labelsMap)
+		resp.Diagnostics.Append(diags...)
+		if resp.Diagnostics.HasError() {
+			return
+		}
+		state.Labels = labels
+	}
+
 }

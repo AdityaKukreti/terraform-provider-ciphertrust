@@ -77,11 +77,12 @@ resource "ciphertrust_cte_client_group" "test_cg_group_test1" {
   # inherit_attributes = true
 
   #NOTE:
-  # - These two fields are applicable ONLY when op_type = update
+  # - These three fields are applicable ONLY when op_type = update
   # - Ignored for all other operations
 
   # client_locked = true
   # system_locked = true
+  #enable_domain_sharing = true
 }
 
 # Output the unique ID of the created CTE Client Group

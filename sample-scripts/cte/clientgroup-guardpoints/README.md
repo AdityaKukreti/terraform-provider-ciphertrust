@@ -43,14 +43,18 @@ resource "ciphertrust_cte_client_group" "cte_client_group" {
     description  = "Created via TF"
 }
 
-resource "ciphertrust_cte_client_guardpoint" "dir_auto_gp" {
-    guard_paths = ["/opt/path1"]
-    guard_point_params = {
-        guard_point_type = "directory_auto"
-        guard_enabled = true
-        policy_id     = ciphertrust_cte_policy.standard_policy.name
+resource "ciphertrust_cte_clientgroup_guardpoint" "dir_auto_gp_cg" {
+  client_group_id = ciphertrust_cte_client_group.cte_client_group.id
+  guard_points = {
+    "/test/gp_cg1" = {
+      guard_point_params = {
+       guard_point_type = "directory_manual"
+        policy_id        = ciphertrust_cte_policy.standard_policy.name
+        #mfa_enabled = true
+        #guard_enabled = false
+      }
     }
-    client_group_id = ciphertrust_cte_client_group.cte_client_group.id
+  }
 }
 ```
 
