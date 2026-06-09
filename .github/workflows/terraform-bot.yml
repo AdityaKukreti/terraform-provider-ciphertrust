@@ -3,6 +3,8 @@ name: Terraform Issue Bot
 on:
   issues:
     types: [opened, edited]
+  pull_request_target:
+    types: [opened, edited, synchronize, reopened, ready_for_review, labeled]
   issue_comment:
     types: [created]
   schedule:
@@ -14,14 +16,20 @@ on:
         required: false
         default: ''
       stale_pr_days:
-        description: 'Production threshold in days when stale_pr_minutes is empty.'
+        description: 'Production PR threshold in days when stale_pr_minutes is empty.'
         required: false
         default: '30'
+      stale_issue_days:
+        description: 'Production issue threshold in days.'
+        required: false
+        default: '60'
 
 permissions:
   contents: read
   issues: write
   pull-requests: write
+  checks: read
+  statuses: read
 
 jobs:
   terraform-bot:
@@ -48,7 +56,11 @@ jobs:
           GROQ_MODEL: llama-3.1-8b-instant
           STALE_PR_MINUTES: ${{ github.event.inputs.stale_pr_minutes }}
           STALE_PR_DAYS: ${{ github.event.inputs.stale_pr_days || '30' }}
+          STALE_ISSUE_DAYS: ${{ github.event.inputs.stale_issue_days || '60' }}
           STALE_PR_LABEL: stale
+          STALE_ISSUE_LABEL: stale
+          BOT_AUTO_MERGE: 'false'
+          BOT_AUTO_MERGE_LABEL: automerge
           GITHUB_EVENT_NAME: ${{ github.event_name }}
           GITHUB_EVENT_PATH: ${{ github.event_path }}
         run: python terraform-bot/bot.py
