@@ -8,8 +8,8 @@ import github_api as gh
 ALLOWED={'OWNER','MEMBER','COLLABORATOR'}
 TRIGGERS=('@ciphertrust-bot',)
 FEATURES_URL='https://github.com/AdityaKukreti/terraform-provider-ciphertrust/blob/main/terraform-bot/FEATURES.md'
-HELP='''Terraform bot commands:\n- `@ciphertrust-bot help`\n- `@ciphertrust-bot features` show available bot features and config guide\n- `@ciphertrust-bot risk` show deterministic risk assessment\n- `@ciphertrust-bot label` auto-detect labels\n- `@ciphertrust-bot label bug` add one label manually\n- `@ciphertrust-bot needs-repro`\n- `@ciphertrust-bot duplicate #123`\n- `@ciphertrust-bot summarize`\n- `@ciphertrust-bot groq-check`\n'''
-FEATURES='''CipherTrust Terraform Bot features:\n\n1. Auto-label issues from title/body\n2. Auto-label PRs from title/body/changed files\n3. Missing test detector for provider/internal code changes\n4. Missing docs/examples detector for user-facing changes\n5. Terraform provider-specific labels: auth, provider-config, resource, data-source, key-management, regression\n6. Issue quality triage: needs-info and needs-repro\n7. Maintainer commands through `@ciphertrust-bot ...`\n8. Duplicate issue detection with keyword search, error/resource signals, and optional Groq reasoning\n9. Helpful next-step PR comments\n10. First-time contributor PR comments\n11. Stale PR and issue cleanup\n12. Reviewer assignment by folder ownership\n13. Safe auto-merge, disabled by default\n14. Groq-backed summaries and checks\n\nFull feature and configuration guide:\n'''+FEATURES_URL
+HELP='''Terraform bot commands:\n- `@ciphertrust-bot help`\n- `@ciphertrust-bot features` show available bot features and config guide\n- `@ciphertrust-bot risk` show deterministic risk assessment\n- `@ciphertrust-bot label` auto-detect labels\n- `@ciphertrust-bot label bug` add one label manually\n- `@ciphertrust-bot triage` re-run labels and issue quality checks\n- `@ciphertrust-bot needs-repro`\n- `@ciphertrust-bot duplicate #123`\n- `@ciphertrust-bot summarize`\n- `@ciphertrust-bot groq-check`\n\nNatural language examples:\n- `@ciphertrust-bot can you check the labels?`\n- `@ciphertrust-bot what is the risk here?`\n- `@ciphertrust-bot can you summarize this?`\n'''
+FEATURES='''CipherTrust Terraform Bot features:\n\n1. Auto-label issues from title/body\n2. Auto-label PRs from title/body/changed files\n3. Missing test detector for provider/internal code changes\n4. Missing docs/examples detector for user-facing changes\n5. Terraform provider-specific labels: auth, provider-config, resource, data-source, key-management, regression\n6. Issue quality triage: needs-info and needs-repro\n7. Maintainer commands through `@ciphertrust-bot ...`\n8. Duplicate issue detection with keyword search, error/resource signals, and optional Groq reasoning\n9. Helpful next-step PR comments\n10. First-time contributor PR comments\n11. Stale PR and issue cleanup\n12. Reviewer assignment by folder ownership\n13. Safe auto-merge, disabled by default\n14. Groq-backed summaries, checks, and safe natural-language intent routing\n\nFull feature and configuration guide:\n'''+FEATURES_URL
 
 def log(msg):
     print('[terraform-bot][commands] '+msg,flush=True)
@@ -37,14 +37,39 @@ def comment(n,msg):
         log('failed to comment on #'+str(n)+' via REST: '+type(e).__name__+': '+str(e)[:500])
         return False
 
-def parse_command(body):
+def parse_command(body,issue):
     body=body.strip()
     low=body.lower()
     for t in TRIGGERS:
-        if low.startswith(t):
-            rest=body[len(t):].strip()
-            return rest.split()
-    return None
+        if not low.startswith(t):
+            continue
+        rest=body[len(t):].strip()
+        parts=rest.split()
+        if not parts:
+            return [],rest
+        first=parts[0].lower().strip('.,?!')
+        if first in ('help','features','docs','guide','risk','label','labels','triage','needs-repro','summarize','summary','groq-check','duplicate'):
+            return [first]+parts[1:],rest
+        # deterministic natural-language router first
+        rlow=rest.lower()
+        if any(x in rlow for x in ['check the label','check labels','what labels','which labels','label this','triage this','run triage']):
+            return ['triage'],rest
+        if any(x in rlow for x in ['risk','safe','dangerous','high risk','low risk']):
+            return ['risk'],rest
+        if any(x in rlow for x in ['summarize','summary','explain this','what is this about']):
+            return ['summarize'],rest
+        if any(x in rlow for x in ['features','what can you do','capabilities','docs','guide']):
+            return ['features'],rest
+        # LLM intent classifier fallback. It only returns allowlisted safe intents.
+        intent=llm.intent(rest,issue)
+        name=intent.get('intent','unknown')
+        if name!='unknown':
+            args=intent.get('args',{}) or {}
+            if name=='duplicate' and args.get('duplicate_of'):
+                return ['duplicate',str(args.get('duplicate_of'))],rest
+            return [name],rest
+        return parts,rest
+    return None,''
 
 def label_result(n,labels):
     added,failed=labeler.add_labels(n,labels)
@@ -62,8 +87,20 @@ def risk_result(issue):
             log('failed fetching PR files for risk command: '+type(e).__name__+': '+str(e)[:300])
     return triage.risk_markdown(issue,files)
 
+def triage_result(issue):
+    added,failed=labeler.run(issue)
+    labels=labeler.suggest(issue)
+    quality_labels,missing=triage.issue_quality(issue)
+    parts=['Triage complete.']
+    if added:parts.append('Added labels: '+', '.join(added))
+    if labels or quality_labels:parts.append('Suggested labels: '+', '.join(sorted(set(labels+quality_labels))))
+    if missing:parts.append('Missing issue details: '+', '.join(missing))
+    if failed:parts.append('Failed labels: '+', '.join(failed))
+    if len(parts)==1:parts.append('No label changes detected.')
+    return '\n'.join(parts)
+
 def run(issue,c):
-    p=parse_command(c.get('body',''))
+    p,rest=parse_command(c.get('body',''),issue)
     if p is None:
         log('no command trigger matched for comment on #'+str(issue.get('number')))
         return
@@ -77,17 +114,16 @@ def run(issue,c):
         return comment(n,FEATURES)
     if cmd=='risk':
         return comment(n,risk_result(issue))
+    if cmd in ('label','labels','triage'):
+        if cmd=='label' and len(p)>1:return label_result(n,[' '.join(p[1:])])
+        return comment(n,triage_result(issue))
     if cmd=='groq-check':return comment(n,llm.status())
-    if cmd=='summarize':
+    if cmd in ('summarize','summary'):
         msg=llm.summarize(issue) or ('LLM summary unavailable. '+llm.LAST_ERROR)
         return comment(n,msg)
-    if cmd=='label':
-        if len(p)>1:return label_result(n,[' '.join(p[1:])])
-        labels=labeler.suggest(issue)
-        if not labels:return comment(n,'No matching labels detected for this issue.')
-        return label_result(n,labels)
     if cmd=='needs-repro':
         msg=llm.summarize(issue) or 'Please add reproduction steps, expected/actual behavior, and provider/Terraform versions.'
         labeler.add_labels(n,['needs-repro']);return comment(n,msg)
     if cmd=='duplicate' and len(p)>1:
         labeler.add_labels(n,['duplicate']);return comment(n,'Possible duplicate of '+p[1])
+    return comment(n,'I did not understand that command. Try `@ciphertrust-bot help` or `@ciphertrust-bot features`.')
