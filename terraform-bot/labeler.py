@@ -2,7 +2,7 @@ import subprocess as s
 import llm
 
 RULES={
-'bug':['bug','error','fail','crash','panic','broken'],
+'bug':['bug','error','fail','failed','failure','crash','panic','broken','not working','unable','exception','auth','authentication','unauthorized','forbidden','credential','credentials','token','login'],
 'documentation':['docs','doc','readme','example'],
 'enhancement':['feature','enhance','improve','request'],
 'question':['how','why','question','help']
