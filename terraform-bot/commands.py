@@ -6,6 +6,13 @@ HELP='''Terraform bot commands:\n- `/bot help`\n- `/bot label` auto-detect label
 
 def comment(n,msg):s.run(['gh','issue','comment',str(n),'--body',msg],check=False)
 
+def label_result(n,labels):
+    added,failed=labeler.add_labels(n,labels)
+    parts=[]
+    if added:parts.append('Added labels: '+', '.join(added))
+    if failed:parts.append('Failed labels: '+', '.join(failed))
+    return comment(n,'\n'.join(parts) if parts else 'No labels changed.')
+
 def run(issue,c):
     body=c.get('body','').strip()
     if not body.startswith('/bot'):return
@@ -18,18 +25,12 @@ def run(issue,c):
         msg=llm.summarize(issue) or ('LLM summary unavailable. '+llm.LAST_ERROR)
         return comment(n,msg)
     if p[1]=='label':
-        if len(p)>2:
-            label=' '.join(p[2:])
-            r=s.run(['gh','issue','edit',str(n),'--add-label',label],capture_output=True,text=True)
-            if r.returncode==0:return comment(n,'Added label: '+label)
-            return comment(n,'Could not add label `'+label+'`. It may not exist in this repo. GitHub said: '+(r.stderr or r.stdout)[-500:])
+        if len(p)>2:return label_result(n,[' '.join(p[2:])])
         labels=labeler.suggest(issue)
         if not labels:return comment(n,'No matching labels detected for this issue.')
-        r=s.run(['gh','issue','edit',str(n),'--add-label',','.join(labels)],capture_output=True,text=True)
-        if r.returncode==0:return comment(n,'Added labels: '+', '.join(labels))
-        return comment(n,'Detected labels: '+', '.join(labels)+' but could not apply them. GitHub said: '+(r.stderr or r.stdout)[-500:])
+        return label_result(n,labels)
     if p[1]=='needs-repro':
         msg=llm.summarize(issue) or 'Please add reproduction steps, expected/actual behavior, and provider/Terraform versions.'
-        s.run(['gh','issue','edit',str(n),'--add-label','needs-repro'],check=False);return comment(n,msg)
+        labeler.add_labels(n,['needs-repro']);return comment(n,msg)
     if p[1]=='duplicate' and len(p)>2:
-        s.run(['gh','issue','edit',str(n),'--add-label','duplicate'],check=False);return comment(n,'Possible duplicate of '+p[2])
+        labeler.add_labels(n,['duplicate']);return comment(n,'Possible duplicate of '+p[2])
