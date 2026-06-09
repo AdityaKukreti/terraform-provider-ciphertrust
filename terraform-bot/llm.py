@@ -1,15 +1,27 @@
-import json,os,urllib.request
+import json,os,urllib.error,urllib.request
 ALLOWED={'bug','documentation','enhancement','question','duplicate','needs-repro'}
 MODEL=os.getenv('GROQ_MODEL','llama-3.1-8b-instant')
 URL='https://api.groq.com/openai/v1/chat/completions'
+LAST_ERROR=''
 
 def ask(prompt):
+    global LAST_ERROR
     key=os.getenv('GROQ_API_KEY')
-    if not key:return ''
+    if not key:
+        LAST_ERROR='missing_key';return ''
     data={'model':MODEL,'temperature':0,'messages':[{'role':'user','content':prompt}]}
     req=urllib.request.Request(URL,data=json.dumps(data).encode(),headers={'Authorization':'Bearer '+key,'Content-Type':'application/json'})
-    try:return json.loads(urllib.request.urlopen(req,timeout=20).read())['choices'][0]['message']['content'].strip()
-    except Exception:return ''
+    try:
+        r=json.loads(urllib.request.urlopen(req,timeout=20).read())
+        LAST_ERROR='ok';return r['choices'][0]['message']['content'].strip()
+    except urllib.error.HTTPError as e:
+        LAST_ERROR='http_'+str(e.code);return ''
+    except Exception as e:
+        LAST_ERROR=type(e).__name__;return ''
+
+def status():
+    txt=ask('Reply with OK only.')
+    return 'Groq status: '+LAST_ERROR+(' using '+MODEL if txt else '')
 
 def classify(issue):
     p='Classify this GitHub issue. Return JSON only: {"labels":[],"confidence":0.0}. Allowed labels: '+', '.join(sorted(ALLOWED))+'\nTitle: '+issue.get('title','')+'\nBody: '+str(issue.get('body',''))[:3000]
