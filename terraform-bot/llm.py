@@ -1,23 +1,18 @@
-import json,os,urllib.error,urllib.request
+import json,os
+from groq import Groq
 ALLOWED={'bug','documentation','enhancement','question','duplicate','needs-repro'}
 MODEL=os.getenv('GROQ_MODEL','llama-3.1-8b-instant')
-URL='https://api.groq.com/openai/v1/chat/completions'
 LAST_ERROR=''
 
 def ask(prompt):
     global LAST_ERROR
-    key=os.getenv('GROQ_API_KEY')
-    if not key:
+    if not os.getenv('GROQ_API_KEY'):
         LAST_ERROR='missing_key';return ''
-    data={'model':MODEL,'temperature':0,'messages':[{'role':'user','content':prompt}]}
-    req=urllib.request.Request(URL,data=json.dumps(data).encode(),headers={'Authorization':'Bearer '+key,'Content-Type':'application/json'})
     try:
-        r=json.loads(urllib.request.urlopen(req,timeout=20).read())
-        LAST_ERROR='ok';return r['choices'][0]['message']['content'].strip()
-    except urllib.error.HTTPError as e:
-        LAST_ERROR='http_'+str(e.code);return ''
+        c=Groq().chat.completions.create(model=MODEL,messages=[{'role':'user','content':prompt}],temperature=0,max_completion_tokens=1024,top_p=1,stream=False)
+        LAST_ERROR='ok';return c.choices[0].message.content.strip()
     except Exception as e:
-        LAST_ERROR=type(e).__name__;return ''
+        LAST_ERROR=type(e).__name__+': '+str(e)[:180];return ''
 
 def status():
     txt=ask('Reply with OK only.')
