@@ -20,6 +20,13 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      - name: Create GitHub App token
+        id: app-token
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ secrets.CIPHERBOT_APP_ID }}
+          private-key: ${{ secrets.CIPHERBOT_PRIVATE_KEY }}
+
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
@@ -30,8 +37,8 @@ jobs:
 
       - name: Run bot
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
           GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
           GROQ_MODEL: llama-3.1-8b-instant
           GITHUB_EVENT_NAME: ${{ github.event_name }}
