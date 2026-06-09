@@ -5,6 +5,7 @@ import urllib.request
 from datetime import datetime, timezone
 
 STALE_DAYS=int(os.getenv('STALE_PR_DAYS','30'))
+STALE_MINUTES=os.getenv('STALE_PR_MINUTES','').strip()
 STALE_LABEL=os.getenv('STALE_PR_LABEL','stale')
 BOT_NAME='terraform-bot/stale-prs'
 
@@ -37,6 +38,12 @@ def api(path,method='GET',body=None):
     with urllib.request.urlopen(req,timeout=30) as resp:
         raw=resp.read().decode('utf-8')
         return json.loads(raw) if raw else None
+
+
+def threshold_seconds():
+    if STALE_MINUTES:
+        return int(STALE_MINUTES)*60,'minute(s)',int(STALE_MINUTES)
+    return STALE_DAYS*24*60*60,'day(s)',STALE_DAYS
 
 
 def ensure_label():
@@ -86,23 +93,32 @@ def list_open_prs():
     return prs
 
 
+def human_age(seconds):
+    minutes=int(seconds//60)
+    if minutes<60:return str(minutes)+' minute(s)'
+    hours=int(minutes//60)
+    if hours<48:return str(hours)+' hour(s)'
+    return str(int(hours//24))+' day(s)'
+
+
 def run():
     now=datetime.now(timezone.utc)
+    threshold,unit,value=threshold_seconds()
     ensure_label()
     prs=list_open_prs()
-    log('scanning '+str(len(prs))+' open PR(s); stale threshold='+str(STALE_DAYS)+' day(s)')
+    log('scanning '+str(len(prs))+' open PR(s); stale threshold='+str(value)+' '+unit)
     closed=0
     for pr in prs:
         num=pr['number']
         updated=parse_time(pr['updated_at'])
-        age=(now-updated).days
+        age_seconds=(now-updated).total_seconds()
         title=pr.get('title','')
-        if age<STALE_DAYS:
-            log('skip PR #'+str(num)+' age='+str(age)+'d title='+title)
+        if age_seconds<threshold:
+            log('skip PR #'+str(num)+' age='+human_age(age_seconds)+' title='+title)
             continue
         body=(
             'Closing this PR automatically because it has had no activity for '
-            +str(age)+' days.\n\n'
+            +human_age(age_seconds)+'.\n\n'
             'If this is still relevant, please reopen it or create a fresh PR with the latest changes.\n\n'
             '_Handled by ciphertrust-bot._'
         )
