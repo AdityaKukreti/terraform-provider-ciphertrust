@@ -5,6 +5,25 @@ import labeler
 
 AUTO_MERGE=os.getenv('BOT_AUTO_MERGE','false').lower()=='true'
 AUTO_MERGE_LABEL=os.getenv('BOT_AUTO_MERGE_LABEL','automerge')
+AUTO_MERGE_METHOD=os.getenv('BOT_AUTO_MERGE_METHOD','squash')
+TRUSTED_ASSOCIATIONS={'OWNER','MEMBER','COLLABORATOR'}
+SAFE_AUTHOR_ASSOCIATIONS=set(os.getenv('BOT_AUTO_MERGE_TRUSTED_ASSOCIATIONS','OWNER,MEMBER,COLLABORATOR').split(','))
+HIGH_RISK_PATTERNS=[
+    '.github/workflows/**',
+    'terraform-bot/**',
+    'go.mod',
+    'go.sum',
+    '**/*auth*',
+    '**/*credential*',
+    '**/*token*',
+    '**/*secret*',
+]
+LOW_RISK_PATTERNS=[
+    'docs/**',
+    'examples/**',
+    '*.md',
+    '**/*.md',
+]
 
 # Simple ownership map. Replace reviewers with real GitHub usernames when ready.
 OWNERS={
@@ -46,6 +65,53 @@ def reviewers_for_files(files):
     return sorted(reviewers)
 
 
+def matches_any(path,patterns):
+    return any(fnmatch.fnmatch(path,p) for p in patterns)
+
+
+def risky_files(files):
+    return [f for f in files if matches_any(f,HIGH_RISK_PATTERNS)]
+
+
+def all_files_low_risk(files):
+    return bool(files) and all(matches_any(f,LOW_RISK_PATTERNS) for f in files)
+
+
+def latest_review_states(reviews):
+    states={}
+    for r in reviews:
+        user=(r.get('user') or {}).get('login')
+        if not user:continue
+        states[user]=r.get('state')
+    return states
+
+
+def has_approval_and_no_block(reviews):
+    states=latest_review_states(reviews)
+    if any(v=='CHANGES_REQUESTED' for v in states.values()):
+        return False,'changes requested by reviewer'
+    if not any(v=='APPROVED' for v in states.values()):
+        return False,'no maintainer approval found'
+    return True,'approved'
+
+
+def checks_green(sha):
+    status=gh.combined_status(sha)
+    if status.get('state') not in ('success','pending'):
+        return False,'commit status is '+str(status.get('state'))
+    checks=gh.check_runs(sha)
+    relevant=[c for c in checks if c.get('name')!='Run Terraform issue bot']
+    if not relevant and status.get('state')=='pending':
+        return False,'checks are still pending'
+    bad=[c.get('name') for c in relevant if c.get('conclusion') not in ('success','neutral','skipped')]
+    waiting=[c.get('name') for c in relevant if c.get('status')!='completed']
+    if waiting:
+        return False,'checks still running: '+', '.join(waiting[:5])
+    if bad:
+        return False,'checks failed: '+', '.join(bad[:5])
+    return True,'checks passed'
+
+
 def next_steps(pr,files,labels):
     num=pr['number']
     parts=[]
@@ -62,20 +128,53 @@ def next_steps(pr,files,labels):
     gh.add_comment(num,'\n'.join(parts))
 
 
-def try_auto_merge(pr):
+def auto_merge_decision(pr,files):
     num=pr['number']
-    existing=[x['name'] for x in pr.get('labels',[])]
+    labels=[x['name'] for x in pr.get('labels',[])]
     if not AUTO_MERGE:
-        gh.log('automerge','disabled; skip PR #'+str(num))
+        return False,'auto-merge disabled'
+    if AUTO_MERGE_LABEL not in labels:
+        return False,'missing '+AUTO_MERGE_LABEL+' label'
+    fresh=gh.get_pr(num)
+    if fresh.get('draft'):
+        return False,'draft PR'
+    if fresh.get('state')!='open':
+        return False,'PR is not open'
+    author_assoc=fresh.get('author_association','')
+    if author_assoc not in SAFE_AUTHOR_ASSOCIATIONS:
+        return False,'untrusted author association: '+str(author_assoc)
+    mergeable=fresh.get('mergeable')
+    mergeable_state=fresh.get('mergeable_state')
+    if mergeable is False:
+        return False,'PR is not mergeable'
+    if mergeable_state not in ('clean','has_hooks','unstable'):
+        return False,'unsafe mergeable_state: '+str(mergeable_state)
+    risky=risky_files(files)
+    if risky:
+        return False,'high-risk files changed: '+', '.join(risky[:5])
+    if not all_files_low_risk(files):
+        return False,'not a low-risk/docs/examples-only PR'
+    reviews=gh.pr_reviews(num)
+    ok,reason=has_approval_and_no_block(reviews)
+    if not ok:
+        return False,reason
+    sha=(fresh.get('head') or {}).get('sha')
+    if not sha:
+        return False,'missing head sha'
+    ok,reason=checks_green(sha)
+    if not ok:
+        return False,reason
+    return True,'safe to auto-merge'
+
+
+def try_auto_merge(pr,files):
+    num=pr['number']
+    ok,reason=auto_merge_decision(pr,files)
+    if not ok:
+        gh.log('automerge','skip PR #'+str(num)+': '+reason)
         return
-    if AUTO_MERGE_LABEL not in existing:
-        gh.log('automerge','missing '+AUTO_MERGE_LABEL+' label; skip PR #'+str(num))
-        return
-    # Conservative: do not merge drafts, dirty/unknown merge state, or PRs with requested changes unknown to us.
-    if pr.get('draft'):
-        gh.log('automerge','draft PR; skip #'+str(num))
-        return
-    gh.merge_pr(num,os.getenv('BOT_AUTO_MERGE_METHOD','squash'))
+    gh.log('automerge','merging PR #'+str(num)+': '+reason)
+    gh.merge_pr(num,AUTO_MERGE_METHOD)
 
 
 def run(pr,action):
@@ -94,4 +193,4 @@ def run(pr,action):
             gh.log('reviewers','failed requesting reviewers on PR #'+str(num)+': '+type(e).__name__+': '+str(e)[:300])
     if action=='opened':
         next_steps(pr,files,labels)
-    try_auto_merge(pr)
+    try_auto_merge(pr,files)
