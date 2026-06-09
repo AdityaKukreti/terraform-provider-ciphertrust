@@ -2,8 +2,8 @@ import subprocess as s
 import llm
 import labeler
 ALLOWED={'OWNER','MEMBER','COLLABORATOR'}
-TRIGGERS=('/bot','@cipherbot')
-HELP='''Terraform bot commands:\n- `/bot help` or `@cipherbot help`\n- `/bot label` or `@cipherbot label` auto-detect labels\n- `/bot label bug` or `@cipherbot label bug` add one label manually\n- `/bot needs-repro` or `@cipherbot needs-repro`\n- `/bot duplicate #123` or `@cipherbot duplicate #123`\n- `/bot summarize` or `@cipherbot summarize`\n- `/bot groq-check` or `@cipherbot groq-check`\n'''
+TRIGGERS=('/bot','@cipherbot','@ciphertrust-bot')
+HELP='''Terraform bot commands:\n- `/bot help`, `@cipherbot help`, or `@ciphertrust-bot help`\n- `/bot label`, `@cipherbot label`, or `@ciphertrust-bot label` auto-detect labels\n- `/bot label bug`, `@cipherbot label bug`, or `@ciphertrust-bot label bug` add one label manually\n- `/bot needs-repro`, `@cipherbot needs-repro`, or `@ciphertrust-bot needs-repro`\n- `/bot duplicate #123`, `@cipherbot duplicate #123`, or `@ciphertrust-bot duplicate #123`\n- `/bot summarize`, `@cipherbot summarize`, or `@ciphertrust-bot summarize`\n- `/bot groq-check`, `@cipherbot groq-check`, or `@ciphertrust-bot groq-check`\n'''
 
 def comment(n,msg):s.run(['gh','issue','comment',str(n),'--body',msg],check=False)
 
