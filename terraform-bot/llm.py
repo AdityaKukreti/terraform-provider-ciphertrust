@@ -1,6 +1,7 @@
 import json,os
 from groq import Groq
 ALLOWED={'bug','documentation','enhancement','question','duplicate','needs-repro'}
+INTENTS={'help','features','risk','triage','summarize','needs-repro','duplicate','unknown'}
 MODEL=os.getenv('GROQ_MODEL','llama-3.1-8b-instant')
 LAST_ERROR=''
 
@@ -36,3 +37,30 @@ def duplicate_reason(issue,cands):
         txt=ask(p);obj=json.loads(txt[txt.find('{'):txt.rfind('}')+1])
         return obj.get('duplicates',[])
     except Exception:return []
+
+def intent(command_text,issue):
+    p='''You are a safe GitHub maintainer-bot intent classifier.
+Return JSON only: {"intent":"unknown","confidence":0.0,"args":{}}.
+Allowed intents: help, features, risk, triage, summarize, needs-repro, duplicate, unknown.
+Rules:
+- Use triage for requests to check labels, apply labels, inspect labels, classify, or triage.
+- Use risk for requests asking whether it is safe, risky, high risk, or what the risk is.
+- Use summarize for summary/explain/what is this about.
+- Use features for capabilities/docs/what can you do.
+- Use needs-repro when the user asks to request reproduction details.
+- Use duplicate only when the user asks to mark/check duplicate; include issue number in args.duplicate_of if explicitly present like #123.
+- Never output destructive intents like close, merge, delete, approve, or edit workflow.
+- If unsure, use unknown.
+
+Command text: '''+command_text[:1000]+'''\nIssue title: '''+issue.get('title','')[:500]+'''\nIssue body: '''+str(issue.get('body') or '')[:1500]
+    try:
+        txt=ask(p)
+        obj=json.loads(txt[txt.find('{'):txt.rfind('}')+1])
+        name=str(obj.get('intent','unknown'))
+        conf=float(obj.get('confidence',0))
+        if name not in INTENTS or conf<0.75:
+            return {'intent':'unknown','confidence':conf,'args':{}}
+        args=obj.get('args',{}) if isinstance(obj.get('args',{}),dict) else {}
+        return {'intent':name,'confidence':conf,'args':args}
+    except Exception as e:
+        return {'intent':'unknown','confidence':0.0,'args':{}}
