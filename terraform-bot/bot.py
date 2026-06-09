@@ -1,12 +1,15 @@
 import json,os,sys
 sys.path.append(os.path.dirname(__file__))
-import labeler,commands,duplicates,stale_prs
+import labeler,commands,duplicates,stale_prs,pr_bot
 
 if os.environ.get('GITHUB_EVENT_NAME')=='schedule' or os.environ.get('TERRAFORM_BOT_MODE')=='stale-prs':
     stale_prs.run()
     raise SystemExit(0)
 
 e=json.load(open(os.environ['GITHUB_EVENT_PATH']))
+if 'pull_request' in e:
+    pr_bot.run(e['pull_request'],e.get('action',''))
+    raise SystemExit(0)
 if 'issue' not in e:raise SystemExit(0)
 issue=e['issue']
 if 'comment' in e:
