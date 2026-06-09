@@ -68,6 +68,11 @@ def add_labels(issue_number,labels):
     return labels
 
 
+def remove_label(issue_number,label):
+    api('/issues/'+str(issue_number)+'/labels/'+quote(label),method='DELETE',area='labels')
+    log('labels','removed '+label+' from #'+str(issue_number))
+
+
 def close_issue(issue_number):
     api('/issues/'+str(issue_number),method='PATCH',body={'state':'closed'},area='issues')
     log('issues','closed #'+str(issue_number))
