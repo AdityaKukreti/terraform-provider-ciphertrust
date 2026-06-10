@@ -7,8 +7,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-
 	"github.com/google/uuid"
+	"strings"
 
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
@@ -67,9 +67,6 @@ func (r *resourceCTEClientGroupDesignatedPrimarySet) Schema(_ context.Context, _
 			"ldt_comm_group_service_id": schema.StringAttribute{
 				Required:    true,
 				Description: "Identifier of the LDT communication group service to be associated with this Designated Primary Set.",
-				PlanModifiers: []planmodifier.String{
-					stringplanmodifier.RequiresReplace(),
-				},
 			},
 		},
 	}
@@ -131,6 +128,8 @@ func (r *resourceCTEClientGroupDesignatedPrimarySet) Read(ctx context.Context, r
 	var state CTEClientGroupDesignatedPrimarySetTFSDK
 	id := uuid.New().String()
 
+	tflog.Trace(ctx, common.MSG_METHOD_START+"[resource_cte_clientgroup_dps.go -> Read]["+id+"]")
+
 	diags := req.State.Get(ctx, &state)
 	resp.Diagnostics.Append(diags...)
 	if resp.Diagnostics.HasError() {
@@ -138,8 +137,13 @@ func (r *resourceCTEClientGroupDesignatedPrimarySet) Read(ctx context.Context, r
 	}
 
 	url := fmt.Sprintf("%s/%s/dps", common.URL_CTE_CLIENT_GROUP, state.ClientGroupID.ValueString())
-	_, err := r.client.GetById(ctx, id, state.ID.ValueString(), url)
+	response, err := r.client.GetById(ctx, id, state.ID.ValueString(), url)
 	if err != nil {
+		if strings.Contains(err.Error(), "record not found") || strings.Contains(err.Error(), "status: 404") {
+			tflog.Debug(ctx, "[resource_cte_clientgroup_dps.go -> Read] DPS not found, removing from state: "+state.ID.ValueString())
+			resp.State.RemoveResource(ctx)
+			return
+		}
 		tflog.Debug(ctx, common.ERR_METHOD_END+err.Error()+" [resource_cte_clientgroup_dps.go -> Read]["+id+"]")
 		resp.Diagnostics.AddError(
 			"Error reading CTE Client Group Designated Primary Set on CipherTrust Manager: ",
@@ -148,10 +152,37 @@ func (r *resourceCTEClientGroupDesignatedPrimarySet) Read(ctx context.Context, r
 		return
 	}
 
+	// Resource was deleted outside Terraform — remove from state so it gets recreated
+	if response == "" {
+		resp.State.RemoveResource(ctx)
+		return
+	}
+
+	tflog.Debug(ctx, "RAW DPS API RESPONSE: "+response)
+
+	var apiResp CTEClientGroupDesignatedPrimarySetListJSON
+	if err := json.Unmarshal([]byte(response), &apiResp); err != nil {
+		tflog.Debug(ctx, common.ERR_METHOD_END+err.Error()+" [resource_cte_clientgroup_dps.go -> Read]["+id+"]")
+		resp.Diagnostics.AddError(
+			"Error parsing CTE Client Group Designated Primary Set API response",
+			err.Error(),
+		)
+		return
+	}
+
+	setCTEClientGroupDesignatedPrimarySetState(&state, &apiResp)
+
+	diags = resp.State.Set(ctx, &state)
+	resp.Diagnostics.Append(diags...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
 	tflog.Trace(ctx, common.MSG_METHOD_END+"[resource_cte_clientgroup_dps.go -> Read]["+id+"]")
 }
 
 // Update updates the resource and sets the updated Terraform state on success.
+// Only client_list is updatable; all other fields either require replacement or are immutable.
 func (r *resourceCTEClientGroupDesignatedPrimarySet) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
 	var plan CTEClientGroupDesignatedPrimarySetTFSDK
 	var payload CTEClientGroupDesignatedPrimarySetUpdateJSON
@@ -178,7 +209,7 @@ func (r *resourceCTEClientGroupDesignatedPrimarySet) Update(ctx context.Context,
 
 	// plan.ID holds the dps_id returned from Create, used as {dpsId} in the PATCH URL
 	url := fmt.Sprintf("%s/%s/dps", common.URL_CTE_CLIENT_GROUP, plan.ClientGroupID.ValueString())
-	response, err := r.client.UpdateData(ctx, plan.ID.ValueString(), url, payloadJSON, "id")
+	_, err = r.client.UpdateData(ctx, plan.ID.ValueString(), url, payloadJSON, "id")
 	if err != nil {
 		tflog.Debug(ctx, common.ERR_METHOD_END+err.Error()+" [resource_cte_clientgroup_dps.go -> Update]["+plan.ID.ValueString()+"]")
 		resp.Diagnostics.AddError(
@@ -188,7 +219,8 @@ func (r *resourceCTEClientGroupDesignatedPrimarySet) Update(ctx context.Context,
 		return
 	}
 
-	plan.ID = types.StringValue(response)
+	// Only client_list is updatable; set state directly from plan since
+	// ID, ClientGroupID, Name, and LDTCommGroupServiceID are unchanged by the API.
 	diags = resp.State.Set(ctx, plan)
 	resp.Diagnostics.Append(diags...)
 	if resp.Diagnostics.HasError() {
@@ -233,4 +265,13 @@ func (r *resourceCTEClientGroupDesignatedPrimarySet) Configure(_ context.Context
 	}
 
 	r.client = client
+}
+
+func setCTEClientGroupDesignatedPrimarySetState(
+	state *CTEClientGroupDesignatedPrimarySetTFSDK,
+	apiResp *CTEClientGroupDesignatedPrimarySetListJSON,
+) {
+	state.ID = types.StringValue(apiResp.ID)
+	state.Name = types.StringValue(apiResp.Name)
+	state.ClientList = types.StringValue(apiResp.PrimaryClientNameList)
 }

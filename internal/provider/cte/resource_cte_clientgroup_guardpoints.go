@@ -1,5 +1,5 @@
-// Copyright (c) HashiCorp, Inc.
-// SPDX-License-Identifier: MIT
+//  Copyright (c) HashiCorp, Inc.
+//  SPDX-License-Identifier: MIT
 
 package cte
 
@@ -7,21 +7,22 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-
+	"sort"
 	"strings"
 
 	"github.com/google/uuid"
-
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/booldefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
-
-	common "github.com/ThalesGroup/terraform-provider-ciphertrust/internal/provider/common"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-log/tflog"
+	"github.com/tidwall/gjson"
+
+	common "github.com/ThalesGroup/terraform-provider-ciphertrust/internal/provider/common"
 )
 
 var (
@@ -41,96 +42,115 @@ func (r *resourceCTEClientGroupGP) Metadata(_ context.Context, req resource.Meta
 	resp.TypeName = req.ProviderTypeName + "_cte_clientgroup_guardpoint"
 }
 
-// Schema defines the schema for the resource.
+// ---------------------------------------------------------------------------
+// Schema
+// ---------------------------------------------------------------------------
+
 func (r *resourceCTEClientGroupGP) Schema(_ context.Context, _ resource.SchemaRequest, resp *resource.SchemaResponse) {
 	resp.Schema = schema.Schema{
 		Description: "A GuardPoint specifies the list of folders that contains paths to be protected." +
 			" Access to files and encryption of files under the GuardPoint is controlled by security policies." +
-			"GuardPoints created on a client group are applied to all clients in the group." +
-			"NOTE: Any updation performed will be applicable to each gurad paths.Terraform Destroy will unguard the paths.",
+			" GuardPoints created on a client group are applied to all clients in the group." +
+			" Terraform Destroy will unguard the paths.",
 		Attributes: map[string]schema.Attribute{
-			"client_group_id": schema.StringAttribute{
-				Required:    true,
-				Description: "CTE Client Group ID to be updated",
-			},
 			"id": schema.StringAttribute{
 				Computed:    true,
-				Description: "CTE Client Guardpoint ID to be updated or deleted",
-				PlanModifiers: []planmodifier.String{
-					stringplanmodifier.UseStateForUnknown(),
-				},
+				Description: "Comma-separated list of GuardPoint IDs managed by this resource.",
 			},
-			"guard_paths": schema.ListAttribute{
+			"client_group_id": schema.StringAttribute{
 				Required:    true,
-				ElementType: types.StringType,
-				Description: "List of GuardPaths to be created.",
+				Description: "CTE Client Group ID.",
 			},
-			"guard_point_params": schema.SingleNestedAttribute{
+			"guard_points": schema.MapNestedAttribute{
 				Required:    true,
-				Description: "Parameters for creating a GuardPoint",
-				Attributes: map[string]schema.Attribute{
-					"guard_point_type": schema.StringAttribute{
-						Required:    true,
-						Description: "Type of the GuardPoint",
-						Validators: []validator.String{
-							stringvalidator.OneOf([]string{"directory_auto", "directory_manual", "rawdevice_manual", "rawdevice_auto", "cloudstorage_auto", "cloudstorage_manual", "ransomware_protection"}...),
+				Description: "Map of GuardPoints keyed by guard_path. Each key is the path to guard.",
+				NestedObject: schema.NestedAttributeObject{
+					Attributes: map[string]schema.Attribute{
+						"id": schema.StringAttribute{
+							Computed:    true,
+							Description: "GuardPoint ID returned by the API.",
+							PlanModifiers: []planmodifier.String{
+								stringplanmodifier.UseStateForUnknown(),
+							},
 						},
-					},
-					"policy_id": schema.StringAttribute{
-						Required:    true,
-						Description: "ID of the policy applied with this GuardPoint. This parameter is not valid for Ransomware GuardPoints as they will not be associated with any CTE policy.",
-					},
-					"automount_enabled": schema.BoolAttribute{
-						Optional:    true,
-						Description: "Whether automount is enabled with the GuardPoint. Supported for Standard and LDT policies.",
-					},
-					"cifs_enabled": schema.BoolAttribute{
-						Optional:    true,
-						Description: "Whether to enable CIFS. Available on LDT enabled windows clients only. The default value is false. If you enable the setting, it cannot be disabled. Supported for only LDT policies.",
-					},
-					"data_classification_enabled": schema.BoolAttribute{
-						Optional:    true,
-						Description: "Whether data classification (tagging) is enabled. Enabled by default if the aligned policy contains ClassificationTags. Supported for Standard and LDT policies.",
-					},
-					"data_lineage_enabled": schema.BoolAttribute{
-						Optional:    true,
-						Description: "Whether data lineage (tracking) is enabled. Enabled only if data classification is enabled. Supported for Standard and LDT policies.",
-					},
-					"disk_name": schema.StringAttribute{
-						Optional:    true,
-						Description: "Name of the disk if the selected raw partition is a member of an Oracle ASM disk group.",
-					},
-					"diskgroup_name": schema.StringAttribute{
-						Optional:    true,
-						Description: "Name of the disk group if the selected raw partition is a member of an Oracle ASM disk group.",
-					},
-					"early_access": schema.BoolAttribute{
-						Optional:    true,
-						Description: "Whether secure start (early access) is turned on. Secure start is applicable to Windows clients only. Supported for Standard and LDT policies. The default value is false.",
-					},
-					"intelligent_protection": schema.BoolAttribute{
-						Optional:    true,
-						Description: "Flag to enable intelligent protection for this GuardPoint. This flag is valid for GuardPoints with classification based policy only. Can only be set during GuardPoint creation.",
-					},
-					"is_idt_capable_device": schema.BoolAttribute{
-						Optional:    true,
-						Description: "Whether the device where GuardPoint is applied is IDT capable or not. Supported for IDT policies.",
-					},
-					"mfa_enabled": schema.BoolAttribute{
-						Optional:    true,
-						Description: "Whether MFA is enabled",
-					},
-					"network_share_credentials_id": schema.StringAttribute{
-						Optional:    true,
-						Description: "ID/Name of the credentials if the GuardPoint is applied to a network share. Supported for only LDT policies.",
-					},
-					"preserve_sparse_regions": schema.BoolAttribute{
-						Optional:    true,
-						Description: "Whether to preserve sparse file regions. Available on LDT enabled clients only. The default value is true. If you disable the setting, it cannot be enabled again. Supported for only LDT policies.",
-					},
-					"guard_enabled": schema.BoolAttribute{
-						Optional:    true,
-						Description: "Returned from POST api after creating Guardpoints, can be updated later.",
+						"guard_point_params": schema.SingleNestedAttribute{
+							Required:    true,
+							Description: "Parameters for this GuardPoint.",
+							Attributes: map[string]schema.Attribute{
+								"guard_point_type": schema.StringAttribute{
+									Required:    true,
+									Description: "Type of the GuardPoint.",
+									Validators: []validator.String{
+										stringvalidator.OneOf([]string{
+											"directory_auto", "directory_manual",
+											"rawdevice_manual", "rawdevice_auto",
+											"cloudstorage_auto", "cloudstorage_manual",
+											"ransomware_protection",
+										}...),
+									},
+								},
+								"policy_id": schema.StringAttribute{
+									Required:    true,
+									Description: "ID of the policy applied with this GuardPoint.",
+								},
+								"automount_enabled": schema.BoolAttribute{
+									Optional:    true,
+									Description: "Whether automount is enabled with the GuardPoint.",
+								},
+								"cifs_enabled": schema.BoolAttribute{
+									Optional:    true,
+									Description: "Whether to enable CIFS.",
+								},
+								"data_classification_enabled": schema.BoolAttribute{
+									Optional:    true,
+									Description: "Whether data classification is enabled.",
+								},
+								"data_lineage_enabled": schema.BoolAttribute{
+									Optional:    true,
+									Description: "Whether data lineage is enabled.",
+								},
+								"disk_name": schema.StringAttribute{
+									Optional:    true,
+									Description: "Name of the disk for Oracle ASM disk group.",
+								},
+								"diskgroup_name": schema.StringAttribute{
+									Optional:    true,
+									Description: "Name of the disk group for Oracle ASM.",
+								},
+								"early_access": schema.BoolAttribute{
+									Optional:    true,
+									Description: "Whether secure start is turned on.",
+								},
+								"intelligent_protection": schema.BoolAttribute{
+									Optional:    true,
+									Description: "Flag to enable intelligent protection.",
+								},
+								"is_idt_capable_device": schema.BoolAttribute{
+									Optional:    true,
+									Description: "Whether the device is IDT capable.",
+								},
+								"mfa_enabled": schema.BoolAttribute{
+									Optional:    true,
+									Computed:    true,
+									Default:     booldefault.StaticBool(false),
+									Description: "Whether MFA is enabled.",
+								},
+								"network_share_credentials_id": schema.StringAttribute{
+									Optional:    true,
+									Description: "ID of the credentials for network share.",
+								},
+								"preserve_sparse_regions": schema.BoolAttribute{
+									Optional:    true,
+									Description: "Whether to preserve sparse file regions.",
+								},
+								"guard_enabled": schema.BoolAttribute{
+									Optional:    true,
+									Computed:    true,
+									Default:     booldefault.StaticBool(true),
+									Description: "Whether the GuardPoint is enabled.",
+								},
+							},
+						},
 					},
 				},
 			},
@@ -138,135 +158,223 @@ func (r *resourceCTEClientGroupGP) Schema(_ context.Context, _ resource.SchemaRe
 	}
 }
 
-// Create creates the resource and sets the initial Terraform state.
+// ---------------------------------------------------------------------------
+// Create
+// ---------------------------------------------------------------------------
+
 func (r *resourceCTEClientGroupGP) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
 	id := uuid.New().String()
 	tflog.Trace(ctx, common.MSG_METHOD_START+"[resource_cte_clientgroup_guardpoints.go -> Create]["+id+"]")
 
-	// Retrieve values from plan
 	var plan CTEClientGroupGuardPointTFSDK
-	var guardpointParamsPlan CTEClientGuardPointParamsTFSDK
-	var payload CTEClientGuardPointJSON
-	var guardpointParamsPayload CTEClientGuardPointParamsJSON
-
 	diags := req.Plan.Get(ctx, &plan)
 	resp.Diagnostics.Append(diags...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
 
-	guardpointParamsPlan = plan.GuardPointParams
-	if plan.GuardPointParams.GPType.ValueString() != "" && plan.GuardPointParams.GPType.ValueString() != types.StringNull().ValueString() {
-		guardpointParamsPayload.GPType = plan.GuardPointParams.GPType.ValueString()
+	type batchKey struct {
+		GPType                string
+		PolicyID              string
+		IsAutomountEnabled    bool
+		IsCIFSEnabled         bool
+		IsEarlyAccessEnabled  bool
+		IsDeviceIDTCapable    bool
+		IsMFAEnabled          bool
+		PreserveSparseRegions bool
+		NWShareCredentialsID  string
+		DiskName              string
+		DiskgroupName         string
 	}
-	if plan.GuardPointParams.PolicyID.ValueString() != "" && plan.GuardPointParams.PolicyID.ValueString() != types.StringNull().ValueString() {
-		guardpointParamsPayload.PolicyID = plan.GuardPointParams.PolicyID.ValueString()
-	}
-
-	if plan.GuardPointParams.IsAutomountEnabled.ValueBool() != types.BoolNull().ValueBool() {
-		guardpointParamsPayload.IsAutomountEnabled = bool(guardpointParamsPlan.IsAutomountEnabled.ValueBool())
-	}
-	if guardpointParamsPlan.IsCIFSEnabled.ValueBool() != types.BoolNull().ValueBool() {
-		guardpointParamsPayload.IsCIFSEnabled = bool(guardpointParamsPlan.IsCIFSEnabled.ValueBool())
-	}
-	if guardpointParamsPlan.IsDataClassificationEnabled.ValueBool() != types.BoolNull().ValueBool() {
-		guardpointParamsPayload.IsDataClassificationEnabled = bool(guardpointParamsPlan.IsDataClassificationEnabled.ValueBool())
-	}
-	if guardpointParamsPlan.IsDataLineageEnabled.ValueBool() != types.BoolNull().ValueBool() {
-		guardpointParamsPayload.IsDataLineageEnabled = bool(guardpointParamsPlan.IsDataLineageEnabled.ValueBool())
-	}
-	if guardpointParamsPlan.DiskName.ValueString() != "" && guardpointParamsPlan.DiskName.ValueString() != types.StringNull().ValueString() {
-		guardpointParamsPayload.DiskName = string(guardpointParamsPlan.DiskName.ValueString())
-	}
-	if guardpointParamsPlan.DiskgroupName.ValueString() != "" && guardpointParamsPlan.DiskgroupName.ValueString() != types.StringNull().ValueString() {
-		guardpointParamsPayload.DiskgroupName = string(guardpointParamsPlan.DiskgroupName.ValueString())
-	}
-	if guardpointParamsPlan.IsEarlyAccessEnabled.ValueBool() != types.BoolNull().ValueBool() {
-		guardpointParamsPayload.IsEarlyAccessEnabled = bool(guardpointParamsPlan.IsEarlyAccessEnabled.ValueBool())
-	}
-	if guardpointParamsPlan.IsIntelligentProtectionEnabled.ValueBool() != types.BoolNull().ValueBool() {
-		guardpointParamsPayload.IsIntelligentProtectionEnabled = bool(guardpointParamsPlan.IsIntelligentProtectionEnabled.ValueBool())
-	}
-	if guardpointParamsPlan.IsDeviceIDTCapable.ValueBool() != types.BoolNull().ValueBool() {
-		guardpointParamsPayload.IsDeviceIDTCapable = bool(guardpointParamsPlan.IsDeviceIDTCapable.ValueBool())
-	}
-	if plan.GuardPointParams.IsMFAEnabled.ValueBool() != types.BoolNull().ValueBool() {
-		guardpointParamsPayload.IsMFAEnabled = plan.GuardPointParams.IsMFAEnabled.ValueBool()
-	}
-	if guardpointParamsPlan.NWShareCredentialsID.ValueString() != "" && guardpointParamsPlan.NWShareCredentialsID.ValueString() != types.StringNull().ValueString() {
-		guardpointParamsPayload.NWShareCredentialsID = string(guardpointParamsPlan.NWShareCredentialsID.ValueString())
-	}
-	if guardpointParamsPlan.PreserveSparseRegions.ValueBool() != types.BoolNull().ValueBool() {
-		guardpointParamsPayload.PreserveSparseRegions = bool(guardpointParamsPlan.PreserveSparseRegions.ValueBool())
+	type batchEntry struct {
+		params     CTEClientGuardPointParamsTFSDK
+		guardPaths []string // ordered list of paths in this batch
 	}
 
-	payload.GuardPointParams = &guardpointParamsPayload
+	batchMap := make(map[batchKey]*batchEntry)
+	var batchOrder []batchKey
 
-	for _, gp := range plan.GuardPaths {
-		payload.GuardPaths = append(payload.GuardPaths, gp.ValueString())
+	for guardPath, entry := range plan.GuardPoints {
+		p := entry.GuardPointParams
+		key := batchKey{
+			GPType:                p.GPType.ValueString(),
+			PolicyID:              p.PolicyID.ValueString(),
+			IsAutomountEnabled:    p.IsAutomountEnabled.ValueBool(),
+			IsCIFSEnabled:         p.IsCIFSEnabled.ValueBool(),
+			IsEarlyAccessEnabled:  p.IsEarlyAccessEnabled.ValueBool(),
+			IsDeviceIDTCapable:    p.IsDeviceIDTCapable.ValueBool(),
+			IsMFAEnabled:          p.IsMFAEnabled.ValueBool(),
+			PreserveSparseRegions: p.PreserveSparseRegions.ValueBool(),
+			NWShareCredentialsID:  p.NWShareCredentialsID.ValueString(),
+			DiskName:              p.DiskName.ValueString(),
+			DiskgroupName:         p.DiskgroupName.ValueString(),
+		}
+		if _, exists := batchMap[key]; !exists {
+			batchMap[key] = &batchEntry{params: p}
+			batchOrder = append(batchOrder, key)
+		}
+		batchMap[key].guardPaths = append(batchMap[key].guardPaths, guardPath)
 	}
 
-	payloadJSON, err := json.Marshal(payload)
-	if err != nil {
-		tflog.Debug(ctx, common.ERR_METHOD_END+err.Error()+" [resource_cte_client_guardpoints.go -> Create]["+id+"]")
-		resp.Diagnostics.AddError(
-			"Invalid data input: CTE ClientGroup Guardpoint Creation",
-			err.Error(),
+	// pathToID collects the API-assigned ID for each guard_path after creation.
+	pathToID := make(map[string]string)
+
+	for _, key := range batchOrder {
+		entry := batchMap[key]
+		p := entry.params
+
+		paramsPayload := buildParamsPayload(p)
+		payload := CTEClientGuardPointJSON{
+			GuardPaths:       entry.guardPaths,
+			GuardPointParams: &paramsPayload,
+		}
+
+		payloadJSON, err := json.Marshal(payload)
+		if err != nil {
+			tflog.Debug(ctx, common.ERR_METHOD_END+err.Error()+" [resource_cte_clientgroup_guardpoints.go -> Create]["+id+"]")
+			resp.Diagnostics.AddError("Invalid data input: CTE ClientGroup Guardpoint Creation", err.Error())
+			return
+		}
+
+		response, err := r.client.PostDataV2(
+			ctx,
+			id,
+			common.URL_CTE_CLIENT_GROUP+"/"+plan.CTEClientGroupID.ValueString()+"/guardpoints",
+			payloadJSON,
 		)
-		return
+		if err != nil {
+			tflog.Debug(ctx, common.ERR_METHOD_END+err.Error()+" [resource_cte_clientgroup_guardpoints.go -> Create]["+id+"]")
+			resp.Diagnostics.AddError(
+				"Error creating CTE ClientGroup Guardpoint on CipherTrust Manager: ",
+				"Could not create CTE ClientGroup Guardpoint, unexpected error: "+err.Error(),
+			)
+			return
+		}
+
+		gpSize := int(gjson.Get(response, "guardpoints.#").Int())
+		for i := 0; i < gpSize; i++ {
+			returnedPath := gjson.Get(response, fmt.Sprintf("guardpoints.%d.guardpoint.guard_path", i)).String()
+			returnedID := gjson.Get(response, fmt.Sprintf("guardpoints.%d.guardpoint.id", i)).String()
+			if returnedPath != "" && returnedID != "" {
+				pathToID[returnedPath] = returnedID
+			}
+		}
 	}
 
-	response, err := r.client.PostDataV2(
-		ctx,
-		id,
-		common.URL_CTE_CLIENT_GROUP+"/"+plan.CTEClientGroupID.ValueString()+"/guardpoints",
-		payloadJSON)
-	if err != nil {
-		tflog.Debug(ctx, common.ERR_METHOD_END+err.Error()+" [resource_cte_clientgroup_guardpoints.go -> Create]["+id+"]")
-		resp.Diagnostics.AddError(
-			"Error creating CTE ClientGroup Guardpoint on CipherTrust Manager: ",
-			"Could not create CTE ClientGroup Guardpoint, unexpected error: "+err.Error(),
-		)
-		return
+	// Write IDs back into the plan map and build the top-level composite ID.
+	var allIDs []string
+	for guardPath, entry := range plan.GuardPoints {
+		gpID := pathToID[guardPath]
+		entry.ID = types.StringValue(gpID)
+		plan.GuardPoints[guardPath] = entry
+		allIDs = append(allIDs, gpID)
 	}
-	plan.ID = types.StringValue(parseConfig(response))
-	tflog.Trace(ctx, common.MSG_METHOD_END+"[resource_cte_client_guardpoints.go -> Create]["+id+"]")
+	sort.Strings(allIDs)
+	plan.ID = types.StringValue(strings.Join(allIDs, ","))
+
+	tflog.Trace(ctx, common.MSG_METHOD_END+"[resource_cte_clientgroup_guardpoints.go -> Create]["+id+"]")
 	diags = resp.State.Set(ctx, plan)
 	resp.Diagnostics.Append(diags...)
-	if resp.Diagnostics.HasError() {
-		return
-	}
 }
 
-// Read refreshes the Terraform state with the latest data.
+// ---------------------------------------------------------------------------
+// Read
+// ---------------------------------------------------------------------------
+
 func (r *resourceCTEClientGroupGP) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
 	var state CTEClientGroupGuardPointTFSDK
 	id := uuid.New().String()
+
+	tflog.Trace(ctx, common.MSG_METHOD_START+"[resource_cte_clientgroup_guardpoints.go -> Read]["+id+"]")
 
 	diags := req.State.Get(ctx, &state)
 	resp.Diagnostics.Append(diags...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
-	clientgroup_id := state.CTEClientGroupID.ValueString()
-	_, err := r.client.GetById(ctx, id, "", common.URL_CTE_CLIENT_GROUP+"/"+clientgroup_id+"/guardpoints")
+
+	clientGroupID := state.CTEClientGroupID.ValueString()
+
+	response, err := r.client.GetById(ctx, id, "", common.URL_CTE_CLIENT_GROUP+"/"+clientGroupID+"/guardpoints")
 	if err != nil {
-		tflog.Debug(ctx, common.ERR_METHOD_END+err.Error()+" [resource_cte_clientgroup_guardpoints.go -> Read]["+clientgroup_id+"]")
+		if strings.Contains(err.Error(), "status: 404") {
+			tflog.Debug(ctx, "[resource_cte_clientgroup_guardpoints.go -> Read] parent client group "+clientGroupID+" not found (404), removing from state")
+			resp.State.RemoveResource(ctx)
+			return
+		}
 		resp.Diagnostics.AddError(
-			"Error reading Guardpoints for ClientGroup id "+clientgroup_id+" on CipherTrust Manager: ",
-			"Could not read CTE ClientGroup id :"+clientgroup_id+" unexpected error: "+err.Error(),
+			"Error reading Guardpoints for ClientGroup id "+clientGroupID+" on CipherTrust Manager: ",
+			"Could not read CTE ClientGroup id: "+clientGroupID+", unexpected error: "+err.Error(),
 		)
 		return
 	}
 
+	if response == "" {
+		resp.State.RemoveResource(ctx)
+		return
+	}
+
+	var envelope struct {
+		Resources []CTEClientGuardPointListJSON `json:"resources"`
+	}
+	if err := json.Unmarshal([]byte(response), &envelope); err != nil {
+		resp.Diagnostics.AddError(
+			"Error parsing Guardpoints response for ClientGroup id "+clientGroupID,
+			err.Error(),
+		)
+		return
+	}
+
+	newGuardPoints := make(map[string]CTEClientGroupGuardPointEntryTFSDK)
+	var allIDs []string
+
+	for _, gp := range envelope.Resources {
+		prevEntry, hadPrior := state.GuardPoints[gp.GuardPath]
+
+		entry := CTEClientGroupGuardPointEntryTFSDK{
+			ID: types.StringValue(gp.ID),
+			GuardPointParams: CTEClientGuardPointParamsTFSDK{
+				GPType:         types.StringValue(gp.GuardPointType),
+				IsMFAEnabled:   types.BoolValue(gp.MFAEnabled),
+				IsGuardEnabled: types.BoolValue(gp.GuardEnabled),
+			},
+		}
+
+		if hadPrior {
+			p := prevEntry.GuardPointParams
+			entry.GuardPointParams.PolicyID = p.PolicyID
+			entry.GuardPointParams.IsAutomountEnabled = p.IsAutomountEnabled
+			entry.GuardPointParams.IsCIFSEnabled = p.IsCIFSEnabled
+			entry.GuardPointParams.IsEarlyAccessEnabled = p.IsEarlyAccessEnabled
+			entry.GuardPointParams.IsDeviceIDTCapable = p.IsDeviceIDTCapable
+			entry.GuardPointParams.PreserveSparseRegions = p.PreserveSparseRegions
+			entry.GuardPointParams.IsDataClassificationEnabled = p.IsDataClassificationEnabled
+			entry.GuardPointParams.IsDataLineageEnabled = p.IsDataLineageEnabled
+			entry.GuardPointParams.IsIntelligentProtectionEnabled = p.IsIntelligentProtectionEnabled
+			entry.GuardPointParams.NWShareCredentialsID = p.NWShareCredentialsID
+			entry.GuardPointParams.DiskName = p.DiskName
+			entry.GuardPointParams.DiskgroupName = p.DiskgroupName
+		}
+
+		newGuardPoints[gp.GuardPath] = entry
+		allIDs = append(allIDs, gp.ID)
+	}
+
+	state.GuardPoints = newGuardPoints
+	sort.Strings(allIDs)
+	state.ID = types.StringValue(strings.Join(allIDs, ","))
+
 	tflog.Trace(ctx, common.MSG_METHOD_END+"[resource_cte_clientgroup_guardpoints.go -> Read]["+id+"]")
+	diags = resp.State.Set(ctx, &state)
+	resp.Diagnostics.Append(diags...)
 }
 
-// Update updates the each guardpoints created and sets the updated Terraform state on success.
+// ---------------------------------------------------------------------------
+// Update
+// ---------------------------------------------------------------------------
+
 func (r *resourceCTEClientGroupGP) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
 	var plan, state CTEClientGroupGuardPointTFSDK
-	var guardpointParamsPlan CTEClientGuardPointParamsTFSDK
-	var payload UpdateCTEGuardPointJSON
 
 	diags := req.Plan.Get(ctx, &plan)
 	resp.Diagnostics.Append(diags...)
@@ -278,59 +386,213 @@ func (r *resourceCTEClientGroupGP) Update(ctx context.Context, req resource.Upda
 	if resp.Diagnostics.HasError() {
 		return
 	}
-	id_list := strings.Split(state.ID.ValueString(), ",")
-	var id []string
-	guardpointParamsPlan = plan.GuardPointParams
 
-	if guardpointParamsPlan.IsGuardEnabled.ValueBool() != types.BoolNull().ValueBool() {
-		payload.IsGuardEnabled = guardpointParamsPlan.IsGuardEnabled.ValueBool()
-	}
-	if guardpointParamsPlan.IsMFAEnabled.ValueBool() != types.BoolNull().ValueBool() {
-		payload.IsMFAEnabled = bool(guardpointParamsPlan.IsMFAEnabled.ValueBool())
-	}
-	if guardpointParamsPlan.NWShareCredentialsID.ValueString() != "" && guardpointParamsPlan.NWShareCredentialsID.ValueString() != types.StringNull().ValueString() {
-		payload.NWShareCredentialsID = string(guardpointParamsPlan.NWShareCredentialsID.ValueString())
-	}
+	clientGroupID := plan.CTEClientGroupID.ValueString()
 
-	payloadJSON, err := json.Marshal(payload)
-	if err != nil {
-		tflog.Debug(ctx, common.ERR_METHOD_END+err.Error()+" [resource_cte_client_guardpoints.go -> Update]")
-		resp.Diagnostics.AddError(
-			"Invalid data input: CTE Client Guardpoint Update",
-			err.Error(),
-		)
-		return
-	}
-	clientgroup_id := plan.CTEClientGroupID.ValueString()
-	for _, gpId := range id_list {
-		_, err := r.client.UpdateData(
-			ctx,
-			gpId,
-			common.URL_CTE_CLIENT_GROUP+"/"+clientgroup_id+"/guardpoints",
-			payloadJSON,
-			"")
-		if err != nil {
-			tflog.Debug(ctx, common.ERR_METHOD_END+err.Error()+" [resource_cte_client_guardpoints.go -> Update]["+gpId+"]")
-			resp.Diagnostics.AddError(
-				"Error updating Guardpoint id "+gpId+" for client id "+clientgroup_id+" on CipherTrust Manager: ",
-				"Could not update Guardpoint id "+gpId+", for client id "+clientgroup_id+" unexpected error: "+err.Error(),
-			)
-			return
-		} else {
-			tflog.Trace(ctx, common.MSG_METHOD_END+"[resource_cte_client_guardpoints.go -> Update]["+gpId+"]")
-			id = append(id, gpId)
+	// ---------------------------------------------------------------
+	// PHASE 0 — UNGUARD guardpoints whose guard_path was removed from plan.
+	// ---------------------------------------------------------------
+	var removedIDs []string
+	for guardPath, stateEntry := range state.GuardPoints {
+		if _, stillInPlan := plan.GuardPoints[guardPath]; !stillInPlan {
+			removedIDs = append(removedIDs, stateEntry.ID.ValueString())
 		}
 	}
-	state.ID = types.StringValue(strings.Join(id, ","))
-	diags = resp.State.Set(ctx, plan)
-	resp.Diagnostics.Append(diags...)
-	if resp.Diagnostics.HasError() {
-		return
+
+	if len(removedIDs) > 0 {
+		unguardPayload := CTEClientGuardPointUnguardJSON{
+			GuardPointIdList: removedIDs,
+		}
+		unguardPayloadJSON, err := json.Marshal(unguardPayload)
+		if err != nil {
+			resp.Diagnostics.AddError("Invalid data input: CTE ClientGroup Guardpoint Unguard during Update", err.Error())
+			return
+		}
+
+		_, err = r.client.UpdateData(
+			ctx,
+			"",
+			common.URL_CTE_CLIENT_GROUP+"/"+clientGroupID+"/guardpoints/unguard",
+			unguardPayloadJSON,
+			"",
+		)
+		if err != nil {
+			resp.Diagnostics.AddError(
+				"Error unguarding removed Guardpoints for client group "+clientGroupID,
+				err.Error(),
+			)
+			return
+		}
+
+		tflog.Trace(ctx, "[resource_cte_clientgroup_guardpoints.go -> Update/Unguard] unguarded IDs: "+strings.Join(removedIDs, ","))
 	}
 
+	// ---------------------------------------------------------------
+	// PHASE 1 — CREATE guard_paths that are new in the plan (not in state).
+	// ---------------------------------------------------------------
+	type batchKey struct {
+		GPType                string
+		PolicyID              string
+		IsAutomountEnabled    bool
+		IsCIFSEnabled         bool
+		IsEarlyAccessEnabled  bool
+		IsDeviceIDTCapable    bool
+		IsMFAEnabled          bool
+		PreserveSparseRegions bool
+		NWShareCredentialsID  string
+		DiskName              string
+		DiskgroupName         string
+	}
+	type batchEntry struct {
+		params     CTEClientGuardPointParamsTFSDK
+		guardPaths []string
+	}
+
+	batchMap := make(map[batchKey]*batchEntry)
+	var batchOrder []batchKey
+	newPaths := make(map[string]bool)
+
+	for guardPath, planEntry := range plan.GuardPoints {
+		if _, existsInState := state.GuardPoints[guardPath]; existsInState {
+			continue // already exists — handle in Phase 2
+		}
+
+		p := planEntry.GuardPointParams
+		key := batchKey{
+			GPType:                p.GPType.ValueString(),
+			PolicyID:              p.PolicyID.ValueString(),
+			IsAutomountEnabled:    p.IsAutomountEnabled.ValueBool(),
+			IsCIFSEnabled:         p.IsCIFSEnabled.ValueBool(),
+			IsEarlyAccessEnabled:  p.IsEarlyAccessEnabled.ValueBool(),
+			IsDeviceIDTCapable:    p.IsDeviceIDTCapable.ValueBool(),
+			IsMFAEnabled:          p.IsMFAEnabled.ValueBool(),
+			PreserveSparseRegions: p.PreserveSparseRegions.ValueBool(),
+			NWShareCredentialsID:  p.NWShareCredentialsID.ValueString(),
+			DiskName:              p.DiskName.ValueString(),
+			DiskgroupName:         p.DiskgroupName.ValueString(),
+		}
+		if _, exists := batchMap[key]; !exists {
+			batchMap[key] = &batchEntry{params: p}
+			batchOrder = append(batchOrder, key)
+		}
+		batchMap[key].guardPaths = append(batchMap[key].guardPaths, guardPath)
+		newPaths[guardPath] = true
+	}
+
+	pathToNewID := make(map[string]string)
+
+	for _, key := range batchOrder {
+		entry := batchMap[key]
+		p := entry.params
+
+		paramsPayload := buildParamsPayload(p)
+		payload := CTEClientGuardPointJSON{
+			GuardPaths:       entry.guardPaths,
+			GuardPointParams: &paramsPayload,
+		}
+		payloadJSON, err := json.Marshal(payload)
+		if err != nil {
+			resp.Diagnostics.AddError("Invalid data input: CTE ClientGroup Guardpoint Create-in-Update", err.Error())
+			return
+		}
+
+		createID := uuid.New().String()
+		response, err := r.client.PostDataV2(
+			ctx,
+			createID,
+			common.URL_CTE_CLIENT_GROUP+"/"+clientGroupID+"/guardpoints",
+			payloadJSON,
+		)
+		if err != nil {
+			resp.Diagnostics.AddError(
+				"Error creating new Guardpoint during Update for client group "+clientGroupID,
+				err.Error(),
+			)
+			return
+		}
+
+		// Parse IDs from the API response JSON by matching guard_path, not position.
+		gpSize := int(gjson.Get(response, "guardpoints.#").Int())
+		for i := 0; i < gpSize; i++ {
+			returnedPath := gjson.Get(response, fmt.Sprintf("guardpoints.%d.guardpoint.guard_path", i)).String()
+			returnedID := gjson.Get(response, fmt.Sprintf("guardpoints.%d.guardpoint.id", i)).String()
+			if returnedPath != "" && returnedID != "" {
+				pathToNewID[returnedPath] = returnedID
+			}
+		}
+	}
+
+	// ---------------------------------------------------------------
+	// PHASE 2 — UPDATE existing guardpoints
+	// ---------------------------------------------------------------
+	var allIDs []string
+
+	for guardPath, planEntry := range plan.GuardPoints {
+		var gpID string
+
+		if newPaths[guardPath] {
+			// Newly created in Phase 1 — params already sent, just record ID.
+			gpID = pathToNewID[guardPath]
+		} else {
+			// Existing — carry state ID forward and send an update.
+			stateEntry := state.GuardPoints[guardPath]
+			gpID = stateEntry.ID.ValueString()
+
+			var payload UpdateCTEGuardPointJSON
+			if !planEntry.GuardPointParams.IsGuardEnabled.IsNull() {
+				v := planEntry.GuardPointParams.IsGuardEnabled.ValueBool()
+				payload.IsGuardEnabled = &v
+			}
+			if !planEntry.GuardPointParams.IsMFAEnabled.IsNull() {
+				v := planEntry.GuardPointParams.IsMFAEnabled.ValueBool()
+				payload.IsMFAEnabled = &v
+			}
+			if planEntry.GuardPointParams.NWShareCredentialsID.ValueString() != "" {
+				payload.NWShareCredentialsID = planEntry.GuardPointParams.NWShareCredentialsID.ValueString()
+			}
+
+			payloadJSON, err := json.Marshal(payload)
+			if err != nil {
+				resp.Diagnostics.AddError("Invalid data input: CTE Client Guardpoint Update", err.Error())
+				return
+			}
+
+			_, err = r.client.UpdateData(
+				ctx,
+				gpID,
+				common.URL_CTE_CLIENT_GROUP+"/"+clientGroupID+"/guardpoints",
+				payloadJSON,
+				"",
+			)
+			if err != nil {
+				resp.Diagnostics.AddError(
+					"Error updating Guardpoint id "+gpID+" for client group "+clientGroupID,
+					err.Error(),
+				)
+				return
+			}
+
+			tflog.Trace(ctx, common.MSG_METHOD_END+"[resource_cte_clientgroup_guardpoints.go -> Update]["+gpID+"]")
+		}
+
+		// Write the resolved ID back into the plan map entry.
+		entry := plan.GuardPoints[guardPath]
+		entry.ID = types.StringValue(gpID)
+		plan.GuardPoints[guardPath] = entry
+
+		allIDs = append(allIDs, gpID)
+	}
+
+	sort.Strings(allIDs)
+	plan.ID = types.StringValue(strings.Join(allIDs, ","))
+	diags = resp.State.Set(ctx, plan)
+	resp.Diagnostics.Append(diags...)
 }
 
-// Delete deletes the resource and removes the Terraform state on success.
+// ---------------------------------------------------------------------------
+// Delete
+// ---------------------------------------------------------------------------
+
 func (r *resourceCTEClientGroupGP) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
 	var state CTEClientGroupGuardPointTFSDK
 	diags := req.State.Get(ctx, &state)
@@ -338,23 +600,30 @@ func (r *resourceCTEClientGroupGP) Delete(ctx context.Context, req resource.Dele
 	if resp.Diagnostics.HasError() {
 		return
 	}
-	var payload CTEClientGuardPointUnguardJSON
-	id_list := strings.Split(state.ID.ValueString(), ",")
 
-	payload.GuardPointIdList = id_list
+	var idList []string
+	for _, entry := range state.GuardPoints {
+		idList = append(idList, entry.ID.ValueString())
+	}
 
+	payload := CTEClientGuardPointUnguardJSON{
+		GuardPointIdList: idList,
+	}
 	payloadJSON, err := json.Marshal(payload)
 	if err != nil {
-		tflog.Debug(ctx, common.ERR_METHOD_END+err.Error()+" [resource_cte_client_guardpoints.go -> Delete/Unguard]")
-		resp.Diagnostics.AddError(
-			"Invalid data input: CTE Client Guardpoint Creation",
-			err.Error(),
-		)
+		tflog.Debug(ctx, common.ERR_METHOD_END+err.Error()+" [resource_cte_clientgroup_guardpoints.go -> Delete/Unguard]")
+		resp.Diagnostics.AddError("Invalid data input: CTE Client Guardpoint Delete/Unguard", err.Error())
 		return
 	}
-	// Delete existing order
-	output, err := r.client.UpdateData(ctx, "", common.URL_CTE_CLIENT_GROUP+"/"+state.CTEClientGroupID.ValueString()+"/guardpoints/unguard", payloadJSON, "")
-	tflog.Trace(ctx, common.MSG_METHOD_END+"[resource_cte_client_guardpoints.go -> Delete/Unguard]["+state.ID.ValueString()+"]["+output+"]")
+
+	output, err := r.client.UpdateData(
+		ctx,
+		"",
+		common.URL_CTE_CLIENT_GROUP+"/"+state.CTEClientGroupID.ValueString()+"/guardpoints/unguard",
+		payloadJSON,
+		"",
+	)
+	tflog.Trace(ctx, common.MSG_METHOD_END+"[resource_cte_clientgroup_guardpoints.go -> Delete/Unguard]["+state.ID.ValueString()+"]["+output+"]")
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Error Deleting/Unguarding CipherTrust CTE Client Guardpoint",
@@ -364,25 +633,55 @@ func (r *resourceCTEClientGroupGP) Delete(ctx context.Context, req resource.Dele
 	}
 
 	resp.State.RemoveResource(ctx)
-	if resp.Diagnostics.HasError() {
-		return
-	}
 }
 
-func (d *resourceCTEClientGroupGP) Configure(_ context.Context, req resource.ConfigureRequest, resp *resource.ConfigureResponse) {
+// ---------------------------------------------------------------------------
+// Configure
+// ---------------------------------------------------------------------------
+
+func (r *resourceCTEClientGroupGP) Configure(_ context.Context, req resource.ConfigureRequest, resp *resource.ConfigureResponse) {
 	if req.ProviderData == nil {
 		return
 	}
-
 	client, ok := req.ProviderData.(*common.Client)
 	if !ok {
 		resp.Diagnostics.AddError(
 			"Error in fetching client from provider",
 			fmt.Sprintf("Expected *provider.Client, got: %T. Please report this issue to the provider developers.", req.ProviderData),
 		)
-
 		return
 	}
+	r.client = client
+}
 
-	d.client = client
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+// buildParamsPayload converts the TFSDK params struct to the JSON payload
+// struct used by the API. Extracted to avoid duplication between Create and
+// the Phase 1 create-in-Update path.
+func buildParamsPayload(p CTEClientGuardPointParamsTFSDK) CTEClientGuardPointParamsJSON {
+	var out CTEClientGuardPointParamsJSON
+	out.GPType = p.GPType.ValueString()
+	out.PolicyID = p.PolicyID.ValueString()
+	out.IsAutomountEnabled = p.IsAutomountEnabled.ValueBool()
+	out.IsCIFSEnabled = p.IsCIFSEnabled.ValueBool()
+	out.IsDataClassificationEnabled = p.IsDataClassificationEnabled.ValueBool()
+	out.IsDataLineageEnabled = p.IsDataLineageEnabled.ValueBool()
+	out.IsEarlyAccessEnabled = p.IsEarlyAccessEnabled.ValueBool()
+	out.IsIntelligentProtectionEnabled = p.IsIntelligentProtectionEnabled.ValueBool()
+	out.IsDeviceIDTCapable = p.IsDeviceIDTCapable.ValueBool()
+	out.IsMFAEnabled = p.IsMFAEnabled.ValueBool()
+	out.PreserveSparseRegions = p.PreserveSparseRegions.ValueBool()
+	if p.DiskName.ValueString() != "" {
+		out.DiskName = p.DiskName.ValueString()
+	}
+	if p.DiskgroupName.ValueString() != "" {
+		out.DiskgroupName = p.DiskgroupName.ValueString()
+	}
+	if p.NWShareCredentialsID.ValueString() != "" {
+		out.NWShareCredentialsID = p.NWShareCredentialsID.ValueString()
+	}
+	return out
 }

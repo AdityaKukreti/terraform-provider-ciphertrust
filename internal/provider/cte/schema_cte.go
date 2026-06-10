@@ -42,40 +42,46 @@ type CTEClientsListTFSDK struct {
 }
 
 type CTEClientsListJSON struct {
-	ID                     string `json:"id"`
-	URI                    string `json:"uri"`
-	Account                string `json:"account"`
-	App                    string `json:"application"`
-	DevAccount             string `json:"devAccount"`
-	CreatedAt              string `json:"created_at"`
-	UpdatedAt              string `json:"updated_at"`
-	Name                   string `json:"name"`
-	OSType                 string `json:"os_type"`
-	OSSubType              string `json:"os_sub_type"`
-	ClientRegID            string `json:"client_reg_id"`
-	ServerHostname         string `json:"server_host_name"`
-	Description            string `json:"description"`
-	ClientLocked           bool   `json:"client_locked"`
-	SystemLocked           bool   `json:"system_locked"`
-	PasswordCreationMethod string `json:"password_creation_method"`
-	ClientVersion          string `json:"client_version"`
-	RegistrationAllowed    bool   `json:"registration_allowed"`
-	CommunicationEnabled   bool   `json:"communication_enabled"`
-	Capabilities           string `json:"capabilities"`
-	EnabledCapabilities    string `json:"enabled_capabilities"`
-	ProtectionMode         string `json:"protection_mode"`
-	ClientType             string `json:"client_type"`
-	ProfileName            string `json:"profile_name"`
-	ProfileID              string `json:"profile_id"`
-	LDTEnabled             bool   `json:"ldt_enabled"`
-	ClientHealthStatus     string `json:"client_health_status"`
-	Errors                 string `json:"errors"`
-	Warnings               string `json:"warnings"`
-	ClientErrors           string `json:"client_errors"`
-	ClientWarnings         string `json:"client_warnings"`
-	FamEnabled             bool   `json:"fam_enabled"`
-	FamState               string `json:"fam_state"`
-	DPS_Enabled            bool   `json:"dps_enabled"`
+	ID                     string                 `json:"id"`
+	URI                    string                 `json:"uri"`
+	Account                string                 `json:"account"`
+	App                    string                 `json:"application"`
+	DevAccount             string                 `json:"devAccount"`
+	CreatedAt              string                 `json:"created_at"`
+	UpdatedAt              string                 `json:"updated_at"`
+	Name                   string                 `json:"name"`
+	OSType                 string                 `json:"os_type"`
+	OSSubType              string                 `json:"os_sub_type"`
+	ClientRegID            string                 `json:"client_reg_id"`
+	ServerHostname         string                 `json:"server_host_name"`
+	Description            string                 `json:"description"`
+	ClientLocked           bool                   `json:"client_locked"`
+	SystemLocked           bool                   `json:"system_locked"`
+	PasswordCreationMethod string                 `json:"password_creation_method"`
+	ClientVersion          string                 `json:"client_version"`
+	RegistrationAllowed    bool                   `json:"registration_allowed"`
+	CommunicationEnabled   bool                   `json:"communication_enabled"`
+	Capabilities           string                 `json:"capabilities"`
+	EnabledCapabilities    string                 `json:"enabled_capabilities"`
+	ProtectionMode         string                 `json:"protection_mode"`
+	ClientType             string                 `json:"client_type"`
+	ProfileName            string                 `json:"profile_name"`
+	ProfileID              string                 `json:"profile_id"`
+	LDTEnabled             bool                   `json:"ldt_enabled"`
+	ClientHealthStatus     string                 `json:"client_health_status"`
+	Errors                 string                 `json:"errors"`
+	Warnings               string                 `json:"warnings"`
+	ClientErrors           string                 `json:"client_errors"`
+	ClientWarnings         string                 `json:"client_warnings"`
+	FamEnabled             bool                   `json:"fam_enabled"`
+	FamState               string                 `json:"fam_state"`
+	DPS_Enabled            bool                   `json:"dps_enabled"`
+	ClientMFAEnabled       bool                   `json:"client_mfa_enabled"`
+	DelClient              bool                   `json:"del_client"`
+	EnableDomainSharing    bool                   `json:"enable_domain_sharing"`
+	MaxNumCacheLog         int64                  `json:"max_num_cache_log"`
+	MaxSpaceCacheLog       int64                  `json:"max_space_cache_log"`
+	Labels                 map[string]interface{} `json:"labels"`
 }
 
 type CTEClientTFSDK struct {
@@ -88,6 +94,7 @@ type CTEClientTFSDK struct {
 	Password               types.String   `tfsdk:"password"`
 	PasswordCreationMethod types.String   `tfsdk:"password_creation_method"`
 	ProfileIdentifier      types.String   `tfsdk:"profile_identifier"`
+	ProfileName            types.String   `tfsdk:"profile_name"`
 	RegistrationAllowed    types.Bool     `tfsdk:"registration_allowed"`
 	SystemLocked           types.Bool     `tfsdk:"system_locked"`
 	ClientMFAEnabled       types.Bool     `tfsdk:"client_mfa_enabled"`
@@ -108,7 +115,7 @@ type CTEClientTFSDK struct {
 type CTEClientJSON struct {
 	ID                     string                 `json:"id"`
 	Name                   string                 `json:"name"`
-	ClientLocked           bool                   `json:"client_locked"`
+	ClientLocked           *bool                  `json:"client_locked,omitempty"`
 	ClientType             string                 `json:"client_type"`
 	CommunicationEnabled   bool                   `json:"communication_enabled"`
 	Description            string                 `json:"description"`
@@ -116,7 +123,7 @@ type CTEClientJSON struct {
 	PasswordCreationMethod string                 `json:"password_creation_method"`
 	ProfileIdentifier      string                 `json:"profile_identifier"`
 	RegistrationAllowed    bool                   `json:"registration_allowed"`
-	SystemLocked           bool                   `json:"system_locked"`
+	SystemLocked           *bool                  `json:"system_locked,omitempty"`
 	ClientMFAEnabled       bool                   `json:"client_mfa_enabled,omitempty"`
 	DelClient              bool                   `json:"del_client"`
 	DisableCapability      string                 `json:"disable_capability"`
@@ -768,16 +775,19 @@ type CTEClientGuardPointParamsTFSDK struct {
 }
 
 type CTEClientGuardPointTFSDK struct {
-	ID               types.String                   `tfsdk:"id"`
-	CTEClientID      types.String                   `tfsdk:"client_id"`
-	GuardPaths       []types.String                 `tfsdk:"guard_paths"`
-	GuardPointParams CTEClientGuardPointParamsTFSDK `tfsdk:"guard_point_params"`
+	ID          types.String                                  `tfsdk:"id"`
+	CTEClientID types.String                                  `tfsdk:"client_id"`
+	GuardPoints map[string]CTEClientGroupGuardPointEntryTFSDK `tfsdk:"guard_points"`
 }
 
 type CTEClientGroupGuardPointTFSDK struct {
+	ID               types.String                                  `tfsdk:"id"`
+	CTEClientGroupID types.String                                  `tfsdk:"client_group_id"`
+	GuardPoints      map[string]CTEClientGroupGuardPointEntryTFSDK `tfsdk:"guard_points"`
+}
+
+type CTEClientGroupGuardPointEntryTFSDK struct {
 	ID               types.String                   `tfsdk:"id"`
-	CTEClientGroupID types.String                   `tfsdk:"client_group_id"`
-	GuardPaths       []types.String                 `tfsdk:"guard_paths"`
 	GuardPointParams CTEClientGuardPointParamsTFSDK `tfsdk:"guard_point_params"`
 }
 
@@ -814,8 +824,8 @@ type UpdateCTEGuardPointTFSDK struct {
 }
 
 type UpdateCTEGuardPointJSON struct {
-	IsGuardEnabled       bool   `json:"guard_enabled"`
-	IsMFAEnabled         bool   `json:"mfa_enabled,omitempty"`
+	IsGuardEnabled       *bool  `json:"guard_enabled"`
+	IsMFAEnabled         *bool  `json:"mfa_enabled,omitempty"`
 	NWShareCredentialsID string `json:"network_share_credentials_id,omitempty"`
 }
 
@@ -980,6 +990,12 @@ type CTEClientGroupJSON struct {
 	InheritAttributes       bool     `json:"inherit_attributes"`
 	ClientID                string   `json:"client_id"`
 	Paused                  bool     `json:"paused"`
+}
+
+type CTEClientGroupClientsJSON struct {
+	Resources []struct {
+		Name string `json:"name"`
+	} `json:"resources"`
 }
 
 type CTEClientGroupListJSON struct {

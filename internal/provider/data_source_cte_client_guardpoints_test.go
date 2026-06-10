@@ -30,11 +30,15 @@ func TestCiphertrustCTEClientGuardPointDataSource(t *testing.T) {
 		}
 
 		resource "ciphertrust_cte_client_guardpoint" "gp" {
-			client_id   = ciphertrust_cte_client.client.id
-			guard_paths = ["/tmp/tf-test-gp"]
-			guard_point_params = {
-				guard_point_type = "directory_auto"
-				policy_id        = ciphertrust_cte_policy.policy.id
+			client_id = ciphertrust_cte_client.client.id
+
+			guard_points = {
+				"/tmp/tf-test-gp" = {
+					guard_point_params = {
+						guard_point_type = "directory_auto"
+						policy_id        = ciphertrust_cte_policy.policy.id
+					}
+				}
 			}
 		}
 
@@ -54,7 +58,15 @@ func TestCiphertrustCTEClientGuardPointDataSource(t *testing.T) {
 					resource.TestCheckResourceAttr("data.ciphertrust_cte_client_guardpoint.ds", "client_guardpoint.0.client_name", clientName),
 					resource.TestCheckResourceAttr("data.ciphertrust_cte_client_guardpoint.ds", "client_guardpoint.0.guard_path", "/tmp/tf-test-gp"),
 					resource.TestCheckResourceAttr("data.ciphertrust_cte_client_guardpoint.ds", "client_guardpoint.0.guard_point_type", "directory_auto"),
-					resource.TestCheckResourceAttrPair("data.ciphertrust_cte_client_guardpoint.ds", "client_guardpoint.0.policy_id", "ciphertrust_cte_policy.policy", "id"),
+					resource.TestCheckResourceAttrPair(
+						"data.ciphertrust_cte_client_guardpoint.ds", "client_guardpoint.0.policy_id",
+						"ciphertrust_cte_policy.policy", "id",
+					),
+					// Verify the map entry ID was populated after creation
+					resource.TestCheckResourceAttrSet(
+						"ciphertrust_cte_client_guardpoint.gp",
+						"guard_points./tmp/tf-test-gp.id",
+					),
 				),
 			},
 		},
