@@ -11,6 +11,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringdefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-log/tflog"
@@ -41,30 +42,35 @@ func (r *resourceCTEPolicyDataTXRule) Schema(_ context.Context, _ resource.Schem
 				Required:    true,
 				Description: "ID of the parent policy in which Data TX Rule need to be added",
 			},
-			"rule_id": schema.StringAttribute{
-				Computed:    true,
-				Description: "ID of the Data TX Rule created in the parent policy",
-				PlanModifiers: []planmodifier.String{
-					stringplanmodifier.UseStateForUnknown(),
-				},
-			},
-			"order_number": schema.Int64Attribute{
-				Optional:    true,
-				Description: "Precedence order of the rule in the parent policy.",
-			},
 			"rule": schema.SingleNestedAttribute{
 				Optional: true,
 				Attributes: map[string]schema.Attribute{
+					"id": schema.StringAttribute{
+						Computed:    true,
+						Description: "Identifier of the data transform rule.",
+						PlanModifiers: []planmodifier.String{
+							stringplanmodifier.UseStateForUnknown(),
+						},
+					},
+					"order_number": schema.Int64Attribute{
+						Optional:    true,
+						Computed:    true,
+						Description: "Precedence order of the rule in the parent policy.",
+					},
 					"key_id": schema.StringAttribute{
 						Optional:    true,
 						Description: "Identifier of the key to link with the rule. Supported fields are name, id, slug, alias, uri, uuid, muid, and key_id. Note: For decryption, where a clear key is to be supplied, use the string \"clear_key\" only. Do not specify any other identifier.",
 					},
 					"key_type": schema.StringAttribute{
 						Optional:    true,
+						Computed:    true,
+						Default:     stringdefault.StaticString(""),
 						Description: "Specify the type of the key. Must be one of name, id, slug, alias, uri, uuid, muid or key_id. If not specified, the type of the key is inferred.",
 					},
 					"resource_set_id": schema.StringAttribute{
 						Optional:    true,
+						Computed:    true,
+						Default:     stringdefault.StaticString(""),
 						Description: "ID of the resource set linked with the rule.",
 					},
 				},
@@ -108,12 +114,12 @@ func (r *resourceCTEPolicyDataTXRule) Create(ctx context.Context, req resource.C
 		return
 	}
 
-	response, err := r.client.PostData(
+	response, err := r.client.PostDataV2(
 		ctx,
 		id,
 		common.URL_CTE_POLICY+"/"+plan.CTEClientPolicyID.ValueString()+"/datatxrules",
 		payloadJSON,
-		"id")
+	)
 	if err != nil {
 		tflog.Debug(ctx, common.ERR_METHOD_END+err.Error()+" [resource_cte_policy_datatxrules.go -> Create]["+id+"]")
 		resp.Diagnostics.AddError(
@@ -122,8 +128,14 @@ func (r *resourceCTEPolicyDataTXRule) Create(ctx context.Context, req resource.C
 		)
 		return
 	}
+	var newRule DataTxRuleJSON
+	if err := json.Unmarshal([]byte(response), &newRule); err != nil {
+		resp.Diagnostics.AddError("Error parsing updated security rule response", err.Error())
+		return
+	}
 
-	plan.DataTXRuleID = types.StringValue(response)
+	plan.DataTXRule.ID = types.StringValue(newRule.ID)
+	plan.DataTXRule.OrderNumber = types.Int64Value(*newRule.OrderNumber)
 
 	tflog.Trace(ctx, common.MSG_METHOD_END+"[resource_cte_policy_datatxrules.go -> Create]["+id+"]")
 	diags = resp.State.Set(ctx, plan)
@@ -144,27 +156,43 @@ func (r *resourceCTEPolicyDataTXRule) Read(ctx context.Context, req resource.Rea
 	if resp.Diagnostics.HasError() {
 		return
 	}
-	_, err := r.client.GetById(ctx, id, state.DataTXRuleID.ValueString(), common.URL_CTE_POLICY+"/"+state.CTEClientPolicyID.ValueString()+"/datatxrules")
-	if err != nil {
-		tflog.Debug(ctx, common.ERR_METHOD_END+err.Error()+" [resource_cte_policy_dataxrules.go -> Read]["+id+"]")
+
+	response, err := r.client.GetById(
+		ctx,
+		id,
+		state.DataTXRule.ID.ValueString(),
+		common.URL_CTE_POLICY+"/"+state.CTEClientPolicyID.ValueString()+"/datatxrules",
+	)
+
+	if response == "" {
+		resp.State.RemoveResource(ctx)
+		return
+	}
+	var apiResp DataTxRuleJSON
+	if err = json.Unmarshal([]byte(response), &apiResp); err != nil {
+		tflog.Debug(ctx, common.ERR_METHOD_END+err.Error()+" [resource_cte_policy_datatxrules.go -> Read]["+id+"]")
 		resp.Diagnostics.AddError(
-			"Error reading Datax Key Rule on CipherTrust Manager: ",
-			"Could not read Datax Key Rule id : ,"+state.DataTXRuleID.ValueString()+err.Error(),
+			"Error parsing CTE Policy Data TX Rule response",
+			err.Error(),
 		)
 		return
 	}
-
-	tflog.Trace(ctx, common.MSG_METHOD_END+"[resource_cte_policy_dataxrules.go -> Read]["+id+"]")
-	resp.Diagnostics.Append(diags...)
-	if resp.Diagnostics.HasError() {
-		return
+	state.DataTXRule = DataTransformationRuleTFSDK{
+		ID:            types.StringValue(apiResp.ID),
+		OrderNumber:   types.Int64Value(*apiResp.OrderNumber),
+		KeyID:         types.StringValue(apiResp.KeyID),
+		KeyType:       types.StringValue(apiResp.KeyType),
+		ResourceSetID: types.StringValue(apiResp.ResourceSetID),
 	}
+	tflog.Trace(ctx, common.MSG_METHOD_END+"[resource_cte_policy_securityrules.go -> Read]["+id+"]")
+	diags = resp.State.Set(ctx, state)
+	resp.Diagnostics.Append(diags...)
 }
 
 // Update updates the resource and sets the updated Terraform state on success.
 func (r *resourceCTEPolicyDataTXRule) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
 	var plan, state AddDataTXRulePolicyTFSDK
-	var payload DataTxRuleUpdateJSON
+	var payload DataTxRuleJSON
 
 	diags := req.Plan.Get(ctx, &plan)
 	resp.Diagnostics.Append(diags...)
@@ -186,13 +214,14 @@ func (r *resourceCTEPolicyDataTXRule) Update(ctx context.Context, req resource.U
 	if plan.DataTXRule.ResourceSetID.ValueString() != "" && plan.DataTXRule.ResourceSetID.ValueString() != types.StringNull().ValueString() {
 		payload.ResourceSetID = string(plan.DataTXRule.ResourceSetID.ValueString())
 	}
-	if plan.OrderNumber.ValueInt64() != types.Int64Null().ValueInt64() {
-		payload.OrderNumber = int64(plan.OrderNumber.ValueInt64())
+	if !plan.DataTXRule.OrderNumber.IsNull() && !plan.DataTXRule.OrderNumber.IsUnknown() {
+		OrderNumber := plan.DataTXRule.OrderNumber.ValueInt64()
+		payload.OrderNumber = &OrderNumber
 	}
 
 	payloadJSON, err := json.Marshal(payload)
 	if err != nil {
-		tflog.Debug(ctx, common.ERR_METHOD_END+err.Error()+" [resource_cte_policy_datatxrules.go -> Update]["+plan.DataTXRuleID.ValueString()+"]")
+		tflog.Debug(ctx, common.ERR_METHOD_END+err.Error()+" [resource_cte_policy_datatxrules.go -> Update]["+plan.DataTXRule.ID.ValueString()+"]")
 		resp.Diagnostics.AddError(
 			"Invalid data input: CTE Policy Data TX Rule Update",
 			err.Error(),
@@ -200,21 +229,27 @@ func (r *resourceCTEPolicyDataTXRule) Update(ctx context.Context, req resource.U
 		return
 	}
 
-	response, err := r.client.UpdateData(
+	response, err := r.client.UpdateDataV2(
 		ctx,
-		state.DataTXRuleID.ValueString(),
+		state.DataTXRule.ID.ValueString(),
 		common.URL_CTE_POLICY+"/"+plan.CTEClientPolicyID.ValueString()+"/datatxrules",
 		payloadJSON,
-		"id")
+	)
 	if err != nil {
-		tflog.Debug(ctx, common.ERR_METHOD_END+err.Error()+" [resource_cte_policy_datatxrules.go -> Update]["+plan.DataTXRuleID.ValueString()+"]")
+		tflog.Debug(ctx, common.ERR_METHOD_END+err.Error()+" [resource_cte_policy_datatxrules.go -> Update]["+plan.DataTXRule.ID.ValueString()+"]")
 		resp.Diagnostics.AddError(
 			"Error updating CTE Policy Data TX Rule on CipherTrust Manager: ",
 			"Could not update CTE Policy Data TX Rule, unexpected error: "+err.Error()+"\n"+string(payloadJSON),
 		)
 		return
 	}
-	plan.DataTXRuleID = types.StringValue(response)
+	var updatedRule DataTxRuleJSON
+	if err := json.Unmarshal([]byte(response), &updatedRule); err != nil {
+		resp.Diagnostics.AddError("Error parsing updated security rule response", err.Error())
+		return
+	}
+	plan.DataTXRule.ID = types.StringValue(updatedRule.ID)
+	plan.DataTXRule.OrderNumber = types.Int64Value(*updatedRule.OrderNumber)
 	diags = resp.State.Set(ctx, plan)
 	resp.Diagnostics.Append(diags...)
 	if resp.Diagnostics.HasError() {
@@ -233,9 +268,9 @@ func (r *resourceCTEPolicyDataTXRule) Delete(ctx context.Context, req resource.D
 	}
 
 	// Delete existing order
-	url := fmt.Sprintf("%s/%s/%s/%s/%s", r.client.CipherTrustURL, common.URL_CTE_POLICY, state.CTEClientPolicyID.ValueString(), "datatxrules", state.DataTXRuleID.ValueString())
+	url := fmt.Sprintf("%s/%s/%s/%s/%s", r.client.CipherTrustURL, common.URL_CTE_POLICY, state.CTEClientPolicyID.ValueString(), "datatxrules", state.DataTXRule.ID.ValueString())
 	output, err := r.client.DeleteByID(ctx, "DELETE", state.CTEClientPolicyID.ValueString(), url, nil)
-	tflog.Trace(ctx, common.MSG_METHOD_END+"[resource_cte_policy_datatxrules.go -> Delete]["+state.DataTXRuleID.ValueString()+"]["+output+"]")
+	tflog.Trace(ctx, common.MSG_METHOD_END+"[resource_cte_policy_datatxrules.go -> Delete]["+state.DataTXRule.ID.ValueString()+"]["+output+"]")
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Error Deleting CTE Policy",

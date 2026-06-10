@@ -147,9 +147,11 @@ type DelClientJSON struct {
 
 // CTE Policy related structs
 type DataTxRuleJSON struct {
+	ID            string `json:"id,omitempty"`
+	OrderNumber   *int64 `json:"order_number,omitempty"`
 	KeyID         string `json:"key_id"`
-	KeyType       string `json:"key_type"`
-	ResourceSetID string `json:"resource_set_id"`
+	KeyType       string `json:"key_type,omitempty"`
+	ResourceSetID string `json:"resource_set_id,omitempty"`
 }
 
 type IDTRuleJSON struct {
@@ -161,9 +163,11 @@ type IDTRuleJSON struct {
 }
 
 type KeyRuleJSON struct {
+	ID            string `json:"id,omitempty"`
+	OrderNumber   *int64 `json:"order_number,omitempty"`
 	KeyID         string `json:"key_id"`
-	KeyType       string `json:"key_type"`
-	ResourceSetID string `json:"resource_set_id"`
+	KeyType       string `json:"key_type,omitempty"`
+	ResourceSetID string `json:"resource_set_id,omitempty"`
 }
 
 type CurrentKeyJSON struct {
@@ -177,10 +181,12 @@ type TransformationKeyJSON struct {
 }
 
 type LDTRuleJSON struct {
-	CurrentKey        CurrentKeyJSON        `json:"current_key"`
-	TransformationKey TransformationKeyJSON `json:"transformation_key"`
-	IsExclusionRule   bool                  `json:"is_exclusion_rule"`
-	ResourceSetID     string                `json:"resource_set_id"`
+	ID                string                 `json:"id,omitempty"`
+	OrderNumber       *int64                 `json:"order_number,omitempty"`
+	CurrentKey        CurrentKeyJSON         `json:"current_key"`
+	TransformationKey *TransformationKeyJSON `json:"transformation_key,omitempty"`
+	IsExclusionRule   bool                   `json:"is_exclusion_rule"`
+	ResourceSetID     string                 `json:"resource_set_id,omitempty"`
 }
 
 type CTEPolicyMetadataJSON struct {
@@ -188,6 +194,8 @@ type CTEPolicyMetadataJSON struct {
 }
 
 type SecurityRuleJSON struct {
+	ID                 string `json:"id,omitempty"`
+	OrderNumber        *int64 `json:"order_number,omitempty"`
 	Action             string `json:"action"`
 	Effect             string `json:"effect"`
 	ExcludeProcessSet  bool   `json:"exclude_process_set"`
@@ -200,11 +208,18 @@ type SecurityRuleJSON struct {
 }
 
 type SignatureRuleJSON struct {
-	SignatureSetID string `json:"signature_set_id"`
+	ID               string `json:"id,omitempty"`
+	SignatureSetID   string `json:"signature_set_id"`
+	SignatureSetName string `json:"signature_set_name,omitempty"`
 }
 
 type AddSignaturesToRuleJSON struct {
 	SignatureSets []string `json:"signature_set_id_list"`
+}
+type SignatureRulePostResponseJSON struct {
+	SuccessSignatureRules []struct {
+		SignatureRule SignatureRuleJSON `json:"signature_rule"`
+	} `json:"success_signature_rules"`
 }
 
 type CTEPolicyListJSON struct {
@@ -240,6 +255,8 @@ type CTEPolicyJSON struct {
 }
 
 type DataTransformationRuleTFSDK struct {
+	ID            types.String `tfsdk:"id"`
+	OrderNumber   types.Int64  `tfsdk:"order_number"`
 	KeyID         types.String `tfsdk:"key_id"`
 	KeyType       types.String `tfsdk:"key_type"`
 	ResourceSetID types.String `tfsdk:"resource_set_id"`
@@ -254,6 +271,8 @@ type IDTKeyRuleTFSDK struct {
 }
 
 type KeyRuleTFSDK struct {
+	ID            types.String `tfsdk:"id"`
+	OrderNumber   types.Int64  `tfsdk:"order_number"`
 	KeyID         types.String `tfsdk:"key_id"`
 	KeyType       types.String `tfsdk:"key_type"`
 	ResourceSetID types.String `tfsdk:"resource_set_id"`
@@ -270,6 +289,8 @@ type TransformationKeyTFSDK struct {
 }
 
 type LDTKeyRuleTFSDK struct {
+	ID                types.String            `tfsdk:"id"`
+	OrderNumber       types.Int64             `tfsdk:"order_number"`
 	CurrentKey        *CurrentKeyTFSDK        `tfsdk:"current_key"`
 	TransformationKey *TransformationKeyTFSDK `tfsdk:"transformation_key"`
 	IsExclusionRule   types.Bool              `tfsdk:"is_exclusion_rule"`
@@ -281,6 +302,8 @@ type CTEPolicyMetadataTFSDK struct {
 }
 
 type SecurityRuleTFSDK struct {
+	ID                 types.String `tfsdk:"id"`
+	OrderNumber        types.Int64  `tfsdk:"order_number"`
 	Action             types.String `tfsdk:"action"`
 	Effect             types.String `tfsdk:"effect"`
 	ExcludeProcessSet  types.Bool   `tfsdk:"exclude_process_set"`
@@ -293,6 +316,7 @@ type SecurityRuleTFSDK struct {
 }
 
 type SignatureRuleTFSDK struct {
+	ID             types.String `tfsdk:"id"`
 	SignatureSetID types.String `tfsdk:"signature_set_id"`
 }
 
@@ -473,44 +497,7 @@ type CTEPolicySignatureRulesJSON struct {
 
 type AddDataTXRulePolicyTFSDK struct {
 	CTEClientPolicyID types.String                `tfsdk:"policy_id"`
-	DataTXRuleID      types.String                `tfsdk:"rule_id"`
-	OrderNumber       types.Int64                 `tfsdk:"order_number"`
 	DataTXRule        DataTransformationRuleTFSDK `tfsdk:"rule"`
-}
-
-type DataTxRuleUpdateJSON struct {
-	KeyID         string `json:"key_id"`
-	KeyType       string `json:"key_type,omitempty"`
-	ResourceSetID string `json:"resource_set_id,omitempty"`
-	OrderNumber   int64  `json:"order_number,omitempty"`
-}
-
-type KeyRuleUpdateJSON struct {
-	KeyID         string `json:"key_id"`
-	KeyType       string `json:"key_type,omitempty"`
-	ResourceSetID string `json:"resource_set_id,omitempty"`
-	OrderNumber   int64  `json:"order_number,omitempty"`
-}
-
-type LDTRuleUpdateJSON struct {
-	CurrentKey        CurrentKeyJSON        `json:"current_key"`
-	TransformationKey TransformationKeyJSON `json:"transformation_key,omitempty"`
-	IsExclusionRule   bool                  `json:"is_exclusion_rule"`
-	ResourceSetID     string                `json:"resource_set_id,omitempty"`
-	OrderNumber       int64                 `json:"order_number,omitempty"`
-}
-
-type SecurityRuleUpdateJSON struct {
-	Action             string `json:"action,omitempty"`
-	Effect             string `json:"effect,omitempty"`
-	ExcludeProcessSet  bool   `json:"exclude_process_set"`
-	ExcludeResourceSet bool   `json:"exclude_resource_set"`
-	ExcludeUserSet     bool   `json:"exclude_user_set"`
-	PartialMatch       bool   `json:"partial_match"`
-	ProcessSetID       string `json:"process_set_id,omitempty"`
-	ResourceSetID      string `json:"resource_set_id,omitempty"`
-	UserSetID          string `json:"user_set_id,omitempty"`
-	OrderNumber        int64  `json:"order_number,omitempty"`
 }
 
 type UpdateIDTKeyRulePolicyTFSDK struct {
@@ -1175,28 +1162,22 @@ type LDTGroupCommSvcListJSON struct {
 
 type CTEPolicyAddKeyRuleTFSDK struct {
 	CTEClientPolicyID types.String `tfsdk:"policy_id"`
-	KeyRuleID         types.String `tfsdk:"rule_id"`
-	OrderNumber       types.Int64  `tfsdk:"order_number"`
 	KeyRule           KeyRuleTFSDK `tfsdk:"rule"`
 }
 
 type CTEPolicyAddLDTKeyRuleTFSDK struct {
-	CTEClientPolicyID types.String      `tfsdk:"policy_id"`
-	LDTKeyRuleID      types.String      `tfsdk:"rule_id"`
-	OrderNumber       types.Int64       `tfsdk:"order_number"`
-	LDTKeyRules       []LDTKeyRuleTFSDK `tfsdk:"rule"`
+	CTEClientPolicyID types.String    `tfsdk:"policy_id"`
+	LDTKeyRule        LDTKeyRuleTFSDK `tfsdk:"rule"`
 }
 
 type CTEPolicyAddSecurityRuleTFSDK struct {
 	CTEClientPolicyID types.String      `tfsdk:"policy_id"`
-	SecurityRuleID    types.String      `tfsdk:"rule_id"`
-	OrderNumber       types.Int64       `tfsdk:"order_number"`
 	SecurityRule      SecurityRuleTFSDK `tfsdk:"rule"`
 }
 
 type CTEPolicyAddSignatureRuleTFSDK struct {
 	CTEPolicyID      types.String   `tfsdk:"policy_id"`
-	SignatureRuleID  types.String   `tfsdk:"id"`
+	SignatureRuleIDs types.List     `tfsdk:"ids"`
 	SignatureSetList []types.String `tfsdk:"signature_set_id_list"`
 }
 

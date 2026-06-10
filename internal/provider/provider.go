@@ -454,7 +454,6 @@ func (p *ciphertrustProvider) Resources(_ context.Context) []func() resource.Res
 		cte.NewResourceCTEPolicy,
 		cte.NewResourceCTEClient,
 		cte.NewResourceCTEPolicyDataTXRule,
-		cte.NewResourceCTEPolicyIDTKeyRule,
 		cte.NewResourceCTEPolicyKeyRule,
 		cte.NewResourceCTEPolicyLDTKeyRule,
 		cte.NewResourceCTEPolicySecurityRule,
