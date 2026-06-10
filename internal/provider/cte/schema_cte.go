@@ -1053,19 +1053,20 @@ type CTECSIGroupListTFSDK struct {
 	ClientProfileName types.String `tfsdk:"client_profile_name"`
 	ClientProfileID   types.String `tfsdk:"client_profile_id"`
 }
+type CSIGroupGuardPolicyTFSDK struct {
+	GuardEnabled types.Bool   `tfsdk:"guard_enabled"`
+	GPID         types.String `tfsdk:"gp_id"`
+}
+
 type CTECSIGroupTFSDK struct {
-	ID            types.String   `tfsdk:"id"`
-	Namespace     types.String   `tfsdk:"kubernetes_namespace"`
-	StorageClass  types.String   `tfsdk:"kubernetes_storage_class"`
-	ClientProfile types.String   `tfsdk:"client_profile"`
-	Name          types.String   `tfsdk:"name"`
-	Description   types.String   `tfsdk:"description"`
-	ClientList    []types.String `tfsdk:"client_list"`
-	PolicyList    []types.String `tfsdk:"policy_list"`
-	ClientID      types.String   `tfsdk:"client_id"`
-	GuardEnabled  types.Bool     `tfsdk:"guard_enabled"`
-	GPID          types.List     `tfsdk:"gp_id"`
-	OpType        types.String   `tfsdk:"op_type"`
+	ID            types.String                        `tfsdk:"id"`
+	Namespace     types.String                        `tfsdk:"kubernetes_namespace"`
+	StorageClass  types.String                        `tfsdk:"kubernetes_storage_class"`
+	ClientProfile types.String                        `tfsdk:"client_profile"`
+	Name          types.String                        `tfsdk:"name"`
+	Description   types.String                        `tfsdk:"description"`
+	OpType        types.String                        `tfsdk:"op_type"`
+	GuardPolicies map[string]CSIGroupGuardPolicyTFSDK `tfsdk:"guard_policies"`
 }
 
 type CTECSIGroupJSON struct {
@@ -1075,12 +1076,22 @@ type CTECSIGroupJSON struct {
 	ClientProfile string   `json:"client_profile"`
 	Name          string   `json:"name"`
 	Description   string   `json:"description"`
-	ClientList    []string `json:"client_list"`
 	PolicyList    []string `json:"policy_list"`
-	ClientID      string   `json:"client_id"`
 	GuardEnabled  bool     `json:"guard_enabled"`
-	GPID          []string `json:"gp_id"`
 	OpType        string   `json:"op_type"`
+}
+
+type CTECSIGuardPointJSON struct {
+	ID           string `json:"id"`
+	PolicyName   string `json:"policy_name"`
+	GuardEnabled bool   `json:"guard_enabled"`
+}
+
+// CTECSIGroupGuardPointsResponseJSON is the top-level response from POST /guardpoints.
+type CTECSIGroupGuardPointsResponseJSON struct {
+	GuardPoints []struct {
+		GuardPoint CTECSIGuardPointJSON `json:"guardpoint"`
+	} `json:"guardpoints"`
 }
 
 type CTECSIGroupListJSON struct {
@@ -1097,6 +1108,15 @@ type CTECSIGroupListJSON struct {
 	ClientProfileID   string `json:"client_profile_id"`
 }
 
+type CTECSIGroupGuardPointsListJSON struct {
+	Resources []CTECSIGuardPointJSON `json:"resources"`
+}
+type CTECSIGroupClientListJSON struct {
+	Resources []struct {
+		ID   string `json:"id"`
+		Name string `json:"name"`
+	} `json:"resources"`
+}
 type LDTGroupCommSvcListTFSDK struct {
 	ID           types.String `tfsdk:"id"`
 	Name         types.String `tfsdk:"name"`
