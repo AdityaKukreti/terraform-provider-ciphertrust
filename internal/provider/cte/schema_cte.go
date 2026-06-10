@@ -1173,13 +1173,11 @@ type CTEProcessTFSDK struct {
 }
 
 type CTEProcessSetTFSDK struct {
-	ID          types.String      `tfsdk:"id"`
-	URI         types.String      `tfsdk:"uri"`
-	Account     types.String      `tfsdk:"account"`
-	Application types.String      `tfsdk:"application"`
-	DevAccount  types.String      `tfsdk:"dev_account"`
-	CreatedAt   types.String      `tfsdk:"created_at"`
-	UpdatedAt   types.String      `tfsdk:"updated_at"`
+	ID          types.String `tfsdk:"id"`
+	URI         types.String `tfsdk:"uri"`
+	Account     types.String `tfsdk:"account"`
+	Application types.String `tfsdk:"application"`
+	DevAccount  types.String `tfsdk:"dev_account"`
 	Name        types.String      `tfsdk:"name"`
 	Description types.String      `tfsdk:"description"`
 	Labels      types.Map         `tfsdk:"labels"`
@@ -1413,19 +1411,16 @@ type CTEResourceTFSDK struct {
 }
 
 type CTEResourceSetTFSDK struct {
-	ID          types.String       `tfsdk:"id"`
-	URI         types.String       `tfsdk:"uri"`
-	Account     types.String       `tfsdk:"account"`
-	Application types.String       `tfsdk:"application"`
-	DevAccount  types.String       `tfsdk:"dev_account"`
-	CreatedAt   types.String       `tfsdk:"created_at"`
-	UpdatedAt   types.String       `tfsdk:"updated_at"`
+	ID          types.String `tfsdk:"id"`
+	URI         types.String `tfsdk:"uri"`
+	Account     types.String `tfsdk:"account"`
+	Application types.String `tfsdk:"application"`
+	DevAccount  types.String `tfsdk:"dev_account"`
 	Name        types.String       `tfsdk:"name"`
 	Description types.String       `tfsdk:"description"`
 	Labels      types.Map          `tfsdk:"labels"`
 	Resources   []CTEResourceTFSDK `tfsdk:"resources"`
 	Type        types.String       `tfsdk:"type"`
-	//ClassificationTags []ClassificationTagTFSDK `tfsdk:"classification_tags"`
 }
 
 type ClassificationTagAttributesJSON struct {
@@ -1449,23 +1444,24 @@ type CTEResourceJSON struct {
 }
 
 type CTEResourceSetJSON struct {
-	ID          string                 `json:"id"`
-	Name        string                 `json:"name"`
+	ID          string `json:"id"`
+	Name        string `json:"name"`
+	URI         string `json:"uri"`
+	Account     string `json:"account"`
+	Application string `json:"application"`
+	DevAccount  string `json:"dev_account"`
 	Description string                 `json:"description"`
 	Labels      map[string]interface{} `json:"labels"`
 	Resources   []CTEResourceJSON      `json:"resources"`
 	Type        string                 `json:"type"`
-	//ClassificationTags []ClassificationTagJSON `json:"classification_tags"`
 }
 
 type CTESignatureSetTFSDK struct {
-	ID          types.String   `tfsdk:"id"`
-	URI         types.String   `tfsdk:"uri"`
-	Account     types.String   `tfsdk:"account"`
-	Application types.String   `tfsdk:"application"`
-	DevAccount  types.String   `tfsdk:"dev_account"`
-	CreatedAt   types.String   `tfsdk:"created_at"`
-	UpdatedAt   types.String   `tfsdk:"updated_at"`
+	ID          types.String `tfsdk:"id"`
+	URI         types.String `tfsdk:"uri"`
+	Account     types.String `tfsdk:"account"`
+	Application types.String `tfsdk:"application"`
+	DevAccount  types.String `tfsdk:"dev_account"`
 	Name        types.String   `tfsdk:"name"`
 	Description types.String   `tfsdk:"description"`
 	Labels      types.Map      `tfsdk:"labels"`
@@ -1474,7 +1470,11 @@ type CTESignatureSetTFSDK struct {
 }
 
 type CTESignatureSetJSON struct {
-	ID          string                 `json:"id"`
+	ID          string `json:"id"`
+	URI         string `json:"uri"`
+	Account     string `tfsdk:"account"`
+	Application string `json:"application"`
+	DevAccount  string `json:"dev_account"`
 	Name        string                 `json:"name"`
 	Description string                 `json:"description"`
 	Labels      map[string]interface{} `json:"labels"`
@@ -1491,17 +1491,26 @@ type CTEUserTFSDK struct {
 }
 
 type CTEUserSetTFSDK struct {
-	ID          types.String   `tfsdk:"id"`
-	URI         types.String   `tfsdk:"uri"`
-	Account     types.String   `tfsdk:"account"`
-	Application types.String   `tfsdk:"application"`
-	DevAccount  types.String   `tfsdk:"dev_account"`
-	CreatedAt   types.String   `tfsdk:"created_at"`
-	UpdatedAt   types.String   `tfsdk:"updated_at"`
+	ID          types.String `tfsdk:"id"`
+	URI         types.String `tfsdk:"uri"`
+	Account     types.String `tfsdk:"account"`
+	Application types.String `tfsdk:"application"`
+	DevAccount  types.String `tfsdk:"dev_account"`
 	Name        types.String   `tfsdk:"name"`
 	Description types.String   `tfsdk:"description"`
 	Labels      types.Map      `tfsdk:"labels"`
 	Users       []CTEUserTFSDK `tfsdk:"users"`
+}
+type CTEUserSetJSON struct {
+	ID          string `json:"id"`
+	URI         string `json:"uri"`
+	Account     string `json:"account"`
+	DevAccount  string `json:"devAccount"`
+	Application string `json:"application"`
+	Name        string                 `json:"name"`
+	Description string                 `json:"description"`
+	Labels      map[string]interface{} `json:"labels"`
+	Users       []CTEUserJSON          `json:"users"`
 }
 
 type CTEUserJSON struct {

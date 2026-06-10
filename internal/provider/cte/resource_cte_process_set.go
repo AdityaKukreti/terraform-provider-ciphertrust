@@ -12,9 +12,11 @@ import (
 	"github.com/tidwall/gjson"
 
 	common "github.com/ThalesGroup/terraform-provider-ciphertrust/internal/provider/common"
+	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringdefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-log/tflog"
@@ -52,26 +54,26 @@ func (r *resourceCTEProcessSet) Schema(_ context.Context, _ resource.SchemaReque
 			"uri": schema.StringAttribute{
 				Description: "A human readable unique identifier of the resource",
 				Computed:    true,
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.UseStateForUnknown(),
+				},
 			},
 			"account": schema.StringAttribute{
 				Description: "The account which owns this resource.",
 				Computed:    true,
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.UseStateForUnknown(),
+				},
 			},
 			"dev_account": schema.StringAttribute{
 				Description: "The developer account which owns this resource's application.",
 				Computed:    true,
+				Default:     stringdefault.StaticString(""),
 			},
 			"application": schema.StringAttribute{
 				Description: "The application this resource belongs to.",
 				Computed:    true,
-			},
-			"created_at": schema.StringAttribute{
-				Description: "Date/time the application was created",
-				Computed:    true,
-			},
-			"updated_at": schema.StringAttribute{
-				Description: "Date/time the application was updated",
-				Computed:    true,
+				Default:     stringdefault.StaticString(""),
 			},
 			"name": schema.StringAttribute{
 				Description: "Name of the ProcessSet",
@@ -80,6 +82,8 @@ func (r *resourceCTEProcessSet) Schema(_ context.Context, _ resource.SchemaReque
 			"description": schema.StringAttribute{
 				Description: "Description of the process set.",
 				Optional:    true,
+				Computed:    true,
+				Default:     stringdefault.StaticString(""),
 			},
 			"labels": schema.MapAttribute{
 				Description: "Labels are key/value pairs used to group resources. They are based on Kubernetes Labels, see https://kubernetes.io/docs/concepts/overview/working-with-objects/labels/.\nWhen labels are provided they are merged with the resource's existing labels.\nTo remove a label, set the label's value to null.\n\"labels\": {\n\t\"critical\": null\n}\nTo remove all labels, set labels to null.\n\"labels\": null",
@@ -94,10 +98,14 @@ func (r *resourceCTEProcessSet) Schema(_ context.Context, _ resource.SchemaReque
 						"directory": schema.StringAttribute{
 							Description: "Directory of the process to be added to the process set.",
 							Optional:    true,
+							Computed:    true,
+							Default:     stringdefault.StaticString(""),
 						},
 						"file": schema.StringAttribute{
 							Description: "File name of the process to be added to the process set.",
 							Optional:    true,
+							Computed:    true,
+							Default:     stringdefault.StaticString(""),
 						},
 						"labels": schema.MapAttribute{
 							Description: "Labels are key/value pairs used to group resources. They are based on Kubernetes Labels, see https://kubernetes.io/docs/concepts/overview/working-with-objects/labels/. To add a label, set the label's value as follows.\n\"labels\": {\n\t\"key1\": \"value1\",\n\t\"key2\": \"value2\"\n}",
@@ -107,10 +115,14 @@ func (r *resourceCTEProcessSet) Schema(_ context.Context, _ resource.SchemaReque
 						"resource_set_id": schema.StringAttribute{
 							Description: "ID or name of the resource set to link to the process set. It is used for ransomware clients as a resources exempt.",
 							Optional:    true,
+							Computed:    true,
+							Default:     stringdefault.StaticString(""),
 						},
 						"signature": schema.StringAttribute{
 							Description: "ID or name of the signature set to link to the process set.",
 							Optional:    true,
+							Computed:    true,
+							Default:     stringdefault.StaticString(""),
 						},
 					},
 				},
@@ -189,8 +201,6 @@ func (r *resourceCTEProcessSet) Create(ctx context.Context, req resource.CreateR
 	plan.Account = types.StringValue(gjson.Get(response, "account").String())
 	plan.DevAccount = types.StringValue(gjson.Get(response, "devAccount").String())
 	plan.Application = types.StringValue(gjson.Get(response, "application").String())
-	plan.CreatedAt = types.StringValue(gjson.Get(response, "createdAt").String())
-	plan.UpdatedAt = types.StringValue(gjson.Get(response, "updatedAt").String())
 
 	tflog.Trace(ctx, common.MSG_METHOD_END+"[resource_cm_process_set.go -> Create]["+id+"]")
 	diags = resp.State.Set(ctx, plan)
@@ -205,18 +215,36 @@ func (r *resourceCTEProcessSet) Read(ctx context.Context, req resource.ReadReque
 	var state CTEProcessSetTFSDK
 	id := uuid.New().String()
 
+	tflog.Trace(
+		ctx,
+		common.MSG_METHOD_START+
+			"[resource_cte_process_set.go -> Read]["+id+"]",
+	)
+
 	diags := req.State.Get(ctx, &state)
 	resp.Diagnostics.Append(diags...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
 	response, err := r.client.GetById(ctx, id, state.ID.ValueString(), common.URL_CTE_PROCESS_SET)
+
+	if response == "" {
+		resp.State.RemoveResource(ctx)
+		return
+	}
+	var apiResp CTEProcessSetJSON
+	err = json.Unmarshal([]byte(response), &apiResp)
 	if err != nil {
-		tflog.Debug(ctx, common.ERR_METHOD_END+err.Error()+" [resource_cm_process_set.go -> Read]["+id+"]")
 		resp.Diagnostics.AddError(
-			"Error reading CTE ProcessSet on CipherTrust Manager: ",
-			"Could not read CTE ProcessSet id : ,"+state.ID.ValueString()+"unexpected error: "+err.Error(),
+			"Error parsing API response",
+			err.Error(),
 		)
+		return
+	}
+
+	setCTEProcessSetState(&state, &apiResp, resp)
+
+	if resp.Diagnostics.HasError() {
 		return
 	}
 
@@ -225,12 +253,20 @@ func (r *resourceCTEProcessSet) Read(ctx context.Context, req resource.ReadReque
 	state.Account = types.StringValue(gjson.Get(response, "account").String())
 	state.DevAccount = types.StringValue(gjson.Get(response, "devAccount").String())
 	state.Application = types.StringValue(gjson.Get(response, "application").String())
-	state.CreatedAt = types.StringValue(gjson.Get(response, "createdAt").String())
-	state.UpdatedAt = types.StringValue(gjson.Get(response, "updatedAt").String())
 	state.Name = types.StringValue(gjson.Get(response, "name").String())
 	state.Description = types.StringValue(gjson.Get(response, "description").String())
 
-	tflog.Trace(ctx, common.MSG_METHOD_END+"[resource_cm_process_set.go -> Read]["+id+"]")
+	diags = resp.State.Set(ctx, &state)
+	resp.Diagnostics.Append(diags...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	tflog.Trace(
+		ctx,
+		common.MSG_METHOD_END+
+			"[resource_cte_process_set.go -> Read]["+id+"]",
+	)
 }
 
 // Update updates the resource and sets the updated Terraform state on success.
@@ -289,8 +325,6 @@ func (r *resourceCTEProcessSet) Update(ctx context.Context, req resource.UpdateR
 	plan.Account = types.StringValue(gjson.Get(response, "account").String())
 	plan.DevAccount = types.StringValue(gjson.Get(response, "devAccount").String())
 	plan.Application = types.StringValue(gjson.Get(response, "application").String())
-	plan.CreatedAt = types.StringValue(gjson.Get(response, "createdAt").String())
-	plan.UpdatedAt = types.StringValue(gjson.Get(response, "updatedAt").String())
 	diags = resp.State.Set(ctx, plan)
 	resp.Diagnostics.Append(diags...)
 	if resp.Diagnostics.HasError() {
@@ -337,4 +371,59 @@ func (d *resourceCTEProcessSet) Configure(_ context.Context, req resource.Config
 	}
 
 	d.client = client
+}
+
+func setCTEProcessSetState(
+	state *CTEProcessSetTFSDK,
+	apiResp *CTEProcessSetJSON,
+	resp *resource.ReadResponse,
+) {
+
+	if apiResp.Description != "" {
+		state.Description = types.StringValue(apiResp.Description)
+	} else {
+		state.Description = types.StringNull()
+	}
+
+	var processes []CTEProcessTFSDK
+
+	for _, process := range apiResp.Processes {
+
+		var labels types.Map
+
+		if process.Labels != nil {
+
+			labelsMap := map[string]attr.Value{}
+
+			for k, v := range process.Labels {
+				if strVal, ok := v.(string); ok {
+					labelsMap[k] = types.StringValue(strVal)
+				}
+			}
+
+			labelValue, diags := types.MapValue(types.StringType, labelsMap)
+			resp.Diagnostics.Append(diags...)
+
+			if resp.Diagnostics.HasError() {
+				return
+			}
+
+			labels = labelValue
+
+		} else {
+			labels = types.MapNull(types.StringType)
+		}
+
+		processObj := CTEProcessTFSDK{
+			Directory:     types.StringValue(process.Directory),
+			File:          types.StringValue(process.File),
+			ResourceSetId: types.StringValue(process.ResourceSetId),
+			Signature:     types.StringValue(process.Signature),
+			Labels:        labels,
+		}
+
+		processes = append(processes, processObj)
+	}
+
+	state.Processes = processes
 }

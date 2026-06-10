@@ -12,9 +12,12 @@ import (
 	"github.com/tidwall/gjson"
 
 	common "github.com/ThalesGroup/terraform-provider-ciphertrust/internal/provider/common"
+	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/mapdefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringdefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-log/tflog"
@@ -51,26 +54,26 @@ func (r *resourceCTEUserSet) Schema(_ context.Context, _ resource.SchemaRequest,
 			"uri": schema.StringAttribute{
 				Description: "A human readable unique identifier of the resource",
 				Computed:    true,
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.UseStateForUnknown(),
+				},
 			},
 			"account": schema.StringAttribute{
 				Description: "The account which owns this resource.",
 				Computed:    true,
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.UseStateForUnknown(),
+				},
 			},
 			"dev_account": schema.StringAttribute{
 				Description: "The developer account which owns this resource's application.",
 				Computed:    true,
+				Default:     stringdefault.StaticString(""),
 			},
 			"application": schema.StringAttribute{
 				Description: "The application this resource belongs to.",
 				Computed:    true,
-			},
-			"created_at": schema.StringAttribute{
-				Description: "Date/time the application was created",
-				Computed:    true,
-			},
-			"updated_at": schema.StringAttribute{
-				Description: "Date/time the application was updated",
-				Computed:    true,
+				Default:     stringdefault.StaticString(""),
 			},
 			"name": schema.StringAttribute{
 				Description: "Name of the user set.",
@@ -84,6 +87,10 @@ func (r *resourceCTEUserSet) Schema(_ context.Context, _ resource.SchemaRequest,
 				Description: "Labels are key/value pairs used to group resources. They are based on Kubernetes Labels, see https://kubernetes.io/docs/concepts/overview/working-with-objects/labels/. To add a label, set the label's value as follows.\n\"labels\": {\n\t\"key1\": \"value1\",\n\t\"key2\": \"value2\"\n}",
 				ElementType: types.StringType,
 				Optional:    true,
+				Default: mapdefault.StaticValue(
+					types.MapValueMust(types.StringType, map[string]attr.Value{}),
+				),
+				Computed: true,
 			},
 			"users": schema.ListNestedAttribute{
 				Description: "List of users to be added to the user set.",
@@ -101,6 +108,8 @@ func (r *resourceCTEUserSet) Schema(_ context.Context, _ resource.SchemaRequest,
 						"os_domain": schema.StringAttribute{
 							Description: "OS domain name for Windows platforms.",
 							Optional:    true,
+							Computed:    true,
+							Default:     stringdefault.StaticString(""),
 						},
 						"uid": schema.Int64Attribute{
 							Description: "ID of the user to be added to the user set.",
@@ -187,8 +196,6 @@ func (r *resourceCTEUserSet) Create(ctx context.Context, req resource.CreateRequ
 	plan.Account = types.StringValue(gjson.Get(response, "account").String())
 	plan.DevAccount = types.StringValue(gjson.Get(response, "devAccount").String())
 	plan.Application = types.StringValue(gjson.Get(response, "application").String())
-	plan.CreatedAt = types.StringValue(gjson.Get(response, "createdAt").String())
-	plan.UpdatedAt = types.StringValue(gjson.Get(response, "updatedAt").String())
 
 	tflog.Trace(ctx, common.MSG_METHOD_END+"[resource_cm_user_set.go -> Create]["+id+"]")
 	diags = resp.State.Set(ctx, plan)
@@ -203,31 +210,52 @@ func (r *resourceCTEUserSet) Read(ctx context.Context, req resource.ReadRequest,
 	var state CTEUserSetTFSDK
 	id := uuid.New().String()
 
+	tflog.Trace(
+		ctx,
+		common.MSG_METHOD_START+
+			"[resource_cte_user_set.go -> Read]["+id+"]",
+	)
+
 	diags := req.State.Get(ctx, &state)
 	resp.Diagnostics.Append(diags...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
 	response, err := r.client.GetById(ctx, id, state.ID.ValueString(), common.URL_CTE_USER_SET)
+
+	if response == "" {
+		resp.State.RemoveResource(ctx)
+		return
+	}
+
+	var apiResp CTEUserSetJSON
+
+	err = json.Unmarshal([]byte(response), &apiResp)
 	if err != nil {
-		tflog.Debug(ctx, common.ERR_METHOD_END+err.Error()+" [resource_cm_user_set.go -> Read]["+id+"]")
 		resp.Diagnostics.AddError(
-			"Error reading CTE UserSet on CipherTrust Manager: ",
-			"Could not read CTE UserSet id : ,"+state.ID.ValueString()+"unexpected error: "+err.Error(),
+			"Error parsing API response",
+			err.Error(),
 		)
 		return
 	}
 
-	state.ID = types.StringValue(gjson.Get(response, "id").String())
-	state.URI = types.StringValue(gjson.Get(response, "uri").String())
-	state.Account = types.StringValue(gjson.Get(response, "account").String())
-	state.DevAccount = types.StringValue(gjson.Get(response, "devAccount").String())
-	state.Application = types.StringValue(gjson.Get(response, "application").String())
-	state.CreatedAt = types.StringValue(gjson.Get(response, "createdAt").String())
-	state.UpdatedAt = types.StringValue(gjson.Get(response, "updatedAt").String())
-	state.Name = types.StringValue(gjson.Get(response, "name").String())
-	state.Description = types.StringValue(gjson.Get(response, "description").String())
+	setCTEUserSetState(&state, &apiResp, resp)
 
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	diags = resp.State.Set(ctx, &state)
+	resp.Diagnostics.Append(diags...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	tflog.Trace(
+		ctx,
+		common.MSG_METHOD_END+
+			"[resource_cte_user_set.go -> Read]["+id+"]",
+	)
 	tflog.Trace(ctx, common.MSG_METHOD_END+"[resource_cm_user_set.go -> Read]["+id+"]")
 }
 
@@ -295,8 +323,6 @@ func (r *resourceCTEUserSet) Update(ctx context.Context, req resource.UpdateRequ
 	plan.Account = types.StringValue(gjson.Get(response, "account").String())
 	plan.DevAccount = types.StringValue(gjson.Get(response, "devAccount").String())
 	plan.Application = types.StringValue(gjson.Get(response, "application").String())
-	plan.CreatedAt = types.StringValue(gjson.Get(response, "createdAt").String())
-	plan.UpdatedAt = types.StringValue(gjson.Get(response, "updatedAt").String())
 	diags = resp.State.Set(ctx, plan)
 	resp.Diagnostics.Append(diags...)
 	if resp.Diagnostics.HasError() {
@@ -343,4 +369,69 @@ func (d *resourceCTEUserSet) Configure(_ context.Context, req resource.Configure
 	}
 
 	d.client = client
+}
+
+func setCTEUserSetState(
+	state *CTEUserSetTFSDK,
+	apiResp *CTEUserSetJSON,
+	resp *resource.ReadResponse,
+) {
+	state.ID = types.StringValue(apiResp.ID)
+	state.URI = types.StringValue(apiResp.URI)
+	state.Account = types.StringValue(apiResp.Account)
+	state.DevAccount = types.StringValue(apiResp.DevAccount)
+	state.Application = types.StringValue(apiResp.Application)
+	state.Name = types.StringValue(apiResp.Name)
+
+	if apiResp.Description != "" {
+		state.Description = types.StringValue(apiResp.Description)
+	} else {
+		state.Description = types.StringNull()
+	}
+
+	// Labels
+	labelsMap := map[string]attr.Value{}
+	for k, v := range apiResp.Labels {
+		if strVal, ok := v.(string); ok {
+			labelsMap[k] = types.StringValue(strVal)
+		}
+	}
+	labelsValue, diags := types.MapValue(types.StringType, labelsMap)
+	resp.Diagnostics.Append(diags...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	state.Labels = labelsValue
+
+	// Users
+	var users []CTEUserTFSDK
+	for _, user := range apiResp.Users {
+		userObj := CTEUserTFSDK{
+			OSDomain: types.StringValue(user.OSDomain),
+		}
+		if user.GName != "" {
+			userObj.GName = types.StringValue(user.GName)
+		} else {
+			userObj.GName = types.StringNull()
+		}
+		if user.UName != "" {
+			userObj.UName = types.StringValue(user.UName)
+		} else {
+			userObj.UName = types.StringNull()
+		}
+		if user.GID != nil {
+			userObj.GID = types.Int64Value(int64(*user.GID))
+		} else {
+			userObj.GID = types.Int64Null()
+		}
+
+		if user.UID != nil {
+			userObj.UID = types.Int64Value(int64(*user.UID))
+		} else {
+			userObj.UID = types.Int64Null()
+		}
+
+		users = append(users, userObj)
+	}
+	state.Users = users
 }
