@@ -46,6 +46,23 @@ def add_comment(issue_number,body):
     return res
 
 
+def issue_comments(issue_number):
+    comments=[]; page=1
+    while True:
+        batch=api('/issues/'+str(issue_number)+'/comments?per_page=100&page='+str(page),area='comments')
+        if not batch:break
+        comments.extend(batch)
+        if len(batch)<100:break
+        page+=1
+    return comments
+
+
+def update_comment(comment_id,body):
+    res=api('/issues/comments/'+str(comment_id),method='PATCH',body={'body':body},area='comments')
+    log('comments','updated comment '+str(comment_id))
+    return res
+
+
 def ensure_label(name,color='ededed',description='Managed by ciphertrust-bot'):
     try:
         api('/labels/'+quote(name),area='labels')
@@ -107,6 +124,12 @@ def list_open_issues():
         if len(batch)<100:break
         page+=1
     return issues
+
+
+def search_issues_by_title(title,state='open'):
+    q=quote('repo:'+repo()+' in:title type:issue state:'+state+' "'+str(title)+'"')
+    data=api('/../../search/issues?q='+q,area='search')
+    return data.get('items',[]) if isinstance(data,dict) else []
 
 
 def pr_files(pr_number):
