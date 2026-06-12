@@ -20,8 +20,9 @@ import (
 )
 
 var (
-	_ resource.Resource              = &resourceCMSyslog{}
-	_ resource.ResourceWithConfigure = &resourceCMSyslog{}
+	_ resource.Resource                   = &resourceCMSyslog{}
+	_ resource.ResourceWithConfigure      = &resourceCMSyslog{}
+	_ resource.ResourceWithValidateConfig = &resourceCMSyslog{}
 )
 
 func NewResourceCMSyslog() resource.Resource {
@@ -34,6 +35,10 @@ type resourceCMSyslog struct {
 
 func (r *resourceCMSyslog) Metadata(_ context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
 	resp.TypeName = req.ProviderTypeName + "_syslog"
+}
+
+func (r *resourceCMSyslog) ValidateConfig(ctx context.Context, _ resource.ValidateConfigRequest, resp *resource.ValidateConfigResponse) {
+	common.ValidateCMOnly(ctx, r.client, "ciphertrust_syslog", resp)
 }
 
 // Schema defines the schema for the resource.

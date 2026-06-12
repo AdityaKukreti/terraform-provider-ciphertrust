@@ -28,6 +28,10 @@ type Client struct {
 	AuthData         AuthStruct
 	CCKMConfig       CCKMProviderConfig
 	ReplicationDelay int64
+	// IsCDSPaaS is true when the provider is configured against a CDSPaaS
+	// tenant (i.e. AuthData.AuthDomainPath is set). Resources that manage
+	// CipherTrust Manager infrastructure use this to refuse plan-time.
+	IsCDSPaaS bool
 }
 
 // Bootstrap Client for CipherTrust Manager
@@ -40,10 +44,11 @@ type CMClientBootstrap struct {
 
 // AuthStruct
 type AuthStruct struct {
-	Username   string `json:"username"`
-	Password   string `json:"password"`
-	AuthDomain string `json:"auth_domain"`
-	Domain     string `json:"domain"`
+	Username       string `json:"username"`
+	Password       string `json:"password"`
+	AuthDomain     string `json:"auth_domain,omitempty"`
+	AuthDomainPath string `json:"auth_domain_path,omitempty"`
+	Domain         string `json:"domain"`
 }
 
 // AuthResponse
@@ -77,7 +82,11 @@ func NewCMClientBoot(ctx context.Context, uuid string, address *string, insecure
 }
 
 // Create New Client for CipherTrust Manager
-func NewClient(ctx context.Context, uuid string, address, auth_domain, domain, username, password *string, insecureSkipVerify bool, timeout int64) (*Client, error) {
+//
+// tenant, when non-nil and non-empty, opts the provider into the CDSPaaS
+// authentication path: it is sent as auth_domain_path on the auth-token request
+// (which supersedes auth_domain server-side) and Client.IsCDSPaaS is set to true.
+func NewClient(ctx context.Context, uuid string, address, auth_domain, domain, username, password, tenant *string, insecureSkipVerify bool, timeout int64) (*Client, error) {
 	tflog.Trace(ctx, MSG_METHOD_START+"[client.go -> NewClient]["+uuid+"]")
 	tr := &http.Transport{
 		TLSClientConfig: &tls.Config{InsecureSkipVerify: insecureSkipVerify},
@@ -106,6 +115,15 @@ func NewClient(ctx context.Context, uuid string, address, auth_domain, domain, u
 		Password:   *password,
 		AuthDomain: *auth_domain,
 		Domain:     *domain,
+	}
+
+	if tenant != nil && *tenant != "" {
+		path := *tenant
+		if !strings.HasPrefix(path, "/") {
+			path = "/" + path
+		}
+		c.AuthData.AuthDomainPath = path
+		c.IsCDSPaaS = true
 	}
 
 	ar, err := c.SignIn(ctx, uuid)

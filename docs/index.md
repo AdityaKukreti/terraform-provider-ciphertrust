@@ -33,6 +33,7 @@ The following table illustrates which provider parameters can be provided as env
 | password             | CM_PASSWORD          | password                | Yes      | N/A                        |
 | domain               | CM_DOMAIN            | domain                  | No       | Empty string (root domain) |
 | auth_domain          | CM_AUTH_DOMAIN       | auth_domain             | No       | Empty string (root domain) |
+| tenant               | CIPHERTRUST_TENANT   | tenant                  | No       | Empty string (CM mode)     |
 | replication_delay_ms | CM_REPLICATION_DELAY |replication_delay_ms     | No       |100 (milliseconds)          | 
 | remaining parameters | no                   | yes                     | No       | N/A                        |
  
@@ -79,14 +80,47 @@ provider "ciphertrust" {
 
 ### For CipherTrust Data Security Platform as a Service (CDSPaaS)
 
+CDSPaaS is the multi-tenant SaaS delivery of CipherTrust Manager. Set `tenant`
+to the tenant name shown in the CDSPaaS web console:
+
 ```terraform
 provider "ciphertrust" {
-  address     = "cdsp-address"
-  username    = "cdsp-tenant-username"
-  password    = "cdsp-tenant-password"
-  auth_domain = "cdsp-tenant-name"
+  address  = "cdsp-address"
+  username = "cdsp-tenant-username"
+  password = "cdsp-tenant-password"
+  tenant   = "cdsp-tenant-name"
 }
 ```
+
+For nested tenant paths (rare), use a slash-separated value:
+
+```terraform
+provider "ciphertrust" {
+  address  = "cdsp-address"
+  username = "cdsp-tenant-username"
+  password = "cdsp-tenant-password"
+  tenant   = "acme/eng/team"
+}
+```
+
+Setting `tenant` opts the provider into the CDSPaaS authentication path; it is
+sent to the auth-token endpoint as `auth_domain_path`, which supersedes
+`auth_domain`. If both `tenant` and `auth_domain` are set, `auth_domain` is
+silently ignored and the provider emits a warning at plan time.
+
+A small set of resources manage CipherTrust Manager infrastructure that is
+platform-managed in CDSPaaS and not exposed to tenants. When `tenant` is set,
+the following resources fail at `terraform plan` time with a clear diagnostic
+rather than producing a runtime error:
+
+- `ciphertrust_cluster`
+- `ciphertrust_interface`
+- `ciphertrust_license`
+- `ciphertrust_trial_license`
+- `ciphertrust_ntp`
+- `ciphertrust_syslog`
+- `ciphertrust_proxy`
+- `ciphertrust_hsm_root_of_trust_setup`
 ## Configuration File
 
 All provider parameters can be read from the configuration file.
@@ -113,6 +147,12 @@ export CM_USERNAME=cm-username
 export CM_PASSWORD=cm-password
 export CM_AUTH_DOMAIN=cm-auth-domain
 export CM_DOMAIN=cm-domain
+```
+
+For CDSPaaS, set the tenant name via `CIPHERTRUST_TENANT`:
+
+```bash
+export CIPHERTRUST_TENANT=cdsp-tenant-name
 ```
 
 If environment variables required for authentication exist the provider block can be:
@@ -146,4 +186,5 @@ provider "ciphertrust" {}
 - `password` (String, Sensitive) Password of a CipherTrust user. password can be set in the provider block, via the CM_PASSWORD environment variable or in ~/.ciphertrust/config
 - `replication_delay_ms` (Number) In the case of a CipherTrust Manager cluster behind a load balancer a small delay after creating CipherTrust Manager resources may be required to allow for replication to other cluster instances. replication_delay_ms can be set in the provider block, via the CM_REPLICATION_DELAY environment variable or in ~/.ciphertrust/config. Default is 100.
 - `rest_api_timeout` (Number) CipherTrust rest api timeout in seconds. rest_api_timeout can be set in the provider block or in ~/.ciphertrust/config. Default is 60.
+- `tenant` (String) CDSPaaS tenant name (e.g. `"acme"`) or tenant path (e.g. `"acme/eng/team"`). Setting this opts the provider into the CDSPaaS authentication path; leave unset for on-prem CipherTrust Manager. tenant can be set in the provider block, via the CIPHERTRUST_TENANT environment variable or in ~/.ciphertrust/config.
 - `username` (String) Username of a CipherTrust user. username can be set in the provider block, via the CM_USERNAME environment variable or in ~/.ciphertrust/config

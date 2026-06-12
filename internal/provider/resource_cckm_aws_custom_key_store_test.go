@@ -95,7 +95,7 @@ func TestCckmAWSCustomKeyStoreUnlinked(t *testing.T) {
 	cmKeyName := "tf-cm-key-" + uuid.New().String()[:8]
 	keyStoreName := "tf-custom-key-store" + uuid.New().String()[:8]
 	proxyURIEndpoint := os.Getenv("CM_ADDRESS")
-	if os.Getenv("CTAAS") == "true" {
+	if os.Getenv("CDSPAAS") == "true" {
 		proxyURIEndpoint = "https://xks." + proxyURIEndpoint[len("https://"):]
 	}
 	keyStorePassword := "thequickbrownfox"
@@ -106,7 +106,7 @@ func TestCckmAWSCustomKeyStoreUnlinked(t *testing.T) {
 	newCmKeyName := "tf-cm-key-update-" + uuid.New().String()[:8]
 	newKeyStoreName := "tf-update-custom-key-store" + uuid.New().String()[:8]
 	newProxyURIEndpoint := "https://192.168.8.134"
-	if os.Getenv("CTAAS") == "true" {
+	if os.Getenv("CDSPAAS") == "true" {
 		newProxyURIEndpoint = proxyURIEndpoint
 	}
 	newKeyStorePassword := "jumpedoversomething"

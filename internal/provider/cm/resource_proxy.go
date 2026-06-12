@@ -16,8 +16,9 @@ import (
 )
 
 var (
-	_ resource.Resource              = &resourceCMProxy{}
-	_ resource.ResourceWithConfigure = &resourceCMProxy{}
+	_ resource.Resource                   = &resourceCMProxy{}
+	_ resource.ResourceWithConfigure      = &resourceCMProxy{}
+	_ resource.ResourceWithValidateConfig = &resourceCMProxy{}
 )
 
 func NewResourceCMProxy() resource.Resource {
@@ -30,6 +31,10 @@ type resourceCMProxy struct {
 
 func (r *resourceCMProxy) Metadata(_ context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
 	resp.TypeName = req.ProviderTypeName + "_proxy"
+}
+
+func (r *resourceCMProxy) ValidateConfig(ctx context.Context, _ resource.ValidateConfigRequest, resp *resource.ValidateConfigResponse) {
+	common.ValidateCMOnly(ctx, r.client, "ciphertrust_proxy", resp)
 }
 
 // Schema defines the schema for the resource.

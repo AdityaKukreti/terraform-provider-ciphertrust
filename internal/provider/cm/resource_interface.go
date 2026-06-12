@@ -21,8 +21,9 @@ import (
 )
 
 var (
-	_ resource.Resource              = &resourceCMInterface{}
-	_ resource.ResourceWithConfigure = &resourceCMInterface{}
+	_ resource.Resource                   = &resourceCMInterface{}
+	_ resource.ResourceWithConfigure      = &resourceCMInterface{}
+	_ resource.ResourceWithValidateConfig = &resourceCMInterface{}
 )
 
 func NewResourceCMInterface() resource.Resource {
@@ -35,6 +36,10 @@ type resourceCMInterface struct {
 
 func (r *resourceCMInterface) Metadata(_ context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
 	resp.TypeName = req.ProviderTypeName + "_interface"
+}
+
+func (r *resourceCMInterface) ValidateConfig(ctx context.Context, _ resource.ValidateConfigRequest, resp *resource.ValidateConfigResponse) {
+	common.ValidateCMOnly(ctx, r.client, "ciphertrust_interface", resp)
 }
 
 // Schema defines the schema for the resource.

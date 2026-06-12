@@ -20,8 +20,9 @@ import (
 )
 
 var (
-	_ resource.Resource              = &resourceHSMRootOfTrust{}
-	_ resource.ResourceWithConfigure = &resourceHSMRootOfTrust{}
+	_ resource.Resource                   = &resourceHSMRootOfTrust{}
+	_ resource.ResourceWithConfigure      = &resourceHSMRootOfTrust{}
+	_ resource.ResourceWithValidateConfig = &resourceHSMRootOfTrust{}
 )
 
 func NewResourceHSMRootOfTrustServer() resource.Resource {
@@ -34,6 +35,10 @@ type resourceHSMRootOfTrust struct {
 
 func (r *resourceHSMRootOfTrust) Metadata(_ context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
 	resp.TypeName = req.ProviderTypeName + "_hsm_root_of_trust_setup"
+}
+
+func (r *resourceHSMRootOfTrust) ValidateConfig(ctx context.Context, _ resource.ValidateConfigRequest, resp *resource.ValidateConfigResponse) {
+	common.ValidateCMOnly(ctx, r.client, "ciphertrust_hsm_root_of_trust_setup", resp)
 }
 
 // Schema defines the schema for the resource.

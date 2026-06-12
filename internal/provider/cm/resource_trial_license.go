@@ -18,8 +18,9 @@ import (
 )
 
 var (
-	_ resource.Resource              = &resourceCMTrialLicense{}
-	_ resource.ResourceWithConfigure = &resourceCMTrialLicense{}
+	_ resource.Resource                   = &resourceCMTrialLicense{}
+	_ resource.ResourceWithConfigure      = &resourceCMTrialLicense{}
+	_ resource.ResourceWithValidateConfig = &resourceCMTrialLicense{}
 )
 
 func NewResourceCMTrialLicense() resource.Resource {
@@ -32,6 +33,10 @@ type resourceCMTrialLicense struct {
 
 func (r *resourceCMTrialLicense) Metadata(_ context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
 	resp.TypeName = req.ProviderTypeName + "_trial_license"
+}
+
+func (r *resourceCMTrialLicense) ValidateConfig(ctx context.Context, _ resource.ValidateConfigRequest, resp *resource.ValidateConfigResponse) {
+	common.ValidateCMOnly(ctx, r.client, "ciphertrust_trial_license", resp)
 }
 
 // Schema defines the schema for the resource.

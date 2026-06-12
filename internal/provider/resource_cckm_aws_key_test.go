@@ -120,11 +120,11 @@ func getAwsRoles() []string {
 	return ret
 }
 
-// applyCTAAS comments out the run_on scheduler attribute when the CTAAS
+// applyCDSPAAS comments out the run_on scheduler attribute when the CDSPAAS
 // environment variable is "true". CipherTrust as a Service does not support
 // run_on, so it is replaced with a HCL comment in that environment.
-func applyCTAAS(config string) string {
-	if os.Getenv("CTAAS") == "true" {
+func applyCDSPAAS(config string) string {
+	if os.Getenv("CDSPAAS") == "true" {
 		return strings.ReplaceAll(config, "run_on", "#run_on")
 	}
 	return config
@@ -290,9 +290,9 @@ func TestCckmAWSKeyNative(t *testing.T) {
 	updateKeyRotationPeriodInDays := "128"
 
 	createKeyConfigStr := fmt.Sprintf(createKeyConfig, schedulerOneName, aliasList[0], aliasList[1], awsKeyUsers[0], awsKeyUsers[1], awsKeyRoles[0], awsKeyRoles[1])
-	createKeyConfigStr = applyCTAAS(createKeyConfigStr)
+	createKeyConfigStr = applyCDSPAAS(createKeyConfigStr)
 	updateKeyConfigStr := fmt.Sprintf(updateKeyConfig, schedulerOneName, schedulerTwoName, awsKeyPolicy)
-	updateKeyConfigStr = applyCTAAS(updateKeyConfigStr)
+	updateKeyConfigStr = applyCDSPAAS(updateKeyConfigStr)
 	updateKeyConfigStr2 := fmt.Sprintf(updateKeyConfig2, policyTemplateName)
 	updateKeyConfig3Str := fmt.Sprintf(updateKeyConfig3, "SYMMETRIC_DEFAULT")
 	modifyPlanConfigStr := fmt.Sprintf(updateKeyConfig3, "RSA_2048")
@@ -1047,7 +1047,7 @@ func TestCckmAWSKeyNativeImport(t *testing.T) {
 	keyResource := "ciphertrust_aws_key.native_key"
 	schedulerOneName := "tf-" + uuid.NewString()[:8]
 	createKeyConfigStr := fmt.Sprintf(createKeyConfig, schedulerOneName, aliasList[0], aliasList[1], awsKeyUsers[0], awsKeyUsers[1], awsKeyRoles[0], awsKeyRoles[1])
-	createKeyConfigStr = applyCTAAS(createKeyConfigStr)
+	createKeyConfigStr = applyCDSPAAS(createKeyConfigStr)
 
 	resource.Test(t, resource.TestCase{
 		PreCheck:                 func() { cleanupCckmAwsKMS() },

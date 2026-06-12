@@ -20,8 +20,9 @@ import (
 )
 
 var (
-	_ resource.Resource              = &resourceCMNTP{}
-	_ resource.ResourceWithConfigure = &resourceCMNTP{}
+	_ resource.Resource                   = &resourceCMNTP{}
+	_ resource.ResourceWithConfigure      = &resourceCMNTP{}
+	_ resource.ResourceWithValidateConfig = &resourceCMNTP{}
 )
 
 func NewResourceCMNTP() resource.Resource {
@@ -34,6 +35,10 @@ type resourceCMNTP struct {
 
 func (r *resourceCMNTP) Metadata(_ context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
 	resp.TypeName = req.ProviderTypeName + "_ntp"
+}
+
+func (r *resourceCMNTP) ValidateConfig(ctx context.Context, _ resource.ValidateConfigRequest, resp *resource.ValidateConfigResponse) {
+	common.ValidateCMOnly(ctx, r.client, "ciphertrust_ntp", resp)
 }
 
 // Schema defines the schema for the resource.
