@@ -42,7 +42,7 @@ func (r *resourceCMPolicyAttachment) ValidateConfig(ctx context.Context, _ resou
 // Schema defines the schema for the resource.
 func (r *resourceCMPolicyAttachment) Schema(_ context.Context, _ resource.SchemaRequest, resp *resource.SchemaResponse) {
 	resp.Schema = schema.Schema{
-		Description: "Attaches a CipherTrust Manager admin policy to a principal (selected via principal_selector) for the specified actions and resources, optionally scoped by jurisdiction. **Only available on CipherTrust Manager — not supported on CDSPaaS.**",
+		Description: "Attaches a CipherTrust Manager admin policy to a set of principals (matched by principal_selector), optionally scoped to a jurisdiction. **Only available on CipherTrust Manager — not supported on CDSPaaS.**",
 		Attributes: map[string]schema.Attribute{
 			"id": schema.StringAttribute{
 				Computed: true,

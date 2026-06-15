@@ -44,7 +44,7 @@ func (r *resourceHSMRootOfTrust) ValidateConfig(ctx context.Context, _ resource.
 // Schema defines the schema for the resource.
 func (r *resourceHSMRootOfTrust) Schema(_ context.Context, _ resource.SchemaRequest, resp *resource.SchemaResponse) {
 	resp.Schema = schema.Schema{
-		Description: "Configures the HSM root-of-trust for the CipherTrust Manager appliance (Luna Network HSM, Luna PCIe, or Luna T-Series). **Only available on CipherTrust Manager — not supported on CDSPaaS.**",
+		Description: "Performs the initial HSM root-of-trust setup for the CipherTrust Manager appliance. Supported HSM types: Luna Network HSM (`luna`), Luna PCIe (`lunapci`), Luna T-Series (`lunatct`), ProtectServer HSM (`protectserver`), AWS CloudHSM (`aws`), DPoD (`dpod`), Entrust nShield Connect (`nshield`), and IBM HPCS (`ibmhpcs`). **Warning: this operation resets the appliance and wipes all existing CipherTrust Manager data.** **Only available on CipherTrust Manager — not supported on CDSPaaS.**",
 		Attributes: map[string]schema.Attribute{
 			"id": schema.StringAttribute{
 				Computed: true,

@@ -45,7 +45,7 @@ func (r *resourceCMInterface) ValidateConfig(ctx context.Context, _ resource.Val
 // Schema defines the schema for the resource.
 func (r *resourceCMInterface) Schema(_ context.Context, _ resource.SchemaRequest, resp *resource.SchemaResponse) {
 	resp.Schema = schema.Schema{
-		Description: "Manages a network interface configuration (port, interface type, network binding) on the CipherTrust Manager appliance. **Only available on CipherTrust Manager — not supported on CDSPaaS.**",
+		Description: "Manages a service endpoint interface (NAE, KMIP, or SNMP) on the CipherTrust Manager appliance, controlling the port, TLS settings, authentication mode, and network binding. **Only available on CipherTrust Manager — not supported on CDSPaaS.**",
 		Attributes: map[string]schema.Attribute{
 			"id": schema.StringAttribute{
 				Computed: true,
