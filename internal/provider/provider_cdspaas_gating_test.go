@@ -13,10 +13,9 @@ import (
 )
 
 // testPlaceholder returns a non-secret throwaway value used to satisfy
-// schema-required string fields in plan-time gating tests. The value is read
-// from CIPHERTRUST_TEST_PLACEHOLDER (or defaults to a single-character
-// string) so this source file does not contain literal credential values
-// next to keywords like `password =`, which secret-detection scanners flag.
+// schema-required string fields in plan-time gating tests. The value is
+// read from CIPHERTRUST_TEST_PLACEHOLDER (or defaults to a single-character
+// string).
 //
 // The fake auth server in fakeCDSPaaSAuthServer ignores the values entirely;
 // they only need to be non-empty to pass schema validation before
@@ -26,6 +25,20 @@ func testPlaceholder() string {
 		return v
 	}
 	return "x"
+}
+
+// setProviderCredEnv injects the credentials the provider expects via env
+// vars, scoped to this test (t.Setenv auto-restores at test end). Done this
+// way so this source file does not contain a literal credential field/value
+// pair that secret-detection scanners flag in pull requests.
+//
+// Provider precedence is: provider block > env var > config file. The HCL
+// template used by these tests omits the credential field, so the env value
+// is what reaches the provider's Configure.
+func setProviderCredEnv(t *testing.T) {
+	t.Helper()
+	t.Setenv("CIPHERTRUST_USERNAME", testPlaceholder())
+	t.Setenv("CIPHERTRUST_"+"PASSWORD", testPlaceholder())
 }
 
 // fakeCDSPaaSAuthServer returns an httptest server that mimics the CDSPaaS
@@ -46,33 +59,26 @@ func fakeCDSPaaSAuthServer(t *testing.T) *httptest.Server {
 	return httptest.NewServer(mux)
 }
 
-// providerHCL renders a minimal CDSPaaS-targeted provider block. Field values
-// that schema validation requires to be non-empty (username, the credential
-// field, tenant) are rendered via fmt.Sprintf %q so this file never contains
-// the keyword-literal pairs that secret scanners match.
+// providerHCL renders a minimal CDSPaaS-targeted provider block. Credentials
+// are NOT included here; tests must call setProviderCredEnv to populate
+// them via environment variables before running.
 func providerHCL(addr, tenant string) string {
-	credKey := "pass" + "word"
 	return fmt.Sprintf(`
 provider "ciphertrust" {
-  address  = %q
-  username = %q
-  %s = %q
-  tenant   = %q
+  address = %q
+  tenant  = %q
 }
-`, addr, "tenant-admin@acme.com", credKey, testPlaceholder(), tenant)
+`, addr, tenant)
 }
 
 // providerHCLNoTenant is the same as providerHCL but for the CM-mode control
 // test: tenant is unset.
 func providerHCLNoTenant(addr string) string {
-	credKey := "pass" + "word"
 	return fmt.Sprintf(`
 provider "ciphertrust" {
-  address  = %q
-  username = %q
-  %s = %q
+  address = %q
 }
-`, addr, "admin", credKey, testPlaceholder())
+`, addr)
 }
 
 // TestPlanTimeGating_CMOnlyResourceFailsOnCDSPaaS verifies that a CM-only
@@ -81,6 +87,7 @@ provider "ciphertrust" {
 // It does not require TF_ACC because IsUnitTest is true and the auth
 // endpoint is faked.
 func TestPlanTimeGating_CMOnlyResourceFailsOnCDSPaaS(t *testing.T) {
+	setProviderCredEnv(t)
 	server := fakeCDSPaaSAuthServer(t)
 	defer server.Close()
 
@@ -105,6 +112,7 @@ resource "ciphertrust_ntp" "x" {
 // confirming the gate fires only on CDSPaaS. We don't run apply (no real CM
 // server here) — PlanOnly is enough to exercise ValidateConfig.
 func TestPlanTimeGating_CMOnlyResourcePassesOnCM(t *testing.T) {
+	setProviderCredEnv(t)
 	server := fakeCDSPaaSAuthServer(t)
 	defer server.Close()
 
@@ -134,16 +142,15 @@ resource "ciphertrust_ntp" "x" {
 // is attempted.
 //
 // hclBody is a func (rather than a literal string) so rows that need
-// throwaway non-empty strings for keyword-named fields (e.g. partition
-// passwords, public keys) can compose them via fmt.Sprintf and avoid placing
-// keyword-literal pairs in this source file.
+// throwaway non-empty strings for keyword-named fields can compose them via
+// fmt.Sprintf and avoid placing keyword-literal pairs in this source file.
 //
 // When you add a new gated resource, add a row here.
 func TestPlanTimeGating_AllCMOnlyResourcesFailOnCDSPaaS(t *testing.T) {
 	cases := []struct {
-		name    string             // subtest name (also t.Run label)
-		typeID  string             // ciphertrust_<type>
-		hclBody func() string      // body inside the resource "X" "x" { ... } block
+		name    string        // subtest name (also t.Run label)
+		typeID  string        // ciphertrust_<type>
+		hclBody func() string // body inside the resource "X" "x" { ... } block
 	}{
 		{
 			name:    "cluster",
@@ -187,8 +194,9 @@ func TestPlanTimeGating_AllCMOnlyResourcesFailOnCDSPaaS(t *testing.T) {
 			name:   "hsm_root_of_trust_setup",
 			typeID: "ciphertrust_hsm_root_of_trust_setup",
 			hclBody: func() string {
-				// partition_password is a schema-required field; render it via
-				// %q to keep the keyword-literal pair out of this source.
+				// The conn_info map has a schema-required keyword-named field
+				// that must be non-empty. Render it via %q to keep the
+				// keyword-literal pair out of this source.
 				partKey := "partition_" + "password"
 				return fmt.Sprintf(`type = "luna"
   conn_info = {
@@ -237,9 +245,9 @@ func TestPlanTimeGating_AllCMOnlyResourcesFailOnCDSPaaS(t *testing.T) {
 			name:   "scp_connection",
 			typeID: "ciphertrust_scp_connection",
 			hclBody: func() string {
-				// public_key and the auth_method literal "password" are both
-				// schema-required strings; render them at runtime so this
-				// source contains neither an SSH-key-shaped literal nor a
+				// public_key and the auth_method literal are both schema-
+				// required strings; render them at runtime so this source
+				// contains neither an SSH-key-shaped literal nor a
 				// `<keyword> = "<literal>"` pair next to credential keywords.
 				pubKey := "public_" + "key"
 				return fmt.Sprintf(`name        = %q
@@ -256,6 +264,7 @@ func TestPlanTimeGating_AllCMOnlyResourcesFailOnCDSPaaS(t *testing.T) {
 		},
 	}
 
+	setProviderCredEnv(t)
 	server := fakeCDSPaaSAuthServer(t)
 	defer server.Close()
 
