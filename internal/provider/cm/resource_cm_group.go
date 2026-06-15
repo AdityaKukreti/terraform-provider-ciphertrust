@@ -32,7 +32,7 @@ type resourceCMGroup struct {
 }
 
 func (r *resourceCMGroup) Metadata(_ context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
-	resp.TypeName = req.ProviderTypeName + "_cm_group"
+	resp.TypeName = req.ProviderTypeName + "_groups"
 }
 
 // Schema defines the schema for the resource.
