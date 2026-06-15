@@ -18,8 +18,9 @@ import (
 )
 
 var (
-	_ resource.Resource              = &resourceCMPolicyAttachment{}
-	_ resource.ResourceWithConfigure = &resourceCMPolicyAttachment{}
+	_ resource.Resource                   = &resourceCMPolicyAttachment{}
+	_ resource.ResourceWithConfigure      = &resourceCMPolicyAttachment{}
+	_ resource.ResourceWithValidateConfig = &resourceCMPolicyAttachment{}
 )
 
 func NewResourceCMPolicyAttachment() resource.Resource {
@@ -34,9 +35,14 @@ func (r *resourceCMPolicyAttachment) Metadata(_ context.Context, req resource.Me
 	resp.TypeName = req.ProviderTypeName + "_policy_attachments"
 }
 
+func (r *resourceCMPolicyAttachment) ValidateConfig(ctx context.Context, _ resource.ValidateConfigRequest, resp *resource.ValidateConfigResponse) {
+	common.ValidateCMOnly(ctx, r.client, "ciphertrust_policy_attachments", resp)
+}
+
 // Schema defines the schema for the resource.
 func (r *resourceCMPolicyAttachment) Schema(_ context.Context, _ resource.SchemaRequest, resp *resource.SchemaResponse) {
 	resp.Schema = schema.Schema{
+		Description: "Attaches a CipherTrust Manager admin policy to a principal (selected via principal_selector) for the specified actions and resources, optionally scoped by jurisdiction. **Only available on CipherTrust Manager — not supported on CDSPaaS.**",
 		Attributes: map[string]schema.Attribute{
 			"id": schema.StringAttribute{
 				Computed: true,

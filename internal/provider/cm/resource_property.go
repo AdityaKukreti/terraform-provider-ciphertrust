@@ -18,8 +18,9 @@ import (
 )
 
 var (
-	_ resource.Resource              = &resourceCMProperty{}
-	_ resource.ResourceWithConfigure = &resourceCMProperty{}
+	_ resource.Resource                   = &resourceCMProperty{}
+	_ resource.ResourceWithConfigure      = &resourceCMProperty{}
+	_ resource.ResourceWithValidateConfig = &resourceCMProperty{}
 )
 
 func NewResourceCMProperty() resource.Resource {
@@ -34,9 +35,14 @@ func (r *resourceCMProperty) Metadata(_ context.Context, req resource.MetadataRe
 	resp.TypeName = req.ProviderTypeName + "_property"
 }
 
+func (r *resourceCMProperty) ValidateConfig(ctx context.Context, _ resource.ValidateConfigRequest, resp *resource.ValidateConfigResponse) {
+	common.ValidateCMOnly(ctx, r.client, "ciphertrust_property", resp)
+}
+
 // Schema defines the schema for the resource.
 func (r *resourceCMProperty) Schema(_ context.Context, _ resource.SchemaRequest, resp *resource.SchemaResponse) {
 	resp.Schema = schema.Schema{
+		Description: "Manages a CipherTrust Manager system property. **Only available on CipherTrust Manager — not supported on CDSPaaS, where system properties are managed by the platform.**",
 		Attributes: map[string]schema.Attribute{
 			"name": schema.StringAttribute{
 				Optional: true,

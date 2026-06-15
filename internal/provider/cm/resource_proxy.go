@@ -40,6 +40,7 @@ func (r *resourceCMProxy) ValidateConfig(ctx context.Context, _ resource.Validat
 // Schema defines the schema for the resource.
 func (r *resourceCMProxy) Schema(_ context.Context, _ resource.SchemaRequest, resp *resource.SchemaResponse) {
 	resp.Schema = schema.Schema{
+		Description: "Configures outbound HTTP/HTTPS proxy settings (with optional CA certificate and no_proxy bypass list) for the CipherTrust Manager appliance. **Only available on CipherTrust Manager — not supported on CDSPaaS.**",
 		Attributes: map[string]schema.Attribute{
 			"certificate": schema.StringAttribute{
 				Optional:    true,

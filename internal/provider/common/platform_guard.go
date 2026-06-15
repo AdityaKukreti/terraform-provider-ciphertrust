@@ -8,10 +8,11 @@ import (
 
 // ValidateCMOnly emits a plan-time error if the resource is being used against
 // a CDSPaaS deployment. Resources that manage CipherTrust Manager
-// infrastructure (cluster, network interfaces, NTP, syslog, licensing, HSM
-// root-of-trust, proxy) are platform-managed in CDSPaaS and not exposed to
-// tenants; they should fail at plan time rather than producing a confusing
-// 4xx at apply time.
+// infrastructure or features (cluster, domain, network interfaces, NTP,
+// syslog, licensing, HSM root-of-trust, proxy, Prometheus, password policy,
+// policies, policy attachments, system properties, SCP connections) are
+// platform-managed in CDSPaaS and not exposed to tenants; they should fail at
+// plan time rather than producing a confusing 4xx at apply time.
 //
 // Call from a resource's ValidateConfig method:
 //

@@ -44,6 +44,7 @@ func (r *resourceCMNTP) ValidateConfig(ctx context.Context, _ resource.ValidateC
 // Schema defines the schema for the resource.
 func (r *resourceCMNTP) Schema(_ context.Context, _ resource.SchemaRequest, resp *resource.SchemaResponse) {
 	resp.Schema = schema.Schema{
+		Description: "Configures an NTP server on the CipherTrust Manager appliance. **Only available on CipherTrust Manager — not supported on CDSPaaS.**",
 		Attributes: map[string]schema.Attribute{
 			"id": schema.StringAttribute{
 				Computed:    true,

@@ -108,19 +108,30 @@ sent to the auth-token endpoint as `auth_domain_path`, which supersedes
 `auth_domain`. If both `tenant` and `auth_domain` are set, `auth_domain` is
 silently ignored and the provider emits a warning at plan time.
 
-A small set of resources manage CipherTrust Manager infrastructure that is
-platform-managed in CDSPaaS and not exposed to tenants. When `tenant` is set,
-the following resources fail at `terraform plan` time with a clear diagnostic
-rather than producing a runtime error:
+A set of resources manage CipherTrust Manager infrastructure or features that
+are platform-managed in CDSPaaS and not exposed to tenants. When `tenant` is
+set, the following resources fail at `terraform plan` time with a clear
+diagnostic rather than producing a runtime error:
 
 - `ciphertrust_cluster`
+- `ciphertrust_cm_prometheus`
+- `ciphertrust_domain`
+- `ciphertrust_hsm_root_of_trust_setup`
 - `ciphertrust_interface`
 - `ciphertrust_license`
-- `ciphertrust_trial_license`
 - `ciphertrust_ntp`
-- `ciphertrust_syslog`
+- `ciphertrust_password_policy`
+- `ciphertrust_policies`
+- `ciphertrust_policy_attachments`
+- `ciphertrust_property`
 - `ciphertrust_proxy`
-- `ciphertrust_hsm_root_of_trust_setup`
+- `ciphertrust_scp_connection`
+- `ciphertrust_syslog`
+- `ciphertrust_trial_license`
+
+In addition, `ciphertrust_cm_ssh_key` is implicitly unavailable on CDSPaaS
+because it runs only in bootstrap mode, which CDSPaaS does not expose.
+
 ## Configuration File
 
 All provider parameters can be read from the configuration file.

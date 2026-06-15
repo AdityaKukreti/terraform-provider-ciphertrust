@@ -42,6 +42,7 @@ func (r *resourceCMTrialLicense) ValidateConfig(ctx context.Context, _ resource.
 // Schema defines the schema for the resource.
 func (r *resourceCMTrialLicense) Schema(_ context.Context, _ resource.SchemaRequest, resp *resource.SchemaResponse) {
 	resp.Schema = schema.Schema{
+		Description: "Activates a CipherTrust Manager trial license. **Only available on CipherTrust Manager — not supported on CDSPaaS.**",
 		Attributes: map[string]schema.Attribute{
 			"id": schema.StringAttribute{
 				Description: "ID of the trial license",

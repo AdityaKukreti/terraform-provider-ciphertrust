@@ -44,6 +44,7 @@ func (r *resourceCMSyslog) ValidateConfig(ctx context.Context, _ resource.Valida
 // Schema defines the schema for the resource.
 func (r *resourceCMSyslog) Schema(_ context.Context, _ resource.SchemaRequest, resp *resource.SchemaResponse) {
 	resp.Schema = schema.Schema{
+		Description: "Configures a syslog forwarding destination on the CipherTrust Manager appliance. **Only available on CipherTrust Manager — not supported on CDSPaaS.**",
 		Attributes: map[string]schema.Attribute{
 			"id": schema.StringAttribute{
 				Computed: true,
