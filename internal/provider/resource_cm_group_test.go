@@ -15,7 +15,7 @@ const testGroupName = "TFTestGroup"
 
 func cmGroupConfig(name, description, appMeta string) string {
 	cfg := fmt.Sprintf(`
-resource "ciphertrust_cm_group" "testGroup" {
+resource "ciphertrust_groups" "testGroup" {
   name = %q
 `, name)
 	if description != "" {
@@ -35,10 +35,10 @@ func TestAccCMGroup_basicCreate(t *testing.T) {
 			{
 				Config: cmGroupConfig(testGroupName, "Created via TF", `{"env":"test"}`),
 				Check: checkStep(t, "basic create",
-					resource.TestCheckResourceAttrSet("ciphertrust_cm_group.testGroup", "id"),
-					resource.TestCheckResourceAttr("ciphertrust_cm_group.testGroup", "name", testGroupName),
-					resource.TestCheckResourceAttr("ciphertrust_cm_group.testGroup", "description", "Created via TF"),
-					resource.TestCheckResourceAttrSet("ciphertrust_cm_group.testGroup", "app_metadata"),
+				resource.TestCheckResourceAttrSet("ciphertrust_groups.testGroup", "id"),
+				resource.TestCheckResourceAttr("ciphertrust_groups.testGroup", "name", testGroupName),
+				resource.TestCheckResourceAttr("ciphertrust_groups.testGroup", "description", "Created via TF"),
+				resource.TestCheckResourceAttrSet("ciphertrust_groups.testGroup", "app_metadata"),
 				),
 			},
 			// Verify no drift on a subsequent plan.
@@ -59,10 +59,10 @@ func TestAccCMGroup_driftDetection(t *testing.T) {
 		Steps: []resource.TestStep{
 			{
 				Config: cmGroupConfig(testGroupName+"Drift", "Drift test", ""),
-				Check: checkStep(t, "drift detection: create",
-					resource.TestCheckResourceAttrSet("ciphertrust_cm_group.testGroup", "id"),
-					func(s *terraform.State) error {
-						rs, ok := s.RootModule().Resources["ciphertrust_cm_group.testGroup"]
+			Check: checkStep(t, "drift detection: create",
+				resource.TestCheckResourceAttrSet("ciphertrust_groups.testGroup", "id"),
+				func(s *terraform.State) error {
+					rs, ok := s.RootModule().Resources["ciphertrust_groups.testGroup"]
 						if !ok {
 							return fmt.Errorf("resource not found in state")
 						}
@@ -100,10 +100,10 @@ func TestAccCMGroup_attributeDrift(t *testing.T) {
 		Steps: []resource.TestStep{
 			{
 				Config: cmGroupConfig(testGroupName+"AttrDrift", "Original description", ""),
-				Check: checkStep(t, "attribute drift: create",
-					resource.TestCheckResourceAttr("ciphertrust_cm_group.testGroup", "description", "Original description"),
-					func(s *terraform.State) error {
-						rs, ok := s.RootModule().Resources["ciphertrust_cm_group.testGroup"]
+			Check: checkStep(t, "attribute drift: create",
+				resource.TestCheckResourceAttr("ciphertrust_groups.testGroup", "description", "Original description"),
+				func(s *terraform.State) error {
+					rs, ok := s.RootModule().Resources["ciphertrust_groups.testGroup"]
 						if !ok {
 							return fmt.Errorf("resource not found in state")
 						}

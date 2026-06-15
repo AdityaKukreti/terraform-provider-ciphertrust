@@ -32,7 +32,7 @@ type resourceCMGroup struct {
 }
 
 func (r *resourceCMGroup) Metadata(_ context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
-	resp.TypeName = req.ProviderTypeName + "_cm_group"
+	resp.TypeName = req.ProviderTypeName + "_groups"
 }
 
 // Schema defines the schema for the resource.
@@ -173,28 +173,28 @@ func (r *resourceCMGroup) Read(ctx context.Context, req resource.ReadRequest, re
 		return
 	}
 
-	state.ID = types.StringValue(gjson.Get(response, "id").String())
 	state.Name = types.StringValue(gjson.Get(response, "name").String())
+	state.ID = state.Name
 
-	if v := gjson.Get(response, "description"); v.Exists() {
+	if v := gjson.Get(response, "description"); v.Exists() && v.String() != "" {
 		state.Description = types.StringValue(v.String())
 	} else {
 		state.Description = types.StringNull()
 	}
 
-	if v := gjson.Get(response, "app_metadata"); v.Exists() && v.Type != gjson.Null {
+	if v := gjson.Get(response, "app_metadata"); v.Exists() && v.Type != gjson.Null && v.Raw != "{}" {
 		state.AppMetadata = types.StringValue(v.Raw)
 	} else {
 		state.AppMetadata = types.StringNull()
 	}
 
-	if v := gjson.Get(response, "client_metadata"); v.Exists() && v.Type != gjson.Null {
+	if v := gjson.Get(response, "client_metadata"); v.Exists() && v.Type != gjson.Null && v.Raw != "{}" {
 		state.ClientMetadata = types.StringValue(v.Raw)
 	} else {
 		state.ClientMetadata = types.StringNull()
 	}
 
-	if v := gjson.Get(response, "user_metadata"); v.Exists() && v.Type != gjson.Null {
+	if v := gjson.Get(response, "user_metadata"); v.Exists() && v.Type != gjson.Null && v.Raw != "{}" {
 		state.UserMetadata = types.StringValue(v.Raw)
 	} else {
 		state.UserMetadata = types.StringNull()
