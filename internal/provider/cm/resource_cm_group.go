@@ -173,8 +173,8 @@ func (r *resourceCMGroup) Read(ctx context.Context, req resource.ReadRequest, re
 		return
 	}
 
-	state.ID = types.StringValue(gjson.Get(response, "id").String())
 	state.Name = types.StringValue(gjson.Get(response, "name").String())
+	state.ID = state.Name
 
 	if v := gjson.Get(response, "description"); v.Exists() {
 		state.Description = types.StringValue(v.String())
