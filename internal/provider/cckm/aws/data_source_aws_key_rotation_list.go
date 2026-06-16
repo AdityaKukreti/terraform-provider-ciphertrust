@@ -67,7 +67,7 @@ func (d *dataSourceAWSKeyRotationList) Schema(_ context.Context, _ datasource.Sc
 			},
 			"key_id": schema.StringAttribute{
 				Required:    true,
-				Description: "CipherTrust Manger resource ID of an AWS key.",
+				Description: "CipherTrust Manager ID of an AWS key.",
 			},
 			"matched": schema.Int64Attribute{
 				Computed:    true,
@@ -129,7 +129,7 @@ func (d *dataSourceAWSKeyRotationList) Schema(_ context.Context, _ datasource.Sc
 						},
 						"id": schema.StringAttribute{
 							Computed:    true,
-							Description: "The CipherTrust Manager resource ID for this rotation.",
+							Description: "The CipherTrust Manager ID for this rotation.",
 						},
 						"key_material_origin": schema.StringAttribute{
 							Computed:    true,
@@ -149,11 +149,11 @@ func (d *dataSourceAWSKeyRotationList) Schema(_ context.Context, _ datasource.Sc
 						},
 						"kms_id": schema.StringAttribute{
 							Computed:    true,
-							Description: "CipherTrust Manager AWS KMS resource ID.",
+							Description: "CipherTrust Manager AWS KMS ID.",
 						},
 						"source_key_id": schema.StringAttribute{
 							Computed:    true,
-							Description: "The CipherTrust Manager resource ID of the key used for the key material.",
+							Description: "The CipherTrust Manager ID of the key used for the key material.",
 						},
 						"source_key_name": schema.StringAttribute{
 							Computed:    true,

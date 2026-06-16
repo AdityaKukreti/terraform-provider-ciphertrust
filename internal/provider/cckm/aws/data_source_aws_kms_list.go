@@ -124,7 +124,7 @@ func (d *dataSourceAWSKms) Schema(_ context.Context, _ datasource.SchemaRequest,
 						},
 						"aws_connection": schema.StringAttribute{
 							Computed:    true,
-							Description: "CipherTrust Manager resource ID of the connection which manages this account.",
+							Description: "CipherTrust Manager ID of the connection which manages this account.",
 						},
 						"created_at": schema.StringAttribute{
 							Description: "Date/time the application was created",
@@ -135,7 +135,7 @@ func (d *dataSourceAWSKms) Schema(_ context.Context, _ datasource.SchemaRequest,
 							Computed:    true,
 						},
 						"id": schema.StringAttribute{
-							Description: "The CipherTrust Manager resource ID of this KMS.",
+							Description: "The CipherTrust Manager ID of this KMS.",
 							Computed:    true,
 						},
 						"name": schema.StringAttribute{

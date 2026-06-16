@@ -442,7 +442,7 @@ func (p *ciphertrustProvider) DataSources(_ context.Context) []func() datasource
 }
 
 // Resources defines the resources implemented in the provider.
-func (p *ciphertrustProvider) Resources(_ context.Context) []func() resource.Resource {
+func (p *ciphertrustProvider) Resources(ctx context.Context) []func() resource.Resource {
 	return []func() resource.Resource{
 		cm.NewResourceCMUser,
 		cm.NewResourceCMKey,
@@ -492,6 +492,8 @@ func (p *ciphertrustProvider) Resources(_ context.Context) []func() resource.Res
 		cm.NewResourceCMSyslog,
 		aws.NewResourceCCKMAWSKMS,
 		aws.NewResourceAWSKey,
+		aws.NewResourceAWSByokKey,
+		aws.NewResourceAWSKeyMaterial,
 		aws.NewResourceAWSKeyRotation,
 		aws.NewResourceAWSPolicyTemplate,
 		aws.NewResourceAWSCustomKeyStore,
@@ -505,6 +507,5 @@ func (p *ciphertrustProvider) Resources(_ context.Context) []func() resource.Res
 		oci.NewResourceCCKMOCIVersion,
 		oci.NewResourceCCKMOCIKey,
 		aws.NewResourceCCKMAWSAcl,
-		aws.NewResourceAWSKeyImportMaterial,
 	}
 }

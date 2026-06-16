@@ -61,8 +61,8 @@ func getCipherTrustVersion() int {
 		return cipherTrustVersion
 	}
 	cipherTrustVersion = devCMVersionValue
-	if os.Getenv("CTAAS") == "true" {
-		fmt.Printf("CTAAS is true, returning %d\n", cipherTrustVersion)
+	if os.Getenv("CDSPAAS") == "true" {
+		fmt.Printf("CDSPAAS is true, returning %d\n", cipherTrustVersion)
 		return cipherTrustVersion
 	}
 	var (
@@ -209,7 +209,7 @@ func testVerifyResourceDeleted(resourceName string) resource.TestCheckFunc {
 // NOTE: calls to this function must not be left in committed source code.
 func testAccListResourceAttributes(resourceName string) resource.TestCheckFunc {
 	return func(s *terraform.State) error {
-		fmt.Printf("************ %s attributes\n", resourceName)
+		fmt.Printf("\n************ %s attributes\n", resourceName)
 		for rn, rs := range s.RootModule().Resources {
 			if rn != resourceName {
 				continue
@@ -225,7 +225,7 @@ func testAccListResourceAttributes(resourceName string) resource.TestCheckFunc {
 			for _, k := range keys {
 				fmt.Printf("k:%s v:%v\n", k, rs.Primary.Attributes[k])
 			}
-			fmt.Printf("**************** end %s attributes\n", resourceName)
+			fmt.Printf("**************** end %s attributes\n\n", resourceName)
 			return nil
 		}
 		return fmt.Errorf("error: did not find resource %s so can't list attributes", resourceName)
@@ -250,7 +250,7 @@ func testAccListResources() resource.TestCheckFunc {
 // false when any required variable is missing or the client cannot be created.
 // The caller is responsible for logging any skip/error message.
 //
-// When CTAAS=true the auth_domain is read from CIPHERTRUST_AUTH_DOMAIN and
+// When CDSPAAS=true the auth_domain is read from CIPHERTRUST_AUTH_DOMAIN and
 // domain is left empty (CTaaS does not use the domain field). Otherwise both
 // domain and auth_domain are read from CIPHERTRUST_DOMAIN and
 // CIPHERTRUST_AUTH_DOMAIN respectively.
@@ -264,7 +264,7 @@ func createCMClient() (*common.Client, bool) {
 	}
 	var domain string
 	authDomain := os.Getenv("CIPHERTRUST_AUTH_DOMAIN")
-	if os.Getenv("CTAAS") != "true" {
+	if os.Getenv("CDSPAAS") != "true" {
 		domain = os.Getenv("CIPHERTRUST_DOMAIN")
 	}
 	client, err := common.NewClient(context.Background(), uuid.NewString(), &address, &authDomain, &domain, &username, &password, true, 180)

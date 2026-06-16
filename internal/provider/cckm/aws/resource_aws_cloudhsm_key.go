@@ -6,15 +6,12 @@ import (
 	"fmt"
 	"net/url"
 	"reflect"
-	"regexp"
 	"strings"
 
 	"github.com/ThalesGroup/terraform-provider-ciphertrust/internal/provider/cckm/utils"
 	"github.com/ThalesGroup/terraform-provider-ciphertrust/internal/provider/common"
 	"github.com/google/uuid"
 	"github.com/hashicorp/terraform-plugin-framework-validators/int64validator"
-	"github.com/hashicorp/terraform-plugin-framework-validators/listvalidator"
-	"github.com/hashicorp/terraform-plugin-framework-validators/setvalidator"
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/path"
@@ -79,36 +76,20 @@ func (r *resourceAWSCloudHSMKey) Schema(_ context.Context, _ resource.SchemaRequ
 				Computed:    true,
 				Description: "AWS region in which the CloudHSM key resides.",
 			},
-			"alias": schema.SetAttribute{
-				Optional:    true,
-				Computed:    true,
-				ElementType: types.StringType,
-				Description: "(Updatable) Input parameter. Alias assigned to the CloudHSM key.",
-				Validators: []validator.Set{
-					setvalidator.ValueStringsAre(
-						stringvalidator.RegexMatches(
-							regexp.MustCompile(`^[a-zA-Z0-9/_-]+$`),
-							"must only contain alphanumeric characters, forward slashes, underscores, and dashes",
-						),
-					),
-				},
-			},
 			"bypass_policy_lockout_safety_check": schema.BoolAttribute{
 				Optional:    true,
 				Description: "Whether to bypass the key policy lockout safety check.",
+			},
+			"aws_param": schema.SingleNestedAttribute{
+				Optional:    true,
+				Computed:    true,
+				Description: "AWS key parameters. Alias, description, and tags are updatable for linked keys; policy is output only.",
+				Attributes:  keyStoreAwsParamSchemaAttributes(),
 			},
 			"customer_master_key_spec": schema.StringAttribute{
 				Computed:    true,
 				Description: "Whether the KMS key contains a symmetric key or an asymmetric key pair. Valid values: " + strings.Join(awsKeySpecs, ", "),
 				Validators:  []validator.String{stringvalidator.OneOf(awsKeySpecs...)},
-			},
-			"description": schema.StringAttribute{
-				Optional:    true,
-				Computed:    true,
-				Description: "(Updatable) Description of the AWS key. Descriptions can be updated but not removed.",
-				Validators: []validator.String{
-					stringvalidator.LengthAtLeast(1),
-				},
 			},
 			"enable_key": schema.BoolAttribute{
 				Optional:    true,
@@ -138,12 +119,6 @@ func (r *resourceAWSCloudHSMKey) Schema(_ context.Context, _ resource.SchemaRequ
 				Validators: []validator.Int64{
 					int64validator.AtLeast(7),
 				},
-			},
-			"tags": schema.MapAttribute{
-				Optional:    true,
-				Computed:    true,
-				Description: "(Updatable) A list of tags assigned to the CloudHSM key.",
-				ElementType: types.StringType,
 			},
 			//Read-Only Params
 			"arn": schema.StringAttribute{
@@ -177,7 +152,12 @@ func (r *resourceAWSCloudHSMKey) Schema(_ context.Context, _ resource.SchemaRequ
 			"encryption_algorithms": schema.ListAttribute{
 				Computed:    true,
 				ElementType: types.StringType,
-				Description: "Encryption algorithms of an asymmetric key",
+				Description: "Encryption algorithms of an asymmetric key.",
+			},
+			"mac_algorithms": schema.ListAttribute{
+				Computed:    true,
+				ElementType: types.StringType,
+				Description: "MAC algorithms supported by an HMAC key.",
 			},
 			"expiration_model": schema.StringAttribute{
 				Computed:    true,
@@ -197,10 +177,6 @@ func (r *resourceAWSCloudHSMKey) Schema(_ context.Context, _ resource.SchemaRequ
 				Computed:    true,
 				ElementType: types.StringType,
 				Description: "Key administrators - roles.",
-			},
-			"key_id": schema.StringAttribute{
-				Computed:    true,
-				Description: "CipherTrust Manager key ID.",
 			},
 			"key_manager": schema.StringAttribute{
 				Computed:    true,
@@ -236,7 +212,7 @@ func (r *resourceAWSCloudHSMKey) Schema(_ context.Context, _ resource.SchemaRequ
 				ElementType: types.StringType,
 				Description: "Key users - roles.",
 			},
-			"kms": schema.StringAttribute{
+			"kms_name": schema.StringAttribute{
 				Computed:    true,
 				Description: "Name or of the KMS.",
 			},
@@ -318,78 +294,8 @@ func (r *resourceAWSCloudHSMKey) Schema(_ context.Context, _ resource.SchemaRequ
 				Computed:    true,
 				Description: "Custom keystore ID in AWS.",
 			},
-		},
-		Blocks: map[string]schema.Block{
-			"key_policy": schema.ListNestedBlock{
-				Description: "(Updatable) Key policy parameters.",
-				Validators: []validator.List{
-					listvalidator.SizeAtMost(1),
-				},
-				NestedObject: schema.NestedBlockObject{
-					Attributes: map[string]schema.Attribute{
-						"external_accounts": schema.SetAttribute{
-							Optional:    true,
-							ElementType: types.StringType,
-							Description: "Other AWS accounts that can access the key.",
-						},
-						"key_admins": schema.SetAttribute{
-							Optional:    true,
-							ElementType: types.StringType,
-							Description: "Key administrators - users.",
-						},
-						"key_admins_roles": schema.SetAttribute{
-							Optional:    true,
-							ElementType: types.StringType,
-							Description: "Key administrators - roles.",
-						},
-						"key_users": schema.SetAttribute{
-							Optional:    true,
-							ElementType: types.StringType,
-							Description: "Key users - users.",
-						},
-						"key_users_roles": schema.SetAttribute{
-							Optional:    true,
-							ElementType: types.StringType,
-							Description: "Key users - roles.",
-						},
-						"policy": schema.StringAttribute{
-							Optional:    true,
-							Description: "AWS key policy json.",
-						},
-						"policy_template": schema.StringAttribute{
-							Optional:    true,
-							Description: "CipherTrust Manager policy template ID",
-						},
-					},
-				},
-			},
-			"enable_rotation": schema.ListNestedBlock{
-				Description: "(Updatable) Enable the key for scheduled rotation job. Parameters 'disable_encrypt' and 'disable_encrypt_on_all_accounts' are mutually exclusive",
-				Validators: []validator.List{
-					listvalidator.SizeAtMost(1),
-				},
-				NestedObject: schema.NestedBlockObject{
-					Attributes: map[string]schema.Attribute{
-						"job_config_id": schema.StringAttribute{
-							Required:    true,
-							Description: "ID of the scheduler configuration job that will schedule the key rotation.",
-						},
-						"key_source": schema.StringAttribute{
-							Required:    true,
-							Description: "Key source from where the key will be uploaded. Currently, the only option is 'local'.",
-							Validators:  []validator.String{stringvalidator.OneOf([]string{"local"}...)},
-						},
-						"disable_encrypt": schema.BoolAttribute{
-							Optional:    true,
-							Description: "Disable encryption on the old key.",
-						},
-						"disable_encrypt_on_all_accounts": schema.BoolAttribute{
-							Optional:    true,
-							Description: "Disable encryption permissions on the old key for all the accounts",
-						},
-					},
-				},
-			},
+			"key_policy":      keyPolicySchemaAttribute(),
+			"enable_rotation": enableRotationSchemaAttribute(),
 		},
 	}
 }
@@ -414,14 +320,15 @@ func (r *resourceAWSCloudHSMKey) Create(ctx context.Context, req resource.Create
 	if resp.Diagnostics.HasError() {
 		return
 	}
-	awsParams := getKeyStoreCommonAWSParams(ctx, &plan.AWSKeyStoreKeyCommonTFSDK, &resp.Diagnostics)
+	awsParams := getKeyStoreKeyAWSParams(ctx, &plan.AWSKeyStoreKeyCommonTFSDK, &resp.Diagnostics)
 	if resp.Diagnostics.HasError() {
 		return
 	}
-	payload := CreateCloudHSMKeyInputPayloadJSON{
-		AWSParams: *awsParams,
+	payload := CreateCloudHSMKeyInputPayloadJSON{}
+	if awsParams != nil {
+		payload.AWSParams = *awsParams
 	}
-	keyPolicy := getKeyPolicyParams(ctx, &plan.AWSKeyCommonTFSDK, &resp.Diagnostics)
+	keyPolicy := getKeyPolicyParams(ctx, plan.KeyPolicy, &resp.Diagnostics)
 	if resp.Diagnostics.HasError() {
 		return
 	}
@@ -462,21 +369,23 @@ func (r *resourceAWSCloudHSMKey) Create(ctx context.Context, req resource.Create
 	}
 	tflog.Debug(ctx, "[resource_aws_cloudhsm_key.go -> Create][response:"+redactAWSResponse(response)+"]")
 	plan.ID = types.StringValue(gjson.Get(response, "id").String())
-	plan.KeyID = plan.ID
 
 	// No error after this
 
 	keyID := gjson.Get(response, "id").String()
-	if gjson.Get(response, "linked_state").Bool() && len(plan.Alias.Elements()) > 1 {
-		var diags diag.Diagnostics
-		addAliases(ctx, r.client, id, &plan.AWSKeyCommonTFSDK, response, &diags)
-		for _, d := range diags {
-			resp.Diagnostics.AddWarning(d.Summary(), d.Detail())
+	if gjson.Get(response, "linked_state").Bool() && !plan.AWSParam.IsNull() && !plan.AWSParam.IsUnknown() {
+		planP := extractAWSKeyStoreAwsParam(ctx, plan.AWSParam, &resp.Diagnostics)
+		if len(planP.Alias.Elements()) > 1 {
+			var diags diag.Diagnostics
+			addAliases(ctx, r.client, id, keyID, planP.Alias, response, &diags)
+			for _, d := range diags {
+				resp.Diagnostics.AddWarning(d.Summary(), d.Detail())
+			}
 		}
 	}
-	if len(plan.EnableRotation.Elements()) != 0 {
+	if plan.EnableRotation != nil {
 		var diags diag.Diagnostics
-		enableKeyRotationJob(ctx, id, r.client, &plan.AWSKeyCommonTFSDK, &diags)
+		enableKeyRotationJob(ctx, id, r.client, keyID, plan.EnableRotation, &diags)
 		for _, d := range diags {
 			resp.Diagnostics.AddWarning(d.Summary(), d.Detail())
 		}
@@ -489,7 +398,11 @@ func (r *resourceAWSCloudHSMKey) Create(ctx context.Context, req resource.Create
 		}
 	}
 
-	plannedAlias := plan.Alias
+	var plannedAlias types.Set
+	if !plan.AWSParam.IsNull() && !plan.AWSParam.IsUnknown() {
+		planP := extractAWSKeyStoreAwsParam(ctx, plan.AWSParam, &resp.Diagnostics)
+		plannedAlias = planP.Alias
+	}
 
 	getResponse, err := r.client.GetById(ctx, id, keyID, common.URL_AWS_KEY)
 	if err != nil {
@@ -504,9 +417,13 @@ func (r *resourceAWSCloudHSMKey) Create(ctx context.Context, req resource.Create
 
 	var diags diag.Diagnostics
 	setCommonKeyStoreKeyState(ctx, response, &plan.AWSKeyStoreKeyCommonTFSDK, &diags)
-	if !reflect.DeepEqual(plan.Alias, plannedAlias) {
-		// Alias not always coming back in Create response, it is set in AWS
-		plan.Alias = plannedAlias
+	// Restore the planned alias if setCommonKeyStoreKeyState overwrote it with API values.
+	if !plannedAlias.IsNull() && !plannedAlias.IsUnknown() {
+		planP := extractAWSKeyStoreAwsParam(ctx, plan.AWSParam, &diags)
+		if !reflect.DeepEqual(planP.Alias, plannedAlias) {
+			planP.Alias = plannedAlias
+			plan.AWSParam = packAWSKeyStoreAwsParam(ctx, planP, &diags)
+		}
 	}
 	for _, d := range diags {
 		resp.Diagnostics.AddWarning(d.Summary(), d.Detail())
@@ -541,7 +458,11 @@ func (r *resourceAWSCloudHSMKey) Read(ctx context.Context, req resource.ReadRequ
 		resp.State.RemoveResource(ctx)
 		return
 	}
-	description := state.Description
+	var savedDesc types.String
+	if !state.AWSParam.IsNull() && !state.AWSParam.IsUnknown() {
+		stateP := extractAWSKeyStoreAwsParam(ctx, state.AWSParam, &resp.Diagnostics)
+		savedDesc = stateP.Description
+	}
 	setCommonKeyStoreKeyState(ctx, response, &state.AWSKeyStoreKeyCommonTFSDK, &resp.Diagnostics)
 	if resp.Diagnostics.HasError() {
 		msg := "Error reading AWS CloudHSM key, failed to set resource state."
@@ -551,7 +472,14 @@ func (r *resourceAWSCloudHSMKey) Read(ctx context.Context, req resource.ReadRequ
 		return
 	}
 	if !gjson.Get(response, "linked_state").Bool() {
-		state.Description = description
+		stateP := extractAWSKeyStoreAwsParam(ctx, state.AWSParam, &resp.Diagnostics)
+		// Only restore savedDesc when it was a known value from prior state.
+		// If savedDesc is null (e.g. after import with no prior state), keep the
+		// API value ("") so that aws_param.description is always present in state.
+		if !savedDesc.IsNull() && !savedDesc.IsUnknown() {
+			stateP.Description = savedDesc
+		}
+		state.AWSParam = packAWSKeyStoreAwsParam(ctx, stateP, &resp.Diagnostics)
 	}
 	resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
 	if resp.Diagnostics.HasError() {
@@ -572,7 +500,7 @@ func (r *resourceAWSCloudHSMKey) Read(ctx context.Context, req resource.ReadRequ
 //	  - No AWS updates are applied; all plan changes are silently skipped
 //	  - description is preserved from the prior state value rather than overwritten
 //
-// Note: unlike XKS keys, CloudHSM key Update does not handle block/unblock or link operations.
+// Block/unblock and link operations are not supported for CloudHSM keys.
 // Returns an error if the key or key store is not reachable.
 func (r *resourceAWSCloudHSMKey) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
 	id := uuid.New().String()
@@ -595,7 +523,6 @@ func (r *resourceAWSCloudHSMKey) Update(ctx context.Context, req resource.Update
 		return
 	}
 	keyID := gjson.Get(response, "id").String()
-	plan.KeyID = types.StringValue(keyID)
 	updateKeyState := gjson.Get(response, "aws_param.KeyState").String()
 	if gjson.Get(response, "linked_state").Bool() &&
 		(updateKeyState == "PendingDeletion" || updateKeyState == "PendingReplicaDeletion") {
@@ -605,6 +532,18 @@ func (r *resourceAWSCloudHSMKey) Update(ctx context.Context, req resource.Update
 		resp.Diagnostics.AddWarning(details, "")
 		resp.State.RemoveResource(ctx)
 		return
+	}
+	planDesc := types.StringNull()
+	planAlias := types.SetNull(types.StringType)
+	planTags := types.MapNull(types.StringType)
+	if !plan.AWSParam.IsNull() && !plan.AWSParam.IsUnknown() {
+		planP := extractAWSKeyStoreAwsParam(ctx, plan.AWSParam, &resp.Diagnostics)
+		if resp.Diagnostics.HasError() {
+			return
+		}
+		planDesc = planP.Description
+		planAlias = planP.Alias
+		planTags = planP.Tags
 	}
 	if gjson.Get(response, "linked_state").Bool() {
 		var keyEnabled bool
@@ -619,25 +558,27 @@ func (r *resourceAWSCloudHSMKey) Update(ctx context.Context, req resource.Update
 				}
 			}
 		}
-		updateAwsKeyCommon(ctx, id, r.client, &plan.AWSKeyCommonTFSDK, &state.AWSKeyCommonTFSDK, response, &resp.Diagnostics)
+		planUpdate := &AWSKeyUpdateInputTFSDK{KeyID: keyID, Description: planDesc, KeyPolicy: plan.KeyPolicy, EnableRotation: plan.EnableRotation}
+		stateUpdate := &AWSKeyUpdateInputTFSDK{KeyID: keyID, KeyPolicy: state.KeyPolicy, EnableRotation: state.EnableRotation}
+		updateAwsKeyCommon(ctx, id, r.client, planUpdate, stateUpdate, response, &resp.Diagnostics)
 		if resp.Diagnostics.HasError() {
 			return
 		}
-		if !plan.Alias.IsNull() && !plan.Alias.IsUnknown() {
-			updateAliases(ctx, id, r.client, &plan.AWSKeyCommonTFSDK, response, &resp.Diagnostics)
+		if !planAlias.IsNull() && !planAlias.IsUnknown() {
+			updateAliases(ctx, id, r.client, keyID, planAlias, response, &resp.Diagnostics)
 			if resp.Diagnostics.HasError() {
 				return
 			}
 		}
-		if !plan.Tags.IsUnknown() {
-			planTags := make(map[string]string, len(plan.Tags.Elements()))
-			if len(plan.Tags.Elements()) != 0 {
-				resp.Diagnostics.Append(plan.Tags.ElementsAs(ctx, &planTags, false)...)
+		if !planTags.IsUnknown() {
+			planTagsMap := make(map[string]string, len(planTags.Elements()))
+			if len(planTags.Elements()) != 0 {
+				resp.Diagnostics.Append(planTags.ElementsAs(ctx, &planTagsMap, false)...)
 				if resp.Diagnostics.HasError() {
 					return
 				}
 			}
-			updateTags(ctx, id, r.client, planTags, response, &resp.Diagnostics)
+			updateTags(ctx, id, r.client, planTagsMap, response, &resp.Diagnostics)
 			if resp.Diagnostics.HasError() {
 				return
 			}
@@ -661,7 +602,7 @@ func (r *resourceAWSCloudHSMKey) Update(ctx context.Context, req resource.Update
 		resp.Diagnostics.AddError(details, "")
 		return
 	}
-	description := plan.Description
+	savedPlanDesc := planDesc
 	setCommonKeyStoreKeyState(ctx, response, &plan.AWSKeyStoreKeyCommonTFSDK, &resp.Diagnostics)
 	if resp.Diagnostics.HasError() {
 		msg := "Error updating AWS CloudHSM key, failed to set resource state."
@@ -671,11 +612,13 @@ func (r *resourceAWSCloudHSMKey) Update(ctx context.Context, req resource.Update
 		return
 	}
 	if !gjson.Get(response, "linked_state").Bool() {
-		if !description.IsUnknown() {
-			plan.Description = description
+		updP := extractAWSKeyStoreAwsParam(ctx, plan.AWSParam, &resp.Diagnostics)
+		if !savedPlanDesc.IsNull() && !savedPlanDesc.IsUnknown() {
+			updP.Description = savedPlanDesc
 		} else {
-			plan.Description = types.StringValue("")
+			updP.Description = types.StringValue("")
 		}
+		plan.AWSParam = packAWSKeyStoreAwsParam(ctx, updP, &resp.Diagnostics)
 	}
 	resp.Diagnostics.Append(resp.State.Set(ctx, plan)...)
 	if resp.Diagnostics.HasError() {
@@ -698,7 +641,7 @@ func (r *resourceAWSCloudHSMKey) Delete(ctx context.Context, req resource.Delete
 	if resp.Diagnostics.HasError() {
 		return
 	}
-	keyID := state.KeyID.ValueString()
+	keyID := state.ID.ValueString()
 	response := r.getAwsCloudHsmKey(ctx, id, state.CustomKeyStoreID.ValueString(), keyID, "deleting", &resp.Diagnostics)
 	if resp.Diagnostics.HasError() {
 		return // key store not found or unreachable - hard error, resource kept in state

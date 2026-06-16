@@ -138,7 +138,7 @@ func (r *resourceCCKMAWSAcl) Schema(_ context.Context, _ resource.SchemaRequest,
 			},
 			"id": schema.StringAttribute{
 				Computed:      true,
-				Description:   "The CipherTrust Manager KMS resource ID concatenated with either the user ID or the group name separated by two semi-colons.",
+				Description:   "The CipherTrust Manager KMS ID concatenated with either the user ID or the group name separated by two semi-colons.",
 				PlanModifiers: []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
 			},
 			"user_id": schema.StringAttribute{
@@ -147,7 +147,7 @@ func (r *resourceCCKMAWSAcl) Schema(_ context.Context, _ resource.SchemaRequest,
 			},
 			"kms_id": schema.StringAttribute{
 				Required:    true,
-				Description: "The CipherTrust Manager AWS KMS resource ID in which to set the ACL",
+				Description: "The CipherTrust Manager AWS KMS ID in which to set the ACL",
 				Validators:  []validator.String{stringvalidator.LengthAtLeast(1)},
 			},
 		},
