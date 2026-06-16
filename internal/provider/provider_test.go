@@ -61,8 +61,8 @@ func getCipherTrustVersion() int {
 		return cipherTrustVersion
 	}
 	cipherTrustVersion = devCMVersionValue
-	if os.Getenv("CTAAS") == "true" {
-		fmt.Printf("CTAAS is true, returning %d\n", cipherTrustVersion)
+	if os.Getenv("CDSPAAS") == "true" {
+		fmt.Printf("CDSPAAS is true, returning %d\n", cipherTrustVersion)
 		return cipherTrustVersion
 	}
 	var (
@@ -78,7 +78,7 @@ func getCipherTrustVersion() int {
 		fmt.Printf("CIPHERTRUST_ADDRESS, CIPHERTRUST_USERNAME and CIPHERTRUST_PASSWORD environment variables must be set to get the system version, returning %d\n", devCMVersionValue)
 		return devCMVersionValue
 	}
-	client, err = common.NewClient(context.Background(), uuid.NewString(), &address, &domain, &domain, &username, &password, true, 180)
+	client, err = common.NewClient(context.Background(), uuid.NewString(), &address, &domain, &domain, &username, &password, nil, true, 180)
 	if err != nil {
 		fmt.Printf("** Failed to create client, returning %d. err: %s\n", cipherTrustVersion, err.Error())
 		return cipherTrustVersion
@@ -250,8 +250,8 @@ func testAccListResources() resource.TestCheckFunc {
 // false when any required variable is missing or the client cannot be created.
 // The caller is responsible for logging any skip/error message.
 //
-// When CTAAS=true the auth_domain is read from CIPHERTRUST_AUTH_DOMAIN and
-// domain is left empty (CTaaS does not use the domain field). Otherwise both
+// When CDSPAAS=true the auth_domain is read from CIPHERTRUST_AUTH_DOMAIN and
+// domain is left empty (CDSPaaS does not use the domain field). Otherwise both
 // domain and auth_domain are read from CIPHERTRUST_DOMAIN and
 // CIPHERTRUST_AUTH_DOMAIN respectively.
 func createCMClient() (*common.Client, bool) {
@@ -264,10 +264,10 @@ func createCMClient() (*common.Client, bool) {
 	}
 	var domain string
 	authDomain := os.Getenv("CIPHERTRUST_AUTH_DOMAIN")
-	if os.Getenv("CTAAS") != "true" {
+	if os.Getenv("CDSPAAS") != "true" {
 		domain = os.Getenv("CIPHERTRUST_DOMAIN")
 	}
-	client, err := common.NewClient(context.Background(), uuid.NewString(), &address, &authDomain, &domain, &username, &password, true, 180)
+	client, err := common.NewClient(context.Background(), uuid.NewString(), &address, &authDomain, &domain, &username, &password, nil, true, 180)
 	if err != nil {
 		fmt.Printf("createCMClient: failed to create client: %s\n", err.Error())
 		return nil, false

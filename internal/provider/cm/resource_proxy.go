@@ -16,8 +16,9 @@ import (
 )
 
 var (
-	_ resource.Resource              = &resourceCMProxy{}
-	_ resource.ResourceWithConfigure = &resourceCMProxy{}
+	_ resource.Resource                   = &resourceCMProxy{}
+	_ resource.ResourceWithConfigure      = &resourceCMProxy{}
+	_ resource.ResourceWithValidateConfig = &resourceCMProxy{}
 )
 
 func NewResourceCMProxy() resource.Resource {
@@ -32,9 +33,14 @@ func (r *resourceCMProxy) Metadata(_ context.Context, req resource.MetadataReque
 	resp.TypeName = req.ProviderTypeName + "_proxy"
 }
 
+func (r *resourceCMProxy) ValidateConfig(ctx context.Context, _ resource.ValidateConfigRequest, resp *resource.ValidateConfigResponse) {
+	common.ValidateCMOnly(ctx, r.client, "ciphertrust_proxy", resp)
+}
+
 // Schema defines the schema for the resource.
 func (r *resourceCMProxy) Schema(_ context.Context, _ resource.SchemaRequest, resp *resource.SchemaResponse) {
 	resp.Schema = schema.Schema{
+		Description: "Configures outbound HTTP/HTTPS proxy settings (with optional CA certificate and no_proxy bypass list) for the CipherTrust Manager appliance. **Only available on CipherTrust Manager — not supported on CDSPaaS.**",
 		Attributes: map[string]schema.Attribute{
 			"certificate": schema.StringAttribute{
 				Optional:    true,

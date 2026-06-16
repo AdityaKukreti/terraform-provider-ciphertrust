@@ -9,6 +9,7 @@ import (
 )
 
 func TestResourceCMDomain(t *testing.T) {
+	RequireCM(t)
 	rName := "tf-domain-" + acctest.RandStringFromCharSet(10, acctest.CharSetAlphaNum)
 	resource.Test(t, resource.TestCase{
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,

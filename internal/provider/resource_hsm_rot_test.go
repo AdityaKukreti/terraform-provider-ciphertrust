@@ -6,6 +6,7 @@ import (
 )
 
 func TestResourceHSMRootOfTrustSetupLuna(t *testing.T) {
+	RequireCM(t)
 	// Remove skip after actual HSM data is used in test
 	t.Skip("Skipped!! dummy data in resource parameters")
 
@@ -47,6 +48,7 @@ resource "ciphertrust_hsm_root_of_trust_setup" "cm_hsm_rot_setup" {
 // terraform destroy will perform automatically at the end of the test
 
 func TestResourceHSMRootOfTrustSetupLunaPCI(t *testing.T) {
+	RequireCM(t)
 	// Remove skip after actual HSM data is used in test
 	t.Skip("Skipped!! dummy data in resource parameters")
 
@@ -80,6 +82,7 @@ resource "ciphertrust_hsm_root_of_trust_setup" "cm_hsm_rot_setup" {
 // terraform destroy will perform automatically at the end of the test
 
 func TestResourceHSMRootOfTrustSetupLunatct(t *testing.T) {
+	RequireCM(t)
 	// Remove skip after actual HSM data is used in test
 	t.Skip("Skipped!! dummy data in resource parameters")
 

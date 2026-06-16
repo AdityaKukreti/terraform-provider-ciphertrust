@@ -74,7 +74,7 @@ func TestCckmAWSXKSUnlinkedKey(t *testing.T) {
 	cmKeyName := "tf-cm-key-" + uuid.New().String()[:8]
 	keyStoreName := "tf-custom-key-store" + uuid.New().String()[:8]
 	proxyURIEndpoint := os.Getenv("CM_ADDRESS")
-	if os.Getenv("CTAAS") == "true" {
+	if os.Getenv("CDSPAAS") == "true" {
 		proxyURIEndpoint = "https://xks." + proxyURIEndpoint[len("https://"):]
 	}
 	createKeyStoreConfigStr := fmt.Sprintf(createKeyStoreConfig, cmKeyName, keyStoreName, proxyURIEndpoint)
@@ -106,7 +106,7 @@ func TestCckmAWSXKSUnlinkedKey(t *testing.T) {
 		  start_date = "2025-03-07T14:24:00Z"
 		}`
 	enableRotationConfigStr := fmt.Sprintf(enableRotationConfig, enableRotationName)
-	enableRotationConfigStr = applyCTAAS(enableRotationConfigStr)
+	enableRotationConfigStr = applyCDSPAAS(enableRotationConfigStr)
 
 	createXKSKeyConfig := `
 		resource "ciphertrust_aws_xks_key" "unlinked_cm_source_min_params" {

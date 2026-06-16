@@ -146,7 +146,7 @@ func TestCckmAWSKeyMinimalConfig(t *testing.T) {
 
 	keyConfigStr := fmt.Sprintf(nativeKeyConfig, "tf-"+uuid.NewString()[:8], defaultPolicy, "tf-"+uuid.NewString()[:8], "tf-"+uuid.NewString()[:8])
 	proxyURIEndpoint := os.Getenv("CM_ADDRESS")
-	if os.Getenv("CTAAS") == "true" {
+	if os.Getenv("CDSPAAS") == "true" {
 		proxyURIEndpoint = "https://xks." + proxyURIEndpoint[len("https://"):]
 	}
 	customKeyStoreConfigStr := fmt.Sprintf(customKeystoreConfig, "tf-aes-"+uuid.NewString()[:8], "tf-ks-"+uuid.NewString()[:8], proxyURIEndpoint)

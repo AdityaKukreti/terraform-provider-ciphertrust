@@ -18,8 +18,9 @@ import (
 )
 
 var (
-	_ resource.Resource              = &resourceCMScpConnection{}
-	_ resource.ResourceWithConfigure = &resourceCMScpConnection{}
+	_ resource.Resource                   = &resourceCMScpConnection{}
+	_ resource.ResourceWithConfigure      = &resourceCMScpConnection{}
+	_ resource.ResourceWithValidateConfig = &resourceCMScpConnection{}
 
 	labelsDescription = `Labels are key/value pairs used to group resources. They are based on Kubernetes Labels, see https://kubernetes.io/docs/concepts/overview/working-with-objects/labels/.
 
@@ -80,9 +81,14 @@ func (r *resourceCMScpConnection) Metadata(_ context.Context, req resource.Metad
 	resp.TypeName = req.ProviderTypeName + "_scp_connection"
 }
 
+func (r *resourceCMScpConnection) ValidateConfig(ctx context.Context, _ resource.ValidateConfigRequest, resp *resource.ValidateConfigResponse) {
+	common.ValidateCMOnly(ctx, r.client, "ciphertrust_scp_connection", resp)
+}
+
 // Schema defines the schema for the resource.
 func (r *resourceCMScpConnection) Schema(_ context.Context, _ resource.SchemaRequest, resp *resource.SchemaResponse) {
 	resp.Schema = schema.Schema{
+		Description: "Manages an SCP/SFTP connection used for backup/restore on the CipherTrust Manager appliance. **Only available on CipherTrust Manager — not supported on CDSPaaS, where backup/restore is managed by the platform.**",
 		Attributes: map[string]schema.Attribute{
 			"id": schema.StringAttribute{
 				Computed: true,

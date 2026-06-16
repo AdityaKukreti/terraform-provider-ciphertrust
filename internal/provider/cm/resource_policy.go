@@ -19,8 +19,9 @@ import (
 )
 
 var (
-	_ resource.Resource              = &resourceCMPolicy{}
-	_ resource.ResourceWithConfigure = &resourceCMPolicy{}
+	_ resource.Resource                   = &resourceCMPolicy{}
+	_ resource.ResourceWithConfigure      = &resourceCMPolicy{}
+	_ resource.ResourceWithValidateConfig = &resourceCMPolicy{}
 )
 
 func NewResourceCMPolicy() resource.Resource {
@@ -35,9 +36,14 @@ func (r *resourceCMPolicy) Metadata(_ context.Context, req resource.MetadataRequ
 	resp.TypeName = req.ProviderTypeName + "_policies"
 }
 
+func (r *resourceCMPolicy) ValidateConfig(ctx context.Context, _ resource.ValidateConfigRequest, resp *resource.ValidateConfigResponse) {
+	common.ValidateCMOnly(ctx, r.client, "ciphertrust_policies", resp)
+}
+
 // Schema defines the schema for the resource.
 func (r *resourceCMPolicy) Schema(_ context.Context, _ resource.SchemaRequest, resp *resource.SchemaResponse) {
 	resp.Schema = schema.Schema{
+		Description: "Manages a CipherTrust Manager admin policy: an allow/deny rule that authorizes a set of actions (e.g. CreateKey, EncryptWithKey) with optional conditional clauses. **Only available on CipherTrust Manager — not supported on CDSPaaS, where authorization is managed by the platform.**",
 		Attributes: map[string]schema.Attribute{
 			"id": schema.StringAttribute{
 				Computed: true,

@@ -15,8 +15,9 @@ import (
 )
 
 var (
-	_ resource.Resource              = &resourceCMPrometheus{}
-	_ resource.ResourceWithConfigure = &resourceCMPrometheus{}
+	_ resource.Resource                   = &resourceCMPrometheus{}
+	_ resource.ResourceWithConfigure      = &resourceCMPrometheus{}
+	_ resource.ResourceWithValidateConfig = &resourceCMPrometheus{}
 )
 
 func NewResourceCMPrometheus() resource.Resource {
@@ -31,9 +32,14 @@ func (r *resourceCMPrometheus) Metadata(_ context.Context, req resource.Metadata
 	resp.TypeName = req.ProviderTypeName + "_cm_prometheus"
 }
 
+func (r *resourceCMPrometheus) ValidateConfig(ctx context.Context, _ resource.ValidateConfigRequest, resp *resource.ValidateConfigResponse) {
+	common.ValidateCMOnly(ctx, r.client, "ciphertrust_cm_prometheus", resp)
+}
+
 // Schema defines the schema for the resource.
 func (r *resourceCMPrometheus) Schema(_ context.Context, _ resource.SchemaRequest, resp *resource.SchemaResponse) {
 	resp.Schema = schema.Schema{
+		Description: "Enables and configures the Prometheus metrics endpoint on the CipherTrust Manager appliance. **Only available on CipherTrust Manager — not supported on CDSPaaS.**",
 		Attributes: map[string]schema.Attribute{
 			"token": schema.StringAttribute{
 				Computed: true,

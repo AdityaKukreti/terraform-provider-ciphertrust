@@ -18,8 +18,9 @@ import (
 )
 
 var (
-	_ resource.Resource              = &resourceCMPasswordPolicy{}
-	_ resource.ResourceWithConfigure = &resourceCMPasswordPolicy{}
+	_ resource.Resource                   = &resourceCMPasswordPolicy{}
+	_ resource.ResourceWithConfigure      = &resourceCMPasswordPolicy{}
+	_ resource.ResourceWithValidateConfig = &resourceCMPasswordPolicy{}
 )
 
 func NewResourceCMPasswordPolicy() resource.Resource {
@@ -34,9 +35,14 @@ func (r *resourceCMPasswordPolicy) Metadata(_ context.Context, req resource.Meta
 	resp.TypeName = req.ProviderTypeName + "_password_policy"
 }
 
+func (r *resourceCMPasswordPolicy) ValidateConfig(ctx context.Context, _ resource.ValidateConfigRequest, resp *resource.ValidateConfigResponse) {
+	common.ValidateCMOnly(ctx, r.client, "ciphertrust_password_policy", resp)
+}
+
 // Schema defines the schema for the resource.
 func (r *resourceCMPasswordPolicy) Schema(_ context.Context, _ resource.SchemaRequest, resp *resource.SchemaResponse) {
 	resp.Schema = schema.Schema{
+		Description: "Manages a CipherTrust Manager user password policy (failed-login lockout thresholds, password complexity rules, password lifetime, and password history). **Only available on CipherTrust Manager — not supported on CDSPaaS, where password policy is managed by the platform.**",
 		Attributes: map[string]schema.Attribute{
 			"id": schema.StringAttribute{
 				Computed: true,

@@ -22,8 +22,9 @@ import (
 )
 
 var (
-	_ resource.Resource              = &resourceCMCluster{}
-	_ resource.ResourceWithConfigure = &resourceCMCluster{}
+	_ resource.Resource                   = &resourceCMCluster{}
+	_ resource.ResourceWithConfigure      = &resourceCMCluster{}
+	_ resource.ResourceWithValidateConfig = &resourceCMCluster{}
 )
 
 func NewResourceCMCluster() resource.Resource {
@@ -38,10 +39,14 @@ func (r *resourceCMCluster) Metadata(_ context.Context, req resource.MetadataReq
 	resp.TypeName = req.ProviderTypeName + "_cluster"
 }
 
+func (r *resourceCMCluster) ValidateConfig(ctx context.Context, _ resource.ValidateConfigRequest, resp *resource.ValidateConfigResponse) {
+	common.ValidateCMOnly(ctx, r.client, "ciphertrust_cluster", resp)
+}
+
 // Schema defines the schema for the resource.
 func (r *resourceCMCluster) Schema(_ context.Context, _ resource.SchemaRequest, resp *resource.SchemaResponse) {
 	resp.Schema = schema.Schema{
-		Description: "Initializes a new CipherTrust Manager cluster with this node as the initial member. Additional nodes can be added using ciphertrust_cluster_node resources.",
+		Description: "Initializes a new CipherTrust Manager cluster with this node as the initial member. Additional nodes can be added using ciphertrust_cluster_node resources. **Only available on CipherTrust Manager — not supported on CDSPaaS.**",
 		Attributes: map[string]schema.Attribute{
 			"id": schema.StringAttribute{
 				Computed:    true,

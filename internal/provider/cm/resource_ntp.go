@@ -20,8 +20,9 @@ import (
 )
 
 var (
-	_ resource.Resource              = &resourceCMNTP{}
-	_ resource.ResourceWithConfigure = &resourceCMNTP{}
+	_ resource.Resource                   = &resourceCMNTP{}
+	_ resource.ResourceWithConfigure      = &resourceCMNTP{}
+	_ resource.ResourceWithValidateConfig = &resourceCMNTP{}
 )
 
 func NewResourceCMNTP() resource.Resource {
@@ -36,9 +37,14 @@ func (r *resourceCMNTP) Metadata(_ context.Context, req resource.MetadataRequest
 	resp.TypeName = req.ProviderTypeName + "_ntp"
 }
 
+func (r *resourceCMNTP) ValidateConfig(ctx context.Context, _ resource.ValidateConfigRequest, resp *resource.ValidateConfigResponse) {
+	common.ValidateCMOnly(ctx, r.client, "ciphertrust_ntp", resp)
+}
+
 // Schema defines the schema for the resource.
 func (r *resourceCMNTP) Schema(_ context.Context, _ resource.SchemaRequest, resp *resource.SchemaResponse) {
 	resp.Schema = schema.Schema{
+		Description: "Configures an NTP server on the CipherTrust Manager appliance. **Only available on CipherTrust Manager — not supported on CDSPaaS.**",
 		Attributes: map[string]schema.Attribute{
 			"id": schema.StringAttribute{
 				Computed:    true,

@@ -19,8 +19,9 @@ import (
 )
 
 var (
-	_ resource.Resource              = &resourceCMDomain{}
-	_ resource.ResourceWithConfigure = &resourceCMDomain{}
+	_ resource.Resource                   = &resourceCMDomain{}
+	_ resource.ResourceWithConfigure      = &resourceCMDomain{}
+	_ resource.ResourceWithValidateConfig = &resourceCMDomain{}
 )
 
 func NewResourceCMDomain() resource.Resource {
@@ -35,9 +36,14 @@ func (r *resourceCMDomain) Metadata(_ context.Context, req resource.MetadataRequ
 	resp.TypeName = req.ProviderTypeName + "_domain"
 }
 
+func (r *resourceCMDomain) ValidateConfig(ctx context.Context, _ resource.ValidateConfigRequest, resp *resource.ValidateConfigResponse) {
+	common.ValidateCMOnly(ctx, r.client, "ciphertrust_domain", resp)
+}
+
 // Schema defines the schema for the resource.
 func (r *resourceCMDomain) Schema(_ context.Context, _ resource.SchemaRequest, resp *resource.SchemaResponse) {
 	resp.Schema = schema.Schema{
+		Description: "Manages a CipherTrust Manager domain (a tenant boundary inside a single CipherTrust Manager instance). **Only available on CipherTrust Manager — not supported on CDSPaaS, where each customer is their own tenant and domains are managed by the platform.**",
 		Attributes: map[string]schema.Attribute{
 			"id": schema.StringAttribute{
 				Computed: true,

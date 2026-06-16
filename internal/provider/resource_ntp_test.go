@@ -7,6 +7,7 @@ import (
 )
 
 func TestResourceCMNTP(t *testing.T) {
+	RequireCM(t)
 	resource.Test(t, resource.TestCase{
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
 		Steps: []resource.TestStep{

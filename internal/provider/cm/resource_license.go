@@ -20,8 +20,9 @@ import (
 )
 
 var (
-	_ resource.Resource              = &resourceCMLicense{}
-	_ resource.ResourceWithConfigure = &resourceCMLicense{}
+	_ resource.Resource                   = &resourceCMLicense{}
+	_ resource.ResourceWithConfigure      = &resourceCMLicense{}
+	_ resource.ResourceWithValidateConfig = &resourceCMLicense{}
 )
 
 func NewResourceCMLicense() resource.Resource {
@@ -36,9 +37,14 @@ func (r *resourceCMLicense) Metadata(_ context.Context, req resource.MetadataReq
 	resp.TypeName = req.ProviderTypeName + "_license"
 }
 
+func (r *resourceCMLicense) ValidateConfig(ctx context.Context, _ resource.ValidateConfigRequest, resp *resource.ValidateConfigResponse) {
+	common.ValidateCMOnly(ctx, r.client, "ciphertrust_license", resp)
+}
+
 // Schema defines the schema for the resource.
 func (r *resourceCMLicense) Schema(_ context.Context, _ resource.SchemaRequest, resp *resource.SchemaResponse) {
 	resp.Schema = schema.Schema{
+		Description: "Manages a CipherTrust Manager license. **Only available on CipherTrust Manager — not supported on CDSPaaS.**",
 		Attributes: map[string]schema.Attribute{
 			"id": schema.StringAttribute{
 				Computed: true,

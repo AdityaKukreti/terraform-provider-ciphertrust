@@ -36,6 +36,7 @@ func (r *resourceCMSSHKey) Metadata(_ context.Context, req resource.MetadataRequ
 // Schema defines the schema for the resource.
 func (r *resourceCMSSHKey) Schema(_ context.Context, _ resource.SchemaRequest, resp *resource.SchemaResponse) {
 	resp.Schema = schema.Schema{
+		Description: "Adds an SSH public key to the CipherTrust Manager appliance during initial bootstrap (provider `bootstrap = \"yes\"`). **Bootstrap mode is only available on CipherTrust Manager — this resource is implicitly unsupported on CDSPaaS.**",
 		Attributes: map[string]schema.Attribute{
 			"id": schema.StringAttribute{
 				Computed: true,

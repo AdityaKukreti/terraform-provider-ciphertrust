@@ -7,6 +7,7 @@ import (
 )
 
 func TestResourceCMPolicy(t *testing.T) {
+	RequireCM(t)
 	resource.Test(t, resource.TestCase{
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
 		Steps: []resource.TestStep{
@@ -34,6 +35,7 @@ resource "ciphertrust_policies" "policy" {
 }
 
 func TestResourceCMPolicyEffectDefault(t *testing.T) {
+	RequireCM(t)
 	resource.Test(t, resource.TestCase{
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
 		Steps: []resource.TestStep{

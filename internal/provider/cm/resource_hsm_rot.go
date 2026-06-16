@@ -20,8 +20,9 @@ import (
 )
 
 var (
-	_ resource.Resource              = &resourceHSMRootOfTrust{}
-	_ resource.ResourceWithConfigure = &resourceHSMRootOfTrust{}
+	_ resource.Resource                   = &resourceHSMRootOfTrust{}
+	_ resource.ResourceWithConfigure      = &resourceHSMRootOfTrust{}
+	_ resource.ResourceWithValidateConfig = &resourceHSMRootOfTrust{}
 )
 
 func NewResourceHSMRootOfTrustServer() resource.Resource {
@@ -36,9 +37,14 @@ func (r *resourceHSMRootOfTrust) Metadata(_ context.Context, req resource.Metada
 	resp.TypeName = req.ProviderTypeName + "_hsm_root_of_trust_setup"
 }
 
+func (r *resourceHSMRootOfTrust) ValidateConfig(ctx context.Context, _ resource.ValidateConfigRequest, resp *resource.ValidateConfigResponse) {
+	common.ValidateCMOnly(ctx, r.client, "ciphertrust_hsm_root_of_trust_setup", resp)
+}
+
 // Schema defines the schema for the resource.
 func (r *resourceHSMRootOfTrust) Schema(_ context.Context, _ resource.SchemaRequest, resp *resource.SchemaResponse) {
 	resp.Schema = schema.Schema{
+		Description: "Performs the initial HSM root-of-trust setup for the CipherTrust Manager appliance. Supported HSM types: Luna Network HSM (`luna`), Luna PCIe (`lunapci`), Luna T-Series (`lunatct`), ProtectServer HSM (`protectserver`), AWS CloudHSM (`aws`), DPoD (`dpod`), Entrust nShield Connect (`nshield`), and IBM HPCS (`ibmhpcs`). **Warning: this operation resets the appliance and wipes all existing CipherTrust Manager data.** **Only available on CipherTrust Manager — not supported on CDSPaaS.**",
 		Attributes: map[string]schema.Attribute{
 			"id": schema.StringAttribute{
 				Computed: true,
