@@ -37,10 +37,6 @@ func computedAwsParamDSSchemaAttributes() map[string]schema.Attribute {
 			Computed:    true,
 			Description: "AWS Custom Key Store ID associated with the key. Populated for XKS and CloudHSM keys.",
 		},
-		"aws_key_id": schema.StringAttribute{
-			Computed:    true,
-			Description: "AWS key ID.",
-		},
 		"creation_date": schema.StringAttribute{
 			Computed:    true,
 			Description: "Date the key was created in AWS.",
@@ -73,6 +69,10 @@ func computedAwsParamDSSchemaAttributes() map[string]schema.Attribute {
 		"expiration_model": schema.StringAttribute{
 			Computed:    true,
 			Description: "Expiration model for EXTERNAL-origin keys.",
+		},
+		"key_id": schema.StringAttribute{
+			Computed:    true,
+			Description: "AWS key ID.",
 		},
 		"key_manager": schema.StringAttribute{
 			Computed:    true,
@@ -168,14 +168,15 @@ func computedAwsParamDSSchemaAttributes() map[string]schema.Attribute {
 
 // computedKeyStoreAwsParamDSSchemaAttributes returns the Computed-only datasource schema
 // attributes for the aws_param block on the aws_xks_key and aws_cloudhsm_key data sources.
-// These mirror keyStoreAwsParamSchemaAttributes from resource_aws_common.go but use
-// datasource/schema types and mark every field Computed (no Optional/Required).
+// The expanded set mirrors AWSKeyStoreDSAwsParamTFSDK - it includes all computed fields
+// returned by the CCKM API for key-store keys.
+// key_rotation_enabled is populated for CloudHSM keys only; xks_key_configuration for XKS only.
 func computedKeyStoreAwsParamDSSchemaAttributes() map[string]schema.Attribute {
 	return map[string]schema.Attribute{
 		"alias": schema.SetAttribute{
 			Computed:    true,
 			ElementType: types.StringType,
-			Description: "Alias(es) assigned to the key.",
+			Description: "Alias(es) assigned to the key. Populated for linked keys.",
 			Validators: []validator.Set{
 				setvalidator.ValueStringsAre(
 					stringvalidator.RegexMatches(
@@ -189,21 +190,93 @@ func computedKeyStoreAwsParamDSSchemaAttributes() map[string]schema.Attribute {
 			Computed:    true,
 			Description: "Description of the AWS key.",
 		},
+		"tags": schema.MapAttribute{
+			Computed:    true,
+			ElementType: types.StringType,
+			Description: "Tags assigned to the key. Populated for linked keys.",
+		},
+		"arn": schema.StringAttribute{
+			Computed:    true,
+			Description: "Amazon Resource Name (ARN) of the key.",
+		},
+		"aws_account_id": schema.StringAttribute{
+			Computed:    true,
+			Description: "AWS account ID.",
+		},
+		"aws_custom_key_store_id": schema.StringAttribute{
+			Computed:    true,
+			Description: "AWS Custom Key Store ID associated with the key.",
+		},
+		"customer_master_key_spec": schema.StringAttribute{
+			Computed:    true,
+			Description: "Whether the KMS key contains a symmetric key or an asymmetric key pair.",
+		},
+		"creation_date": schema.StringAttribute{
+			Computed:    true,
+			Description: "Date the key was created in AWS.",
+		},
+		"deletion_date": schema.StringAttribute{
+			Computed:    true,
+			Description: "Date the key is scheduled for deletion. Populated only when pending deletion.",
+		},
+		"enabled": schema.BoolAttribute{
+			Computed:    true,
+			Description: "True if the key is enabled in AWS.",
+		},
+		"encryption_algorithms": schema.ListAttribute{
+			Computed:    true,
+			ElementType: types.StringType,
+			Description: "Encryption algorithms supported by the key. Populated for asymmetric keys.",
+		},
+		"expiration_model": schema.StringAttribute{
+			Computed:    true,
+			Description: "Expiration model for the key material.",
+		},
+		"key_id": schema.StringAttribute{
+			Computed:    true,
+			Description: "AWS key ID.",
+		},
+		"key_manager": schema.StringAttribute{
+			Computed:    true,
+			Description: "Key manager (e.g. CUSTOMER).",
+		},
+		// key_rotation_enabled is populated for CloudHSM keys; will be false for XKS keys.
+		"key_rotation_enabled": schema.BoolAttribute{
+			Computed:    true,
+			Description: "True if AWS automatic key rotation is enabled. Populated for CloudHSM keys.",
+		},
+		"key_state": schema.StringAttribute{
+			Computed:    true,
+			Description: "State of the key in AWS (e.g. Enabled, Disabled, PendingDeletion).",
+		},
+		"key_usage": schema.StringAttribute{
+			Computed:    true,
+			Description: "Intended use of the key (e.g. ENCRYPT_DECRYPT).",
+		},
+		"mac_algorithms": schema.ListAttribute{
+			Computed:    true,
+			ElementType: types.StringType,
+			Description: "MAC algorithms supported by the key. Populated for HMAC keys.",
+		},
+		"origin": schema.StringAttribute{
+			Computed:    true,
+			Description: "Origin of the key material (e.g. EXTERNAL_KEY_STORE, AWS_CLOUDHSM).",
+		},
 		"policy": schema.StringAttribute{
 			Computed:    true,
 			Description: "Resulting AWS key policy.",
 		},
-		"tags": schema.MapAttribute{
+		// xks_key_configuration is populated for XKS keys; will be empty for CloudHSM keys.
+		"xks_key_configuration": schema.StringAttribute{
 			Computed:    true,
-			ElementType: types.StringType,
-			Description: "Tags assigned to the key.",
+			Description: "XKS key configuration details. Raw JSON string. Populated for XKS keys.",
 		},
 	}
 }
 
 // commonKeyListItemAttributes returns the Computed-only schema attributes shared by all
 // three AWS key list data source item types (aws_key, aws_xks_key, aws_cloudhsm_key).
-// These correspond to AWSKeyDataSourceCommonTFSDK.
+// Only non-aws_param fields are included here.
 func commonKeyListItemAttributes() map[string]schema.Attribute {
 	return map[string]schema.Attribute{
 		"id": schema.StringAttribute{
@@ -214,48 +287,6 @@ func commonKeyListItemAttributes() map[string]schema.Attribute {
 			Computed:    true,
 			Description: "AWS region the key belongs to.",
 		},
-		"alias": schema.SetAttribute{
-			Computed:    true,
-			ElementType: types.StringType,
-			Description: "Alias(es) of the key.",
-		},
-		"customer_master_key_spec": schema.StringAttribute{
-			Computed:    true,
-			Description: "Key specification.",
-		},
-		"description": schema.StringAttribute{
-			Computed:    true,
-			Description: "Description of the key.",
-		},
-		"enable_key": schema.BoolAttribute{
-			Computed:    true,
-			Description: "Enable or disable the key.",
-		},
-		"key_usage": schema.StringAttribute{
-			Computed:    true,
-			Description: "Specifies the intended use of the key.",
-		},
-		"origin": schema.StringAttribute{
-			Computed:    true,
-			Description: "Source of the key material.",
-		},
-		"tags": schema.MapAttribute{
-			Computed:    true,
-			ElementType: types.StringType,
-			Description: "Tags assigned to the key.",
-		},
-		"arn": schema.StringAttribute{
-			Computed:    true,
-			Description: "The Amazon Resource Name (ARN) of the key.",
-		},
-		"aws_account_id": schema.StringAttribute{
-			Computed:    true,
-			Description: "AWS account ID.",
-		},
-		"aws_key_id": schema.StringAttribute{
-			Computed:    true,
-			Description: "AWS key ID.",
-		},
 		"cloud_name": schema.StringAttribute{
 			Computed:    true,
 			Description: "AWS cloud.",
@@ -263,28 +294,6 @@ func commonKeyListItemAttributes() map[string]schema.Attribute {
 		"created_at": schema.StringAttribute{
 			Computed:    true,
 			Description: "Date the key was created.",
-		},
-		"deletion_date": schema.StringAttribute{
-			Computed:    true,
-			Description: "Date the key is scheduled for deletion.",
-		},
-		"enabled": schema.BoolAttribute{
-			Computed:    true,
-			Description: "True if the key is enabled.",
-		},
-		"encryption_algorithms": schema.ListAttribute{
-			Computed:    true,
-			ElementType: types.StringType,
-			Description: "Encryption algorithms of the key.",
-		},
-		"mac_algorithms": schema.ListAttribute{
-			Computed:    true,
-			ElementType: types.StringType,
-			Description: "MAC algorithms supported by an HMAC key.",
-		},
-		"expiration_model": schema.StringAttribute{
-			Computed:    true,
-			Description: "Expiration model.",
 		},
 		"external_accounts": schema.SetAttribute{
 			Computed:    true,
@@ -305,25 +314,13 @@ func commonKeyListItemAttributes() map[string]schema.Attribute {
 			Computed:    true,
 			Description: "CipherTrust Manager Key ID.",
 		},
-		"key_manager": schema.StringAttribute{
-			Computed:    true,
-			Description: "Key manager.",
-		},
 		"key_material_origin": schema.StringAttribute{
 			Computed:    true,
 			Description: "Key material origin.",
 		},
-		"key_rotation_enabled": schema.BoolAttribute{
-			Computed:    true,
-			Description: "True if rotation is enabled in AWS for this key.",
-		},
 		"key_source": schema.StringAttribute{
 			Computed:    true,
 			Description: "Source of the key.",
-		},
-		"key_state": schema.StringAttribute{
-			Computed:    true,
-			Description: "Key state.",
 		},
 		"key_type": schema.StringAttribute{
 			Computed:    true,
@@ -351,10 +348,6 @@ func commonKeyListItemAttributes() map[string]schema.Attribute {
 		"local_key_name": schema.StringAttribute{
 			Computed:    true,
 			Description: "CipherTrust Manager key name of the external key.",
-		},
-		"policy": schema.StringAttribute{
-			Computed:    true,
-			Description: "AWS key policy.",
 		},
 		"policy_template_tag": schema.MapAttribute{
 			Computed:    true,
@@ -385,10 +378,6 @@ func commonKeyListItemAttributes() map[string]schema.Attribute {
 			Computed:    true,
 			Description: "Date the key was last updated.",
 		},
-		"valid_to": schema.StringAttribute{
-			Computed:    true,
-			Description: "Date of key material expiry.",
-		},
 	}
 }
 
@@ -406,9 +395,9 @@ func awsKeyListItemAttributes() map[string]schema.Attribute {
 		Computed:    true,
 		Description: "Rotation period in days.",
 	}
-	attrs["kms"] = schema.StringAttribute{
+	attrs["kms_name"] = schema.StringAttribute{
 		Computed:    true,
-		Description: "Name or ID of the KMS.",
+		Description: "Name of the KMS. On input this accepts a KMS name or ID; the returned value is the KMS name.",
 	}
 	attrs["kms_id"] = schema.StringAttribute{
 		Computed:    true,
@@ -463,9 +452,9 @@ func awsKeyListItemAttributes() map[string]schema.Attribute {
 // attributes with keystore-specific computed fields and the aws_param block.
 func awsKeyStoreListItemAttributes() map[string]schema.Attribute {
 	attrs := commonKeyListItemAttributes()
-	attrs["kms"] = schema.StringAttribute{
+	attrs["kms_name"] = schema.StringAttribute{
 		Computed:    true,
-		Description: "Name or ID of the KMS.",
+		Description: "Name of the KMS. On input this accepts a KMS name or ID; the returned value is the KMS name.",
 	}
 	attrs["kms_id"] = schema.StringAttribute{
 		Computed:    true,

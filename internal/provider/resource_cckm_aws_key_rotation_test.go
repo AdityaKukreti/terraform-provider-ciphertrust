@@ -44,9 +44,9 @@ func TestCckmAWSKeyRotationNative(t *testing.T) {
 			}
 			kms_id = ciphertrust_aws_kms.kms.id
 			region = ciphertrust_aws_kms.kms.regions[0]
-			# Place holder for ciphertrust_aws_key_rotation
-			%s
-		}`
+		}
+		# Place holder for ciphertrust_aws_key_rotation
+		%s`
 
 	// nativeKeyConfig builds a config with a SYMMETRIC_DEFAULT native key and an
 	// aws_key_rotation resource whose trigger value controls when a rotation fires.
@@ -73,7 +73,7 @@ func TestCckmAWSKeyRotationNative(t *testing.T) {
 				Check: resource.ComposeTestCheckFunc(
 					testAccListResourceAttributes(keyResource),
 					resource.TestCheckResourceAttrSet(keyResource, "id"),
-					resource.TestCheckResourceAttrSet(keyResource, "aws_param.aws_key_id"),
+					resource.TestCheckResourceAttrSet(keyResource, "aws_param.key_id"),
 					// At this stage there may or may be 0 or 1 rotations in rotation_history
 					// The key's current_key_material id may or may not be set before create returns
 				),
@@ -103,7 +103,6 @@ func TestCckmAWSKeyRotationNative(t *testing.T) {
 					resource.TestCheckResourceAttrSet(rotationListResource, "rotation_history.1.local_key_id"),
 					resource.TestCheckResourceAttrSet(rotationListResource, "rotation_history.1.kms_id"),
 					resource.TestCheckResourceAttrSet(rotationListResource, "rotation_history.1.key_material_origin"),
-					resource.TestCheckResourceAttrSet(rotationListResource, "rotation_history.1.aws_params.rotation_type"),
 					resource.TestCheckResourceAttrSet(rotationListResource, "rotation_history.1.aws_params.key_material_state"),
 					resource.TestCheckResourceAttrSet(rotationListResource, "rotation_history.1.aws_params.key_material_id"),
 				),
@@ -143,7 +142,6 @@ func TestCckmAWSKeyRotationNative(t *testing.T) {
 					resource.TestCheckResourceAttrSet(rotationListResource, "rotation_history.2.local_key_id"),
 					resource.TestCheckResourceAttrSet(rotationListResource, "rotation_history.2.kms_id"),
 					resource.TestCheckResourceAttrSet(rotationListResource, "rotation_history.2.key_material_origin"),
-					resource.TestCheckResourceAttrSet(rotationListResource, "rotation_history.2.aws_params.rotation_type"),
 					resource.TestCheckResourceAttrSet(rotationListResource, "rotation_history.2.aws_params.key_material_state"),
 					resource.TestCheckResourceAttrSet(rotationListResource, "rotation_history.2.aws_params.key_material_id"),
 				),

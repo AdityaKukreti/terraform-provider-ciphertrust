@@ -29,10 +29,10 @@ func replicateKeyCommon(
 	keyPolicy *AWSKeyPolicyTFSDK,
 	diags *diag.Diagnostics,
 ) string {
-	tflog.Debug(ctx, common.MSG_METHOD_START+"SARAH [aws_replicate.go -> replicateKeyCommon]["+id+"]")
-	defer tflog.Debug(ctx, common.MSG_METHOD_END+"SARAH [aws_replicate.go -> replicateKeyCommon]["+id+"]")
+	tflog.Debug(ctx, common.MSG_METHOD_START+"[aws_multiregion.go -> replicateKeyCommon]["+id+"]")
+	defer tflog.Debug(ctx, common.MSG_METHOD_END+"[aws_multiregion.go -> replicateKeyCommon]["+id+"]")
 
-	tflog.Debug(ctx, fmt.Sprintf("SARAH replicateKeyCommon: region: %s", replicaRegion))
+	tflog.Debug(ctx, fmt.Sprintf("replicateKeyCommon: region: %s", replicaRegion))
 
 	primaryKeyID := replicateKeyPlan.KeyID.ValueString()
 	kp := getKeyPolicyParams(ctx, keyPolicy, diags)
@@ -64,6 +64,7 @@ func replicateKeyCommon(
 		diags.AddError(details, "")
 		return ""
 	}
+	tflog.Info(ctx, fmt.Sprintf("Replicating AWS key %s to region %s", primaryKeyID, replicaRegion))
 	replicaKeyResponse, err := client.PostDataV2(ctx, id, common.URL_AWS_KEY+"/"+primaryKeyID+"/replicate-key", payloadJSON)
 	if err != nil {
 		msg := "Error creating AWS key, failed to replicate key."
@@ -79,30 +80,36 @@ func replicateKeyCommon(
 
 	// Don't return errors after this
 
-	tflog.Info(ctx, fmt.Sprintf("SARAH  replicaKeyResponse: %s", replicaKeyResponse))
-
 	replicaKeyID := gjson.Get(replicaKeyResponse, "id").String()
+	tflog.Info(ctx, fmt.Sprintf("Replica key created, id: %s, region: %s", replicaKeyID, replicaRegion))
+	// Keep the initial POST response as a fallback so we can always return a response
+	// that contains the replica key ID, even if later polling steps fail.
+	initialReplicaKeyResponse := replicaKeyResponse
 	var waitForReplicationDiags diag.Diagnostics
 	waitForReplication(ctx, id, client, replicaKeyID, &waitForReplicationDiags)
 	if waitForReplicationDiags.HasError() {
 		for _, d := range waitForReplicationDiags {
 			diags.AddWarning(d.Summary(), d.Detail())
 		}
-		return ""
+		return initialReplicaKeyResponse
 	}
 	// Debug: read primary key and log its JSON before waiting for replica to become Enabled.
 	primaryKeyJSON, err := client.GetById(ctx, id, primaryKeyID, common.URL_AWS_KEY)
 	if err != nil || primaryKeyJSON == "" {
+		errMsg := "unknown error"
+		if err != nil {
+			errMsg = err.Error()
+		}
 		msg := "Error replicated AWS key, failed to read primary key."
 		details := utils.ApiError(msg, map[string]interface{}{
-			"error":          err.Error(),
+			"error":          errMsg,
 			"primary_key_id": primaryKeyID,
 			"replica_key_id": replicaKeyID,
 			"region":         replicaRegion,
 		})
 		tflog.Error(ctx, details)
 		diags.AddWarning(details, "")
-		return ""
+		return initialReplicaKeyResponse
 	}
 
 	waitForKeyEnabledDiags := diag.Diagnostics{}
@@ -135,17 +142,20 @@ func replicateKeyCommon(
 		})
 		tflog.Error(ctx, details)
 		diags.AddWarning(details, "")
-		return ""
+		return initialReplicaKeyResponse
 	}
 
 	if replicateKeyPlan.MakePrimary.ValueBool() {
-		tflog.Info(ctx, fmt.Sprintf("SARAH replicateKeyPlan.MakePrimary is TRUE"))
+		tflog.Info(ctx, fmt.Sprintf("make_primary is true, promoting replica in region %s to primary", replicaRegion))
 		enabled := gjson.Get(replicaKeyResponse, "aws_param.Enabled").Bool()
 		if enabled {
-			tflog.Info(ctx, fmt.Sprintf("SARAH enabled is TRUE"))
+			// Let the newly created replica settle before making it primary
+			time.Sleep(time.Duration(10) * time.Second)
+			tflog.Debug(ctx, fmt.Sprintf("replicateKeyCommon: replica key is enabled, proceeding with update-primary-region"))
 			makePrimaryDiags := diag.Diagnostics{}
 			updatePrimaryRegion(ctx, id, client, primaryKeyID, replicaRegion, replicaKeyID, &makePrimaryDiags)
-			for _, d := range makePrimaryDiags.Errors() {
+			diags.Append(makePrimaryDiags...)
+			for _, d := range makePrimaryDiags {
 				diags.AddWarning(d.Summary(), d.Detail())
 			}
 		} else {
@@ -157,6 +167,8 @@ func replicateKeyCommon(
 			diags.AddWarning(details, "")
 		}
 	}
+	// Capture the current best response before the final GET in case it fails.
+	finalFallback := replicaKeyResponse
 	replicaKeyResponse, err = client.GetById(ctx, id, replicaKeyID, common.URL_AWS_KEY)
 	if err != nil {
 		msg := "Error creating AWS key, failed to read replicated key."
@@ -168,55 +180,30 @@ func replicateKeyCommon(
 		})
 		tflog.Error(ctx, details)
 		diags.AddWarning(details, "")
-		return ""
+		return finalFallback
 	}
-	tflog.Debug(ctx, "[aws_replicate.go -> replicateKeyCommon][response:"+redactAWSResponse(replicaKeyResponse))
+	tflog.Debug(ctx, "[aws_multiregion.go -> replicateKeyCommon][response:"+redactAWSResponse(replicaKeyResponse))
 	return replicaKeyResponse
 }
 
 // waitForReplication polls the replica key until its state leaves the "Creating" phase or a timeout is reached.
 func waitForReplication(ctx context.Context, id string, client *common.Client, replicaKeyID string, diags *diag.Diagnostics) string {
-	tflog.Debug(ctx, common.MSG_METHOD_START+"[aws_replicate.go -> waitForReplication]["+id+"]")
-	defer tflog.Debug(ctx, common.MSG_METHOD_END+"[aws_replicate.go -> waitForReplication]["+id+"]")
+	tflog.Debug(ctx, common.MSG_METHOD_START+"[aws_multiregion.go -> waitForReplication]["+id+"]")
+	defer tflog.Debug(ctx, common.MSG_METHOD_END+"[aws_multiregion.go -> waitForReplication]["+id+"]")
 	var (
 		err      error
 		response string
 		keyState string
 	)
 
-	if err = client.RefreshToken(ctx, id); err != nil {
-		msg := "Error replicating AWS key. Error refreshing authentication token."
-		details := utils.ApiError(msg, map[string]interface{}{
-			"error":          err.Error(),
-			"replica_key_id": replicaKeyID,
-		})
-		tflog.Error(ctx, details)
-		diags.AddWarning(details, "")
-		return ""
-	}
-
 	// Give CCKM/AWS a head start before the first poll.
 	time.Sleep(time.Duration(shortAwsKeyOpSleep) * time.Second)
 	ticker := time.NewTicker(time.Duration(shortAwsKeyOpSleep) * time.Second)
 	defer ticker.Stop()
 	deadline := time.Now().Add(time.Duration(110) * time.Second)
-	tStart := time.Now()
 	for range ticker.C {
 		if time.Now().After(deadline) {
 			break
-		}
-		if time.Since(tStart).Seconds() > refreshTokenSeconds {
-			if err = client.RefreshToken(ctx, id); err != nil {
-				msg := "Error replicating AWS key. Error refreshing authentication token."
-				details := utils.ApiError(msg, map[string]interface{}{
-					"error":          err.Error(),
-					"replica_key_id": replicaKeyID,
-				})
-				tflog.Error(ctx, details)
-				diags.AddWarning(details, "")
-				return ""
-			}
-			tStart = time.Now()
 		}
 		response, err = client.GetById(ctx, id, replicaKeyID, common.URL_AWS_KEY)
 		if err != nil {
@@ -230,9 +217,9 @@ func waitForReplication(ctx context.Context, id string, client *common.Client, r
 			return ""
 		}
 		keyState = gjson.Get(response, "aws_param.KeyState").String()
-		tflog.Debug(ctx, fmt.Sprintf("SARAH Key state: %s", keyState))
+		tflog.Debug(ctx, fmt.Sprintf("Key state: %s", keyState))
 		if keyState != "Creating" {
-			tflog.Debug(ctx, "SARAH [aws_replicate.go -> waitForReplication][response:"+redactAWSResponse(response))
+			tflog.Debug(ctx, "[aws_multiregion.go -> waitForReplication][response:"+redactAWSResponse(response))
 			return response
 		}
 	}
@@ -240,7 +227,7 @@ func waitForReplication(ctx context.Context, id string, client *common.Client, r
 	details := utils.ApiError(msg, map[string]interface{}{"key_id": replicaKeyID})
 	tflog.Warn(ctx, details)
 	diags.AddWarning(details, "")
-	tflog.Debug(ctx, "[aws_replicate.go -> waitForReplication][response:"+redactAWSResponse(response))
+	tflog.Debug(ctx, "[aws_multiregion.go -> waitForReplication][response:"+redactAWSResponse(response))
 	return response
 }
 
@@ -248,50 +235,25 @@ func waitForReplication(ctx context.Context, id string, client *common.Client, r
 // reached. An EXTERNAL/BYOK replica key requires AWS to enable it after key material has been imported;
 // this function also covers the window between a native replica leaving "Creating" state and reaching "Enabled".
 func waitForReplicatedKeyIsEnabled(ctx context.Context, id string, client *common.Client, replicaKeyID string, diags *diag.Diagnostics) string {
-	tflog.Debug(ctx, common.MSG_METHOD_START+"SARAH [aws_replicate.go -> waitForReplicatedKeyIsEnabled]["+id+"]")
-	defer tflog.Debug(ctx, common.MSG_METHOD_END+"SARAH [aws_replicate.go -> waitForReplicatedKeyIsEnabled]["+id+"]")
+	tflog.Debug(ctx, common.MSG_METHOD_START+"[aws_multiregion.go -> waitForReplicatedKeyIsEnabled]["+id+"]")
+	defer tflog.Debug(ctx, common.MSG_METHOD_END+"[aws_multiregion.go -> waitForReplicatedKeyIsEnabled]["+id+"]")
 	var (
 		err      error
 		response string
 		keyState string
 	)
 
-	if err = client.RefreshToken(ctx, id); err != nil {
-		msg := "Error replicating AWS key. Error refreshing authentication token."
-		details := utils.ApiError(msg, map[string]interface{}{
-			"error":          err.Error(),
-			"replica_key_id": replicaKeyID,
-		})
-		tflog.Error(ctx, details)
-		diags.AddWarning(details, "")
-		return ""
-	}
-
 	// Give AWS/CCKM a head start before the first poll.
 	time.Sleep(time.Duration(shortAwsKeyOpSleep) * time.Second)
 	ticker := time.NewTicker(time.Duration(shortAwsKeyOpSleep) * time.Second)
 	defer ticker.Stop()
 	deadline := time.Now().Add(time.Duration(60) * time.Second)
-	tStart := time.Now()
 	loop := 1
 	for range ticker.C {
 		if time.Now().After(deadline) {
 			break
 		}
 		loop += 1
-		if time.Since(tStart).Seconds() > refreshTokenSeconds {
-			if err = client.RefreshToken(ctx, id); err != nil {
-				msg := "Error replicating AWS key. Error refreshing authentication token."
-				details := utils.ApiError(msg, map[string]interface{}{
-					"error":          err.Error(),
-					"replica_key_id": replicaKeyID,
-				})
-				tflog.Error(ctx, details)
-				diags.AddWarning(details, "")
-				return ""
-			}
-			tStart = time.Now()
-		}
 		response, err = client.GetById(ctx, id, replicaKeyID, common.URL_AWS_KEY)
 		if err != nil {
 			msg := "Error creating AWS key. Error reading replicated key."
@@ -304,9 +266,9 @@ func waitForReplicatedKeyIsEnabled(ctx context.Context, id string, client *commo
 			return ""
 		}
 		keyState = gjson.Get(response, "aws_param.KeyState").String()
-		tflog.Debug(ctx, fmt.Sprintf("SARAH waitForReplicatedKeyIsEnabled: loop: %d Key state: %s", loop, keyState))
+		tflog.Debug(ctx, fmt.Sprintf("waitForReplicatedKeyIsEnabled: loop: %d Key state: %s", loop, keyState))
 		if keyState == "Enabled" {
-			tflog.Info(ctx, "SARAH waitForReplicatedKeyIsEnabled: Key is enabled. response:"+redactAWSResponse(response))
+			tflog.Info(ctx, "waitForReplicatedKeyIsEnabled: Key is enabled. response:"+redactAWSResponse(response))
 			return response
 		}
 	}
@@ -314,7 +276,7 @@ func waitForReplicatedKeyIsEnabled(ctx context.Context, id string, client *commo
 	details := utils.ApiError(msg, map[string]interface{}{"key_id": replicaKeyID})
 	tflog.Warn(ctx, details)
 	diags.AddWarning(details, "")
-	tflog.Debug(ctx, "[aws_replicate.go -> waitForReplicatedKeyIsEnabled][response:"+redactAWSResponse(response))
+	tflog.Debug(ctx, "[aws_multiregion.go -> waitForReplicatedKeyIsEnabled][response:"+redactAWSResponse(response))
 	return response
 }
 
@@ -328,17 +290,10 @@ func waitForReplicatedKeyIsEnabled(ctx context.Context, id string, client *commo
 //   - the new primary (newPrimaryKeyID) must report MultiRegionKeyType == "PRIMARY"
 //   - the old primary (primaryKeyID) must report MultiRegionKeyType == "REPLICA"
 func updatePrimaryRegion(ctx context.Context, id string, client *common.Client, primaryKeyID string, newPrimaryRegion string, newPrimaryKeyID string, diags *diag.Diagnostics) {
-	tflog.Debug(ctx, common.MSG_METHOD_START+"[aws_update.go -> updatePrimaryRegion]["+id+"]")
-	defer tflog.Debug(ctx, common.MSG_METHOD_END+"[aws_update.go -> updatePrimaryRegion]["+id+"]")
+	tflog.Debug(ctx, common.MSG_METHOD_START+"[aws_multiregion.go -> updatePrimaryRegion]["+id+"]")
+	defer tflog.Debug(ctx, common.MSG_METHOD_END+"[aws_multiregion.go -> updatePrimaryRegion]["+id+"]")
 
 	tflog.Debug(ctx, fmt.Sprintf("updatePrimaryRegion: newPrimaryRegion: %s newPrimaryKeyID: %s", newPrimaryRegion, newPrimaryKeyID))
-
-	if err := client.RefreshToken(ctx, id); err != nil {
-		msg := "Error updating primary region for AWS key. Error refreshing authentication token."
-		details := utils.ApiError(msg, map[string]interface{}{"error": err.Error(), "key_id": primaryKeyID})
-		tflog.Error(ctx, details)
-		diags.AddWarning(details, "")
-	}
 
 	// Step 1: read the current primary to discover all keys in the MR set.
 	// awsMrkKeyID is the shared mrk-xxx key ID present on all keys in the set (aws_param.KeyId).
@@ -396,6 +351,7 @@ func updatePrimaryRegion(ctx context.Context, id string, client *common.Client, 
 		diags.AddError(details, "")
 		return
 	}
+	tflog.Info(ctx, fmt.Sprintf("Updating primary region of key %s to %s", primaryKeyID, newPrimaryRegion))
 	_, err = client.PostDataV2(ctx, id, common.URL_AWS_KEY+"/"+primaryKeyID+"/update-primary-region", payloadJSON)
 	if err != nil {
 		if strings.Contains(err.Error(), notMultiRegionPrimaryException) {
@@ -405,19 +361,9 @@ func updatePrimaryRegion(ctx context.Context, id string, client *common.Client, 
 			retryTicker := time.NewTicker(time.Duration(shortAwsKeyOpSleep) * time.Second)
 			defer retryTicker.Stop()
 			retryDeadline := time.Now().Add(time.Duration(updatePrimaryRegionWaitSeconds) * time.Second)
-			tStartRetry := time.Now()
 			for range retryTicker.C {
 				if time.Now().After(retryDeadline) {
 					break
-				}
-				if time.Since(tStartRetry).Seconds() > refreshTokenSeconds {
-					if err = client.RefreshToken(ctx, id); err != nil {
-						msg := "Error updating primary region for AWS key. Error refreshing authentication token."
-						details := utils.ApiError(msg, map[string]interface{}{"error": err.Error(), "key_id": primaryKeyID, "configured primary region": newPrimaryRegion})
-						tflog.Error(ctx, details)
-						diags.AddWarning(details, "")
-					}
-					tStartRetry = time.Now()
 				}
 				_, err = client.PostDataV2(ctx, id, common.URL_AWS_KEY+"/"+primaryKeyID+"/update-primary-region", payloadJSON)
 				if err == nil || !strings.Contains(err.Error(), notMultiRegionPrimaryException) {
@@ -433,6 +379,7 @@ func updatePrimaryRegion(ctx context.Context, id string, client *common.Client, 
 			return
 		}
 	}
+	tflog.Info(ctx, fmt.Sprintf("Primary region update API call succeeded for key %s", primaryKeyID))
 
 	// Step 3: give CCKM/AWS a head start, then wait for all keys to confirm the primary region change.
 	time.Sleep(time.Duration(shortAwsKeyOpSleep) * time.Second)
@@ -463,7 +410,6 @@ func waitForPrimaryRegionUpdateConfirmed(
 
 	// Snapshot updatedAt for every key before we start.
 	lastUpdatedAt := make(map[string]string, len(allKeyIDs))
-	tStart := time.Now()
 	for _, keyID := range allKeyIDs {
 		keyJSON, err := client.GetById(ctx, id, keyID, common.URL_AWS_KEY)
 		if err == nil {
@@ -484,21 +430,10 @@ func waitForPrimaryRegionUpdateConfirmed(
 	for refresh := 0; refresh < 2; refresh++ {
 		// Inner poll loop - read every key every iteration, even ones already done.
 		for inner := 0; inner < maxInnerForPrimaryUpdate; inner++ {
-			if time.Since(tStart).Seconds() > refreshTokenSeconds {
-				if err := client.RefreshToken(ctx, id); err != nil {
-					msg := "Error updating primary region for AWS key. Error refreshing authentication token."
-					details := utils.ApiError(msg, map[string]interface{}{"error": err.Error(), "key_id": primaryKeyID})
-					tflog.Error(ctx, details)
-					diags.AddWarning(details, "")
-				}
-				tStart = time.Now()
-			}
-
 			for i, keyID := range allKeyIDs {
 				keyJSON, getErr := client.GetById(ctx, id, keyID, common.URL_AWS_KEY)
 				if getErr != nil {
-					tflog.Warn(ctx, fmt.Sprintf(
-						"waitForPrimaryRegionUpdateConfirmed: outer: %d, inner: %d, transient error reading key: %s, error: %s",
+					tflog.Warn(ctx, fmt.Sprintf("[aws_multiregion.go -> waitForPrimaryRegionUpdateConfirmed] refresh_loop: %d, wait_loop: %d, transient error reading key: %s, error: %s",
 						refresh, inner, keyID, getErr.Error()))
 					continue
 				}
@@ -507,8 +442,7 @@ func waitForPrimaryRegionUpdateConfirmed(
 				keyType := gjson.Get(keyJSON, "aws_param.MultiRegionConfiguration.MultiRegionKeyType").String()
 				region := gjson.Get(keyJSON, "region").String()
 
-				tflog.Debug(ctx, fmt.Sprintf(
-					"waitForPrimaryRegionUpdateConfirmed: outer: %d, inner: %d, key: %s, region: %s, PrimaryKey.Region: %s, KeyType: %s, updatedAt: %s",
+				tflog.Debug(ctx, fmt.Sprintf("[aws_multiregion.go -> waitForPrimaryRegionUpdateConfirmed] refresh_loop: %d, wait_loop: %d, key: %s, region: %s, PrimaryKey.Region: %s, KeyType: %s, updatedAt: %s",
 					refresh, inner, keyID, region, primaryRegion, keyType, updatedAt))
 
 				lastUpdatedAt[keyID] = updatedAt
@@ -525,17 +459,15 @@ func waitForPrimaryRegionUpdateConfirmed(
 			}
 
 			if allDone() {
-				tflog.Debug(ctx, fmt.Sprintf(
-					"waitForPrimaryRegionUpdateConfirmed: all keys confirmed, outer: %d, inner: %d",
-					refresh, inner))
+				tflog.Info(ctx, fmt.Sprintf("All keys in MR set confirmed new primary region %s (refresh_loop: %d, wait_loop: %d)",
+					newPrimaryRegion, refresh, inner))
 				return
 			}
 			time.Sleep(time.Duration(shortAwsKeyOpSleep) * time.Second)
 		}
 
 		// Inner loop exhausted without full confirmation - call /refresh on primary only.
-		tflog.Info(ctx, fmt.Sprintf(
-			"waitForPrimaryRegionUpdateConfirmed: outer: %d, inner loop exhausted - calling refresh on primary: %s",
+		tflog.Info(ctx, fmt.Sprintf("[aws_multiregion.go -> waitForPrimaryRegionUpdateConfirmed] refresh_loop: %d, inner loop exhausted - calling refresh on primary: %s",
 			refresh, primaryKeyID))
 		_, refreshErr := client.PostDataV2(ctx, id, common.URL_AWS_KEY+"/"+primaryKeyID+"/refresh", []byte("{}"))
 		if refreshErr != nil {
@@ -562,31 +494,19 @@ func waitForPrimaryRegionUpdateConfirmed(
 		}
 
 		for waitLoop := 0; waitLoop < maxWaitForRefresh; waitLoop++ {
-			if time.Since(tStart).Seconds() > refreshTokenSeconds {
-				if err := client.RefreshToken(ctx, id); err != nil {
-					msg := "Error updating primary region for AWS key. Error refreshing authentication token."
-					details := utils.ApiError(msg, map[string]interface{}{"error": err.Error(), "key_id": primaryKeyID})
-					tflog.Error(ctx, details)
-					diags.AddWarning(details, "")
-				}
-				tStart = time.Now()
-			}
-
 			for i, keyID := range allKeyIDs {
 				if waitDone[i] {
 					continue
 				}
 				keyJSON, getErr := client.GetById(ctx, id, keyID, common.URL_AWS_KEY)
 				if getErr != nil {
-					tflog.Warn(ctx, fmt.Sprintf(
-						"waitForPrimaryRegionUpdateConfirmed: outer: %d, waitLoop: %d, transient error reading key: %s, error: %s",
+					tflog.Warn(ctx, fmt.Sprintf("[aws_multiregion.go -> waitForPrimaryRegionUpdateConfirmed] refresh_loop: %d, waitLoop: %d, transient error reading key: %s, error: %s",
 						refresh, waitLoop, keyID, getErr.Error()))
 					continue
 				}
 				newUpdatedAt := gjson.Get(keyJSON, "updatedAt").String()
 				if newUpdatedAt != baseUpdatedAt[keyID] {
-					tflog.Info(ctx, fmt.Sprintf(
-						"waitForPrimaryRegionUpdateConfirmed: outer: %d, waitLoop: %d, key: %s, updatedAt changed, old: %s, new: %s",
+					tflog.Info(ctx, fmt.Sprintf("waitForPrimaryRegionUpdateConfirmed refresh_loop: %d, waitLoop: %d, key: %s, updatedAt changed, old: %s, new: %s",
 						refresh, waitLoop, keyID, baseUpdatedAt[keyID], newUpdatedAt))
 					lastUpdatedAt[keyID] = newUpdatedAt
 					waitDone[i] = true
@@ -594,8 +514,7 @@ func waitForPrimaryRegionUpdateConfirmed(
 			}
 
 			if allWaitDone() {
-				tflog.Debug(ctx, fmt.Sprintf(
-					"waitForPrimaryRegionUpdateConfirmed: outer: %d, all keys updated after refresh, waitLoop: %d",
+				tflog.Debug(ctx, fmt.Sprintf("waitForPrimaryRegionUpdateConfirmed[aws_multiregion.go -> waitForPrimaryRegionUpdateConfirmed] refresh_loop: %d, all keys updated after refresh, waitLoop: %d",
 					refresh, waitLoop))
 				break
 			}
@@ -611,7 +530,7 @@ func waitForPrimaryRegionUpdateConfirmed(
 				"key_id":                    keyID,
 				"configured primary region": newPrimaryRegion,
 			})
-			tflog.Error(ctx, details)
+			tflog.Error(ctx, "Error updating primary region. TIMED OUT confirming primary region change.")
 			diags.AddWarning(details, "")
 		}
 	}

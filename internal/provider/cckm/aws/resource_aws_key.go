@@ -1,7 +1,5 @@
 package cckm
 
-// TODO: SARAH REMOVE ALL BYOK attributes!
-
 import (
 	"context"
 	"encoding/json"
@@ -331,6 +329,10 @@ func (r *resourceAWSKey) Create(ctx context.Context, req resource.CreateRequest,
 		response = r.createNativeKey(ctx, id, kmsID, &plan, commonAwsParams, &resp.Diagnostics)
 	}
 	if resp.Diagnostics.HasError() {
+		return
+	}
+	if response == "" {
+		resp.Diagnostics.AddError("Error creating AWS key: no response received from API.", "")
 		return
 	}
 
@@ -734,8 +736,8 @@ func (r *resourceAWSKey) ImportState(ctx context.Context, req resource.ImportSta
 // createNativeKey creates a native or external AWS key and returns the API response JSON.
 // kmsID and commonAwsParams are pre-validated and pre-built by Create before calling this function.
 func (r *resourceAWSKey) createNativeKey(ctx context.Context, id string, kmsID string, plan *AWSKeyTFSDK, commonAwsParams CommonAWSParamsJSON, diags *diag.Diagnostics) string {
-	tflog.Debug(ctx, common.MSG_METHOD_START+"SARAH [resource_aws_key.go -> createNativeKey]["+id+"]")
-	defer tflog.Debug(ctx, common.MSG_METHOD_END+"SARAH [resource_aws_key.go -> createNativeKey]["+id+"]")
+	tflog.Debug(ctx, common.MSG_METHOD_START+"[resource_aws_key.go -> createNativeKey]["+id+"]")
+	defer tflog.Debug(ctx, common.MSG_METHOD_END+"[resource_aws_key.go -> createNativeKey]["+id+"]")
 	awsParam := AWSKeyParamJSON{
 		CommonAWSParamsJSON: commonAwsParams,
 		Origin:              "AWS_KMS",
@@ -773,8 +775,8 @@ func (r *resourceAWSKey) createNativeKey(ctx context.Context, id string, kmsID s
 // It delegates to replicateKeyCommon which handles all API calls and polling.
 // commonAwsParams is pre-built by Create before calling this function.
 func (r *resourceAWSKey) replicateNativeKey(ctx context.Context, id string, plan *AWSKeyTFSDK, commonAwsParams CommonAWSParamsJSON, diags *diag.Diagnostics) string {
-	tflog.Debug(ctx, common.MSG_METHOD_START+"SARAH [resource_aws_key.go -> replicateNativeKey]["+id+"]")
-	defer tflog.Debug(ctx, common.MSG_METHOD_END+"SARAH [resource_aws_key.go -> replicateNativeKey]["+id+"]")
+	tflog.Debug(ctx, common.MSG_METHOD_START+"[resource_aws_key.go -> replicateNativeKey]["+id+"]")
+	defer tflog.Debug(ctx, common.MSG_METHOD_END+"[resource_aws_key.go -> replicateNativeKey]["+id+"]")
 	if plan.ReplicateKey == nil {
 		return ""
 	}
@@ -855,20 +857,9 @@ func (r *resourceAWSKey) enableDisableAutoRotation(ctx context.Context, id strin
 			ticker := time.NewTicker(time.Duration(shortAwsKeyOpSleep) * time.Second)
 			defer ticker.Stop()
 			deadline := time.Now().Add(time.Duration(autoRotationWaitSeconds) * time.Second)
-			tStart := time.Now()
 			for range ticker.C {
 				if time.Now().After(deadline) {
 					break
-				}
-				if time.Since(tStart).Seconds() > refreshTokenSeconds {
-					if err = r.client.RefreshToken(ctx, id); err != nil {
-						msg := "Error enabling auto-rotation for AWS key. Error refreshing authentication token."
-						details := utils.ApiError(msg, map[string]interface{}{"error": err.Error(), "key_id": keyID})
-						tflog.Error(ctx, details)
-						diags.AddError(details, "")
-						return
-					}
-					tStart = time.Now()
 				}
 				response, err = r.client.GetById(ctx, id, keyID, common.URL_AWS_KEY)
 				if err != nil {
@@ -921,20 +912,9 @@ func (r *resourceAWSKey) enableAutoRotation(ctx context.Context, id string, plan
 			ticker := time.NewTicker(time.Duration(shortAwsKeyOpSleep) * time.Second)
 			defer ticker.Stop()
 			deadline := time.Now().Add(time.Duration(enableDisableAutoRotationWaitSeconds) * time.Second)
-			tStart := time.Now()
 			for range ticker.C {
 				if time.Now().After(deadline) {
 					break
-				}
-				if time.Since(tStart).Seconds() > refreshTokenSeconds {
-					if err = r.client.RefreshToken(ctx, id); err != nil {
-						msg := "Error enabling auto-rotation for AWS key. Error refreshing authentication token."
-						details := utils.ApiError(msg, map[string]interface{}{"error": err.Error(), "key_id": keyID})
-						tflog.Error(ctx, details)
-						diags.AddError(details, "")
-						return
-					}
-					tStart = time.Now()
 				}
 				_, err = r.client.PostDataV2(ctx, id, common.URL_AWS_KEY+"/"+keyID+"/enable-auto-rotation", payloadJSON)
 				if err == nil || !strings.Contains(err.Error(), disabledKeyException) {
@@ -950,6 +930,7 @@ func (r *resourceAWSKey) enableAutoRotation(ctx context.Context, id string, plan
 			return
 		}
 	}
+	tflog.Info(ctx, fmt.Sprintf("[resource_aws_key.go -> enableAutoRotation] auto-rotation enabled successfully. key_id: %s", keyID))
 	tflog.Debug(ctx, "[resource_aws_key.go -> enableAutoRotation][response:"+redactAWSResponse(response))
 }
 
@@ -965,20 +946,9 @@ func (r *resourceAWSKey) disableAutoRotation(ctx context.Context, id string, pla
 			ticker := time.NewTicker(time.Duration(shortAwsKeyOpSleep) * time.Second)
 			defer ticker.Stop()
 			deadline := time.Now().Add(time.Duration(r.client.CCKMConfig.AwsOperationTimeout) * time.Second)
-			tStart := time.Now()
 			for range ticker.C {
 				if time.Now().After(deadline) {
 					break
-				}
-				if time.Since(tStart).Seconds() > refreshTokenSeconds {
-					if err = r.client.RefreshToken(ctx, id); err != nil {
-						msg := "Error disabling auto-rotation for AWS key. Error refreshing authentication token."
-						details := utils.ApiError(msg, map[string]interface{}{"error": err.Error(), "key_id": keyID})
-						tflog.Error(ctx, details)
-						diags.AddError(details, "")
-						return
-					}
-					tStart = time.Now()
 				}
 				response, err = r.client.PostNoData(ctx, id, common.URL_AWS_KEY+"/"+keyID+"/disable-auto-rotation")
 				if err == nil || !strings.Contains(err.Error(), disabledKeyException) {
@@ -994,6 +964,7 @@ func (r *resourceAWSKey) disableAutoRotation(ctx context.Context, id string, pla
 			return
 		}
 	}
+	tflog.Info(ctx, fmt.Sprintf("[resource_aws_key.go -> disableAutoRotation] auto-rotation disabled successfully. key_id: %s", keyID))
 	tflog.Debug(ctx, "[resource_aws_key.go -> disableAutoRotation][response:"+redactAWSResponse(response))
 }
 

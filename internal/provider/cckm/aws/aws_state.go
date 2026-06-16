@@ -13,51 +13,8 @@ import (
 	"github.com/tidwall/gjson"
 )
 
-// setCommonKeyState populates the all the common read-only AWS key fields in Terraform state from an
-// API response JSON string.
-func setCommonKeyState(ctx context.Context, response string, state *AWSKeyCommonTFSDK, diags *diag.Diagnostics) {
-	state.ARN = types.StringValue(gjson.Get(response, "aws_param.Arn").String())
-	state.AWSAccountID = types.StringValue(gjson.Get(response, "aws_param.AWSAccountId").String())
-	state.AWSKeyID = types.StringValue(gjson.Get(response, "aws_param.KeyID").String())
-	state.CloudName = types.StringValue(gjson.Get(response, "cloud_name").String())
-	state.CreatedAt = types.StringValue(gjson.Get(response, "createdAt").String())
-	state.DeletionDate = types.StringValue(gjson.Get(response, "deletion_date").String())
-	state.Enabled = types.BoolValue(gjson.Get(response, "aws_param.Enabled").Bool())
-	state.EnableKey = types.BoolValue(gjson.Get(response, "aws_param.Enabled").Bool())
-	state.EncryptionAlgorithms = utils.StringSliceJSONToListValue(gjson.Get(response, "aws_param.EncryptionAlgorithms").Array(), diags)
-	state.ExpirationModel = types.StringValue(gjson.Get(response, "aws_param.ExpirationModel").String())
-	state.MacAlgorithms = utils.StringSliceJSONToListValue(gjson.Get(response, "aws_param.MacAlgorithmSpec").Array(), diags)
-	state.ExternalAccounts = utils.StringSliceJSONToSetValue(gjson.Get(response, "external_accounts").Array(), diags)
-	state.KeyAdmins = utils.StringSliceJSONToSetValue(gjson.Get(response, "key_admins").Array(), diags)
-	state.KeyAdminsRoles = utils.StringSliceJSONToSetValue(gjson.Get(response, "key_admins_roles").Array(), diags)
-	state.KeyManager = types.StringValue(gjson.Get(response, "aws_param.KeyManager").String())
-	state.KeyMaterialOrigin = types.StringValue(gjson.Get(response, "key_material_origin").String())
-	state.KeyRotationEnabled = types.BoolValue(gjson.Get(response, "aws_param.KeyRotationEnabled").Bool())
-	state.KeySource = types.StringValue(gjson.Get(response, "key_source").String())
-	state.KeyState = types.StringValue(gjson.Get(response, "aws_param.KeyState").String())
-	state.KeyType = types.StringValue(gjson.Get(response, "key_type").String())
-	state.KeyUsers = utils.StringSliceJSONToSetValue(gjson.Get(response, "key_users").Array(), diags)
-	state.KeyUsersRoles = utils.StringSliceJSONToSetValue(gjson.Get(response, "key_users_roles").Array(), diags)
-	state.KMSID = types.StringValue(gjson.Get(response, "kms_id").String())
-	state.KMSName = types.StringValue(gjson.Get(response, "kms").String())
-	setKeyLabels(ctx, response, state.ID.ValueString(), &state.Labels, diags)
-	state.Origin = types.StringValue(gjson.Get(response, "aws_param.Origin").String())
-	state.Region = types.StringValue(gjson.Get(response, "region").String())
-	state.RotatedAt = types.StringValue(gjson.Get(response, "rotated_at").String())
-	state.RotatedFrom = types.StringValue(gjson.Get(response, "rotated_from").String())
-	state.RotationStatus = types.StringValue(gjson.Get(response, "rotation_status").String())
-	state.RotatedTo = types.StringValue(gjson.Get(response, "rotated_to").String())
-	state.SyncedAt = types.StringValue(gjson.Get(response, "synced_at").String())
-	state.UpdatedAt = types.StringValue(gjson.Get(response, "updatedAt").String())
-}
-
 // setNativeAndByokKeyCommonState populates the top-level Terraform state fields shared by
-// the aws_key and aws_byok_key resources. It writes into AWSNativeAndByokKeyCommonTFSDK,
-// which excludes the 12 fields that have moved into the aws_param nested block
-// (arn, aws_account_id, aws_key_id, deletion_date, enabled, encryption_algorithms,
-// expiration_model, key_manager, key_rotation_enabled, key_state, mac_algorithms, origin).
-// The top-level policy field is also omitted; policy lives inside aws_param.
-// XKS and CloudHSM keys continue to use setCommonKeyState unchanged.
+// the aws_key and aws_byok_key resources. It writes into AWSNativeAndByokKeyCommonTFSDK.
 func setNativeAndByokKeyCommonState(ctx context.Context, response string, state *AWSNativeAndByokKeyCommonTFSDK, diags *diag.Diagnostics) {
 	keyID := gjson.Get(response, "id").String()
 	state.EnableKey = types.BoolValue(gjson.Get(response, "aws_param.Enabled").Bool())
@@ -83,81 +40,177 @@ func setNativeAndByokKeyCommonState(ctx context.Context, response string, state 
 	state.UpdatedAt = types.StringValue(gjson.Get(response, "updatedAt").String())
 }
 
-// setCommonKeyStoreKeyState populates the common key store key fields shared by the XKS and CloudHSM key
-// resources. For linked keys (linked_state = true), all AWS-facing attributes including aliases, tags,
-// description, policy, and policy-template tag are refreshed from the API response. For unlinked keys,
-// aliases and tags retain their prior state values, and policy_template_tag is set to null.
-// Used by resourceAWSXKSKey (via setXKSKeyState) and resourceAWSCloudHSMKey.
-func setCommonKeyStoreKeyState(ctx context.Context, response string, state *AWSKeyStoreKeyCommonTFSDK, diags *diag.Diagnostics) {
-	linked := gjson.Get(response, "linked_state").Bool()
-	// Save enable_key before setCommonKeyState overwrites it from the API.
-	// For unlinked keys we restore it afterward: the API may return Enabled=true
-	// for a CipherTrust-local key that has not yet been linked to AWS, which
-	// would cause an "inconsistent result after apply" error when the config
-	// sets enable_key = false.
-	savedEnableKey := state.EnableKey
-	setCommonKeyState(ctx, response, &state.AWSKeyCommonTFSDK, diags)
-	if diags.HasError() {
-		return
-	}
-	if !linked {
-		state.EnableKey = savedEnableKey
-	}
-	// Keystore-specific input/computed fields not in AWSKeyCommonTFSDK
-	state.CustomerMasterKeySpec = types.StringValue(gjson.Get(response, "aws_param.CustomerMasterKeySpec").String())
-	state.KeyUsage = types.StringValue(gjson.Get(response, "aws_param.KeyUsage").String())
-	state.ValidTo = types.StringValue(gjson.Get(response, "aws_param.ValidTo").String())
-	// Keystore-specific fields
+// setKeyStoreResourceCommonTopLevel sets all top-level fields on AWSKeyStoreResourceCommonTFSDK
+// from the API response JSON. Fields sourced from the aws_param block (arn, key_id, etc.) are
+// NOT set here; they are set by the caller inside the aws_param nested object.
+func setKeyStoreResourceCommonTopLevel(ctx context.Context, response string, state *AWSKeyStoreResourceCommonTFSDK, diags *diag.Diagnostics) {
+	state.CloudName = types.StringValue(gjson.Get(response, "cloud_name").String())
+	state.CreatedAt = types.StringValue(gjson.Get(response, "createdAt").String())
+	state.ExternalAccounts = utils.StringSliceJSONToSetValue(gjson.Get(response, "external_accounts").Array(), diags)
+	state.KeyAdmins = utils.StringSliceJSONToSetValue(gjson.Get(response, "key_admins").Array(), diags)
+	state.KeyAdminsRoles = utils.StringSliceJSONToSetValue(gjson.Get(response, "key_admins_roles").Array(), diags)
+	state.KeyMaterialOrigin = types.StringValue(gjson.Get(response, "key_material_origin").String())
+	state.KeySource = types.StringValue(gjson.Get(response, "key_source").String())
+	state.KeyType = types.StringValue(gjson.Get(response, "key_type").String())
+	state.KeyUsers = utils.StringSliceJSONToSetValue(gjson.Get(response, "key_users").Array(), diags)
+	state.KeyUsersRoles = utils.StringSliceJSONToSetValue(gjson.Get(response, "key_users_roles").Array(), diags)
+	state.KMSID = types.StringValue(gjson.Get(response, "kms_id").String())
+	state.KMSName = types.StringValue(gjson.Get(response, "kms").String())
+	setKeyLabels(ctx, response, state.ID.ValueString(), &state.Labels, diags)
+	state.Region = types.StringValue(gjson.Get(response, "region").String())
+	state.RotatedAt = types.StringValue(gjson.Get(response, "rotated_at").String())
+	state.RotatedFrom = types.StringValue(gjson.Get(response, "rotated_from").String())
+	state.RotationStatus = types.StringValue(gjson.Get(response, "rotation_status").String())
+	state.RotatedTo = types.StringValue(gjson.Get(response, "rotated_to").String())
+	state.SyncedAt = types.StringValue(gjson.Get(response, "synced_at").String())
+	state.UpdatedAt = types.StringValue(gjson.Get(response, "updatedAt").String())
 	state.Blocked = types.BoolValue(gjson.Get(response, "blocked").Bool())
-	state.AWSCustomKeyStoreID = types.StringValue(gjson.Get(response, "aws_param.CustomKeyStoreId").String())
 	state.CustomKeyStoreID = types.StringValue(gjson.Get(response, "custom_key_store_id").String())
 	state.KeySourceContainerID = types.StringValue(gjson.Get(response, "key_source_container_id").String())
 	state.KeySourceContainerName = types.StringValue(gjson.Get(response, "key_source_container_name").String())
 	state.LocalKeyID = types.StringValue(gjson.Get(response, "local_key_id").String())
 	state.LocalKeyName = types.StringValue(gjson.Get(response, "local_key_name").String())
-	state.Linked = types.BoolValue(linked)
+	state.Linked = types.BoolValue(gjson.Get(response, "linked_state").Bool())
+	state.ValidTo = types.StringValue(gjson.Get(response, "aws_param.ValidTo").String())
+}
 
-	// Extract any existing aws_param values (preserves caller-set values such as
-	// alias on unlinked keys), update the relevant fields, then pack back to Object.
-	p := extractAWSKeyStoreAwsParam(ctx, state.AWSParam, diags)
+// setXKSKeyResourceState populates the full Terraform state for an aws_xks_key resource.
+// Top-level fields are set via setKeyStoreResourceCommonTopLevel.
+// For linked keys all AWS-facing attributes are refreshed from the response;
+// for unlinked keys alias/tags/policy_template_tag retain their prior values.
+func setXKSKeyResourceState(ctx context.Context, response string, state *AWSKeyStoreResourceCommonTFSDK, diags *diag.Diagnostics) {
+	linked := gjson.Get(response, "linked_state").Bool()
+	savedEnableKey := state.EnableKey
+	setKeyStoreResourceCommonTopLevel(ctx, response, state, diags)
 	if diags.HasError() {
 		return
 	}
-	if linked {
-		setAliases(response, &p.Alias, diags)
-		setKeyTags(ctx, response, &p.Tags, diags)
-		p.Description = types.StringValue(gjson.Get(response, "aws_param.Description").String())
+	if !linked {
+		state.EnableKey = savedEnableKey
+	} else {
 		state.EnableKey = types.BoolValue(gjson.Get(response, "aws_param.Enabled").Bool())
-		state.Enabled = types.BoolValue(gjson.Get(response, "aws_param.Enabled").Bool())
-		policy := gjson.Get(response, "aws_param.Policy").String()
-		if state.Policy.IsUnknown() || !getPoliciesAreEqual(ctx, policy, state.Policy.ValueString(), diags) {
-			state.Policy = types.StringValue(policy)
-		}
-		p.Policy = types.StringValue(gjson.Get(response, "aws_param.Policy").String())
+	}
+
+	p := extractXKSKeyAwsParam(ctx, state.AWSParam, diags)
+	if p == nil {
+		p = &AWSXKSKeyAwsParamTFSDK{}
+	}
+	if linked {
+		setAliases(response, &p.AWSKeyStoreCommonAwsParamTFSDK.Alias, diags)
+		setKeyTags(ctx, response, &p.AWSKeyStoreCommonAwsParamTFSDK.Tags, diags)
+		p.AWSKeyStoreCommonAwsParamTFSDK.Description = types.StringValue(gjson.Get(response, "aws_param.Description").String())
 		setPolicyTemplateTag(ctx, response, &state.PolicyTemplateTag, diags)
 	} else {
-		var d diag.Diagnostics
-		p.Description = types.StringValue(gjson.Get(response, "aws_param.Description").String())
-		state.Enabled = types.BoolValue(gjson.Get(response, "aws_param.Enabled").Bool())
 		state.PolicyTemplateTag = types.MapNull(types.StringType)
-		policy := gjson.Get(response, "aws_param.Policy").String()
-		state.Policy = types.StringValue(policy)
-		p.Policy = types.StringValue(policy)
-		if len(p.Alias.Elements()) == 0 {
-			p.Alias, d = types.SetValue(types.StringType, []attr.Value{})
-			if d.HasError() {
-				diags.Append(d...)
-			}
+		if len(p.AWSKeyStoreCommonAwsParamTFSDK.Alias.Elements()) == 0 {
+			aliasSet, d := types.SetValue(types.StringType, []attr.Value{})
+			diags.Append(d...)
+			p.AWSKeyStoreCommonAwsParamTFSDK.Alias = aliasSet
 		}
-		if len(p.Tags.Elements()) == 0 {
-			tags := make(map[string]string)
-			p.Tags, d = types.MapValueFrom(ctx, types.StringType, tags)
-			if d.HasError() {
-				diags.Append(d...)
-			}
+		if len(p.AWSKeyStoreCommonAwsParamTFSDK.Tags.Elements()) == 0 {
+			tagMap, d := types.MapValueFrom(ctx, types.StringType, map[string]string{})
+			diags.Append(d...)
+			p.AWSKeyStoreCommonAwsParamTFSDK.Tags = tagMap
 		}
+		p.AWSKeyStoreCommonAwsParamTFSDK.Description = types.StringValue(gjson.Get(response, "aws_param.Description").String())
 	}
-	state.AWSParam = packAWSKeyStoreAwsParam(ctx, p, diags)
+	// Always populate computed fields from aws_param.
+	p.AWSKeyStoreCommonAwsParamTFSDK.Arn = types.StringValue(gjson.Get(response, "aws_param.Arn").String())
+	p.AWSKeyStoreCommonAwsParamTFSDK.AWSAccountID = types.StringValue(gjson.Get(response, "aws_param.AWSAccountId").String())
+	p.AWSKeyStoreCommonAwsParamTFSDK.AWSCustomKeyStoreID = types.StringValue(gjson.Get(response, "aws_param.CustomKeyStoreId").String())
+	p.AWSKeyStoreCommonAwsParamTFSDK.CustomerMasterKeySpec = types.StringValue(gjson.Get(response, "aws_param.CustomerMasterKeySpec").String())
+	p.AWSKeyStoreCommonAwsParamTFSDK.CreationDate = types.StringValue(gjson.Get(response, "aws_param.CreationDate").String())
+	p.AWSKeyStoreCommonAwsParamTFSDK.DeletionDate = types.StringValue(gjson.Get(response, "deletion_date").String())
+	p.AWSKeyStoreCommonAwsParamTFSDK.Enabled = types.BoolValue(gjson.Get(response, "aws_param.Enabled").Bool())
+	p.AWSKeyStoreCommonAwsParamTFSDK.EncryptionAlgorithms = utils.StringSliceJSONToListValue(gjson.Get(response, "aws_param.EncryptionAlgorithms").Array(), diags)
+	p.AWSKeyStoreCommonAwsParamTFSDK.ExpirationModel = types.StringValue(gjson.Get(response, "aws_param.ExpirationModel").String())
+	p.AWSKeyStoreCommonAwsParamTFSDK.KeyID = types.StringValue(gjson.Get(response, "aws_param.KeyID").String())
+	p.AWSKeyStoreCommonAwsParamTFSDK.KeyManager = types.StringValue(gjson.Get(response, "aws_param.KeyManager").String())
+	p.AWSKeyStoreCommonAwsParamTFSDK.KeyState = types.StringValue(gjson.Get(response, "aws_param.KeyState").String())
+	p.AWSKeyStoreCommonAwsParamTFSDK.KeyUsage = types.StringValue(gjson.Get(response, "aws_param.KeyUsage").String())
+	p.AWSKeyStoreCommonAwsParamTFSDK.MacAlgorithms = utils.StringSliceJSONToListValue(gjson.Get(response, "aws_param.MacAlgorithmSpec").Array(), diags)
+	p.AWSKeyStoreCommonAwsParamTFSDK.Origin = types.StringValue(gjson.Get(response, "aws_param.Origin").String())
+	policy := gjson.Get(response, "aws_param.Policy").String()
+	if state.AWSParam.IsNull() || state.AWSParam.IsUnknown() ||
+		p.AWSKeyStoreCommonAwsParamTFSDK.Policy.IsNull() || p.AWSKeyStoreCommonAwsParamTFSDK.Policy.IsUnknown() ||
+		!getPoliciesAreEqual(ctx, policy, p.AWSKeyStoreCommonAwsParamTFSDK.Policy.ValueString(), diags) {
+		p.AWSKeyStoreCommonAwsParamTFSDK.Policy = types.StringValue(policy)
+	}
+	// XKS-specific computed field: populate the nested xks_key_configuration object.
+	// Set to nil (null object) when the key is unlinked or the ID is not yet populated.
+	xksConfigID := gjson.Get(response, "aws_param.XksKeyConfiguration.Id").String()
+	if xksConfigID != "" {
+		p.XksKeyConfiguration = &XksKeyConfigurationTFSDK{ID: types.StringValue(xksConfigID)}
+	} else {
+		p.XksKeyConfiguration = nil
+	}
+	state.AWSParam = packXKSKeyAwsParam(ctx, p, diags)
+}
+
+// setCloudHSMKeyResourceState populates the full Terraform state for an aws_cloudhsm_key resource.
+// Identical to setXKSKeyResourceState except it uses the CloudHSM-typed aws_param struct and
+// sets key_rotation_enabled instead of xks_key_configuration.
+func setCloudHSMKeyResourceState(ctx context.Context, response string, state *AWSKeyStoreResourceCommonTFSDK, diags *diag.Diagnostics) {
+	linked := gjson.Get(response, "linked_state").Bool()
+	savedEnableKey := state.EnableKey
+	setKeyStoreResourceCommonTopLevel(ctx, response, state, diags)
+	if diags.HasError() {
+		return
+	}
+	if !linked {
+		state.EnableKey = savedEnableKey
+	} else {
+		state.EnableKey = types.BoolValue(gjson.Get(response, "aws_param.Enabled").Bool())
+	}
+
+	p := extractCloudHSMKeyAwsParam(ctx, state.AWSParam, diags)
+	if p == nil {
+		p = &AWSCloudHSMKeyAwsParamTFSDK{}
+	}
+	if linked {
+		setAliases(response, &p.AWSKeyStoreCommonAwsParamTFSDK.Alias, diags)
+		setKeyTags(ctx, response, &p.AWSKeyStoreCommonAwsParamTFSDK.Tags, diags)
+		p.AWSKeyStoreCommonAwsParamTFSDK.Description = types.StringValue(gjson.Get(response, "aws_param.Description").String())
+		setPolicyTemplateTag(ctx, response, &state.PolicyTemplateTag, diags)
+	} else {
+		state.PolicyTemplateTag = types.MapNull(types.StringType)
+		if len(p.AWSKeyStoreCommonAwsParamTFSDK.Alias.Elements()) == 0 {
+			aliasSet, d := types.SetValue(types.StringType, []attr.Value{})
+			diags.Append(d...)
+			p.AWSKeyStoreCommonAwsParamTFSDK.Alias = aliasSet
+		}
+		if len(p.AWSKeyStoreCommonAwsParamTFSDK.Tags.Elements()) == 0 {
+			tagMap, d := types.MapValueFrom(ctx, types.StringType, map[string]string{})
+			diags.Append(d...)
+			p.AWSKeyStoreCommonAwsParamTFSDK.Tags = tagMap
+		}
+		p.AWSKeyStoreCommonAwsParamTFSDK.Description = types.StringValue(gjson.Get(response, "aws_param.Description").String())
+	}
+	// Always populate computed fields from aws_param.
+	p.AWSKeyStoreCommonAwsParamTFSDK.Arn = types.StringValue(gjson.Get(response, "aws_param.Arn").String())
+	p.AWSKeyStoreCommonAwsParamTFSDK.AWSAccountID = types.StringValue(gjson.Get(response, "aws_param.AWSAccountId").String())
+	p.AWSKeyStoreCommonAwsParamTFSDK.AWSCustomKeyStoreID = types.StringValue(gjson.Get(response, "aws_param.CustomKeyStoreId").String())
+	p.AWSKeyStoreCommonAwsParamTFSDK.CustomerMasterKeySpec = types.StringValue(gjson.Get(response, "aws_param.CustomerMasterKeySpec").String())
+	p.AWSKeyStoreCommonAwsParamTFSDK.CreationDate = types.StringValue(gjson.Get(response, "aws_param.CreationDate").String())
+	p.AWSKeyStoreCommonAwsParamTFSDK.DeletionDate = types.StringValue(gjson.Get(response, "deletion_date").String())
+	p.AWSKeyStoreCommonAwsParamTFSDK.Enabled = types.BoolValue(gjson.Get(response, "aws_param.Enabled").Bool())
+	p.AWSKeyStoreCommonAwsParamTFSDK.EncryptionAlgorithms = utils.StringSliceJSONToListValue(gjson.Get(response, "aws_param.EncryptionAlgorithms").Array(), diags)
+	p.AWSKeyStoreCommonAwsParamTFSDK.ExpirationModel = types.StringValue(gjson.Get(response, "aws_param.ExpirationModel").String())
+	p.AWSKeyStoreCommonAwsParamTFSDK.KeyID = types.StringValue(gjson.Get(response, "aws_param.KeyID").String())
+	p.AWSKeyStoreCommonAwsParamTFSDK.KeyManager = types.StringValue(gjson.Get(response, "aws_param.KeyManager").String())
+	p.AWSKeyStoreCommonAwsParamTFSDK.KeyState = types.StringValue(gjson.Get(response, "aws_param.KeyState").String())
+	p.AWSKeyStoreCommonAwsParamTFSDK.KeyUsage = types.StringValue(gjson.Get(response, "aws_param.KeyUsage").String())
+	p.AWSKeyStoreCommonAwsParamTFSDK.MacAlgorithms = utils.StringSliceJSONToListValue(gjson.Get(response, "aws_param.MacAlgorithmSpec").Array(), diags)
+	p.AWSKeyStoreCommonAwsParamTFSDK.Origin = types.StringValue(gjson.Get(response, "aws_param.Origin").String())
+	policy := gjson.Get(response, "aws_param.Policy").String()
+	if state.AWSParam.IsNull() || state.AWSParam.IsUnknown() ||
+		p.AWSKeyStoreCommonAwsParamTFSDK.Policy.IsNull() || p.AWSKeyStoreCommonAwsParamTFSDK.Policy.IsUnknown() ||
+		!getPoliciesAreEqual(ctx, policy, p.AWSKeyStoreCommonAwsParamTFSDK.Policy.ValueString(), diags) {
+		p.AWSKeyStoreCommonAwsParamTFSDK.Policy = types.StringValue(policy)
+	}
+	// CloudHSM-specific computed field.
+	p.KeyRotationEnabled = types.BoolValue(gjson.Get(response, "aws_param.KeyRotationEnabled").Bool())
+	state.AWSParam = packCloudHSMKeyAwsParam(ctx, p, diags)
 }
 
 // setKeyLabels parses the CipherTrust Manager labels from the API response and stores them in Terraform state.

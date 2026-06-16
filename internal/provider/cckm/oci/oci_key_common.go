@@ -565,22 +565,8 @@ func waitForKeyStateChange(ctx context.Context, id string, client *common.Client
 	}
 	keyState := gjson.Get(response, "oci_params.lifecycle_state").String()
 	numRetries := int(client.CCKMConfig.OCIOperationTimeout / ociKeySleepSeconds)
-	tStart := time.Now()
 	for retry := 0; retry < numRetries && keyState == currentState; retry++ {
 		time.Sleep(time.Duration(ociKeySleepSeconds) * time.Second)
-		if time.Since(tStart).Seconds() > refreshTokenSeconds {
-			if err = client.RefreshToken(ctx, id); err != nil {
-				msg := "Error refreshing CipherTrust Manager authentication token."
-				details := utils.ApiError(msg, map[string]interface{}{
-					"error":  err.Error(),
-					"key_id": keyID,
-				})
-				tflog.Error(ctx, details)
-				diags.AddError(details, "")
-				return
-			}
-			tStart = time.Now()
-		}
 		if refresh {
 			response, err = client.PostNoData(ctx, id, common.URL_OCI+"/keys/"+keyID+"/refresh")
 			if err != nil {

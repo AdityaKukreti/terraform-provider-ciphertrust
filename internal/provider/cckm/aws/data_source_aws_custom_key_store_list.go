@@ -309,7 +309,7 @@ func (d *dataSourceAWSCustomKeyStoreList) Read(ctx context.Context, req datasour
 
 	jsonStr, err := d.client.ListWithFilters(ctx, id, common.URL_AWS_XKS+"/", filters)
 	if err != nil {
-		tflog.Debug(ctx, common.ERR_METHOD_END+err.Error()+" [data_source_aws_custom_key_store.go -> Read]["+id+"]")
+		tflog.Error(ctx, common.ERR_METHOD_END+err.Error()+" [data_source_aws_custom_key_store.go -> Read]["+id+"]")
 		resp.Diagnostics.AddError(
 			"Unable to read AWS custom key stores from CipherTrust Manager",
 			err.Error(),
@@ -319,7 +319,7 @@ func (d *dataSourceAWSCustomKeyStoreList) Read(ctx context.Context, req datasour
 
 	var list customKeyStoreListJSON
 	if err := json.Unmarshal([]byte(jsonStr), &list); err != nil {
-		tflog.Debug(ctx, common.ERR_METHOD_END+err.Error()+" [data_source_aws_custom_key_store.go -> Read]["+id+"]")
+		tflog.Error(ctx, common.ERR_METHOD_END+err.Error()+" [data_source_aws_custom_key_store.go -> Read]["+id+"]")
 		resp.Diagnostics.AddError(
 			"Unable to parse AWS custom key stores response",
 			err.Error(),

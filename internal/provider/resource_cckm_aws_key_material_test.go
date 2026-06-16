@@ -70,7 +70,7 @@ func TestCckmAWSKeyMaterialCreateAndUpdate(t *testing.T) {
 
 	createMaterialConfig := `
 		resource "ciphertrust_aws_key_material" "km" {
-			aws_key_id = ciphertrust_aws_byok_key.ext_key.aws_key_id
+			aws_key_id = ciphertrust_aws_byok_key.ext_key.aws_param.key_id
 			key_material = [{
 				source_key_identifier = ciphertrust_cm_key.cm_aes_key.id
 				source_key_tier       = "local"
@@ -81,7 +81,7 @@ func TestCckmAWSKeyMaterialCreateAndUpdate(t *testing.T) {
 
 	addMaterialConfig := `
 		resource "ciphertrust_aws_key_material" "km" {
-			aws_key_id = ciphertrust_aws_byok_key.ext_key.aws_key_id
+			aws_key_id = ciphertrust_aws_byok_key.ext_key.aws_param.key_id
 			key_material = [{
 				source_key_identifier = ciphertrust_cm_key.cm_aes_key.id
 				source_key_tier       = "local"
@@ -244,7 +244,7 @@ func TestCckmAWSKeyMaterialCombinedUpdates(t *testing.T) {
 
 	createKeyMaterialConfig := `
 		resource "ciphertrust_aws_key_material" "km" {
-			aws_key_id = ciphertrust_aws_byok_key.ext_key.aws_key_id
+			aws_key_id = ciphertrust_aws_byok_key.ext_key.aws_param.key_id
 			key_material = [{
 				source_key_identifier    = ciphertrust_cm_key.cm_aes_key.id
 				source_key_tier          = "local"
@@ -255,7 +255,7 @@ func TestCckmAWSKeyMaterialCombinedUpdates(t *testing.T) {
 
 	updateKeyMaterialConfig := `
 		resource "ciphertrust_aws_key_material" "km" {
-			aws_key_id = ciphertrust_aws_byok_key.ext_key.aws_key_id
+			aws_key_id = ciphertrust_aws_byok_key.ext_key.aws_param.key_id
 			key_material = [
 				{
 					source_key_identifier    = ciphertrust_cm_key.cm_aes_key.id
@@ -272,7 +272,7 @@ func TestCckmAWSKeyMaterialCombinedUpdates(t *testing.T) {
 
 	deleteMaterialAndUpdateMaterial := `
 		resource "ciphertrust_aws_key_material" "km" {
-			aws_key_id = ciphertrust_aws_byok_key.ext_key.aws_key_id
+			aws_key_id = ciphertrust_aws_byok_key.ext_key.aws_param.key_id
 			key_material = [{
 				source_key_identifier    = ciphertrust_cm_key.cm_aes_key2.id
 				source_key_tier          = "local"
@@ -371,7 +371,7 @@ func TestCckmAWSKeyMaterialRepairPendingImport(t *testing.T) {
 			algorithm                    = "AES"
 		}
 		resource "ciphertrust_aws_key_material" "km" {
-			aws_key_id = ciphertrust_aws_byok_key.ext_key.aws_key_id
+			aws_key_id = ciphertrust_aws_byok_key.ext_key.aws_param.key_id
 			key_material = [{
 				source_key_identifier = ciphertrust_cm_key.cm_aes_key.id
 				source_key_tier       = "local"
@@ -414,11 +414,8 @@ func TestCckmAWSKeyMaterialRepairPendingImport(t *testing.T) {
 				// Step 2: delete material1 OOB. Key enters PendingImport.
 				// ModifyPlan detects PENDING_IMPORT and marks attrs Unknown -> non-empty plan.
 				PreConfig: func() {
-					deleteByokKeyMaterialAtIndex(
-						"TestCckmAWSKeyMaterialRepairPendingImport/OOB",
-						capturedPrimaryKeyID, 0,
-					)
-					refreshKeyAndWait("TestCckmAWSKeyMaterialMultiRegion", capturedPrimaryKeyID, capturedCmKeyID)
+					deleteByokKeyMaterialAtIndex(capturedPrimaryKeyID, 0)
+					refreshKeyAndWait(capturedPrimaryKeyID, capturedCmKeyID)
 				},
 				RefreshState:       true,
 				ExpectNonEmptyPlan: true,
@@ -497,7 +494,7 @@ func TestCckmAWSKeyMaterialRepairPendingRotation(t *testing.T) {
 
 	createMaterialConfig := `
 		resource "ciphertrust_aws_key_material" "km" {
-			aws_key_id = ciphertrust_aws_byok_key.ext_key.aws_key_id
+			aws_key_id = ciphertrust_aws_byok_key.ext_key.aws_param.key_id
 			key_material = [{
 				source_key_identifier = ciphertrust_cm_key.cm_aes_key.id
 				source_key_tier       = "local"
@@ -506,7 +503,7 @@ func TestCckmAWSKeyMaterialRepairPendingRotation(t *testing.T) {
 
 	repairMaterialConfig := `
 		resource "ciphertrust_aws_key_material" "km" {
-			aws_key_id = ciphertrust_aws_byok_key.ext_key.aws_key_id
+			aws_key_id = ciphertrust_aws_byok_key.ext_key.aws_param.key_id
 			key_material = [
 				{
 					source_key_identifier = ciphertrust_cm_key.cm_aes_key.id
@@ -632,7 +629,7 @@ func TestCckmAWSKeyMaterialRepairCombined(t *testing.T) {
 
 	createMaterialConfig := `
 		resource "ciphertrust_aws_key_material" "km" {
-			aws_key_id = ciphertrust_aws_byok_key.ext_key.aws_key_id
+			aws_key_id = ciphertrust_aws_byok_key.ext_key.aws_param.key_id
 			key_material = [{
 				source_key_identifier = ciphertrust_cm_key.cm_aes_key.id
 				source_key_tier       = "local"
@@ -641,7 +638,7 @@ func TestCckmAWSKeyMaterialRepairCombined(t *testing.T) {
 
 	repairMaterialConfig := `
 		resource "ciphertrust_aws_key_material" "km" {
-			aws_key_id = ciphertrust_aws_byok_key.ext_key.aws_key_id
+			aws_key_id = ciphertrust_aws_byok_key.ext_key.aws_param.key_id
 			key_material = [
 				{
 					source_key_identifier = ciphertrust_cm_key.cm_aes_key.id
@@ -657,8 +654,8 @@ func TestCckmAWSKeyMaterialRepairCombined(t *testing.T) {
 	var capturedPrimaryKeyID string
 	var capturedCmKey2ID string
 
-	fmt.Printf("SARAH create \n%s\n", fmt.Sprintf(createConfig, createMaterialConfig))
-	fmt.Printf("SARAH repair \n%s\n", fmt.Sprintf(createConfig, repairMaterialConfig))
+	fmt.Printf("create \n%s\n", fmt.Sprintf(createConfig, createMaterialConfig))
+	fmt.Printf("repair \n%s\n", fmt.Sprintf(createConfig, repairMaterialConfig))
 
 	kmResource := "ciphertrust_aws_key_material.km"
 	keyResource := "ciphertrust_aws_byok_key.ext_key"
@@ -696,16 +693,13 @@ func TestCckmAWSKeyMaterialRepairCombined(t *testing.T) {
 				// Sleeps after each OOB call let AWS and CM settle before RefreshState runs,
 				// reducing the chance of the subsequent repair apply seeing stale key state.
 				PreConfig: func() {
-					deleteByokKeyMaterialAtIndex(
-						"TestCckmAWSKeyMaterialRepairCombined/OOB-delete",
-						capturedPrimaryKeyID, 0,
-					)
-					refreshKeyAndWait("TestCckmAWSKeyMaterialMultiRegion", capturedPrimaryKeyID, capturedCmKey2ID)
+					deleteByokKeyMaterialAtIndex(capturedPrimaryKeyID, 0)
+					refreshKeyAndWait(capturedPrimaryKeyID, capturedCmKey2ID)
 					callByokImportMaterialOutOfBand(
 						"TestCckmAWSKeyMaterialRepairCombined/OOB-import",
 						capturedPrimaryKeyID, capturedCmKey2ID, "local", "NEW_KEY_MATERIAL",
 					)
-					refreshKeyAndWait("TestCckmAWSKeyMaterialMultiRegion", capturedPrimaryKeyID, capturedCmKey2ID)
+					refreshKeyAndWait(capturedPrimaryKeyID, capturedCmKey2ID)
 				},
 				RefreshState:       true,
 				ExpectNonEmptyPlan: true,
@@ -833,7 +827,7 @@ func TestCckmAWSKeyMaterialMultiRegionOOBDeleteMaterial(t *testing.T) {
 				ciphertrust_aws_byok_key.replica_2,
 				ciphertrust_aws_byok_key.replica_3,
 			]
-			aws_key_id = ciphertrust_aws_byok_key.primary.aws_key_id
+			aws_key_id = ciphertrust_aws_byok_key.primary.aws_param.key_id
 			key_material = [%s]
 		}`
 
@@ -882,7 +876,6 @@ func TestCckmAWSKeyMaterialMultiRegionOOBDeleteMaterial(t *testing.T) {
 				// Step 1. Create primary key and replicas and 2 extra cm keys
 				Config: createReplicasConfig,
 				Check: resource.ComposeTestCheckFunc(
-					tellMe("STEP 1"),
 					testAccListResourceAttributes(primaryResource),
 					testAccListResourceAttributes(replica1Resource),
 					testAccListResourceAttributes(replica2Resource),
@@ -920,7 +913,6 @@ func TestCckmAWSKeyMaterialMultiRegionOOBDeleteMaterial(t *testing.T) {
 				// Step 2.  Add material2. Primary rotates to material2; replicas sync.
 				Config: addNewMaterial2Config,
 				Check: resource.ComposeTestCheckFunc(
-					tellMe("STEP 2"),
 					testAccListResourceAttributes(primaryResource),
 					testAccListResourceAttributes(replica1Resource),
 					testAccListResourceAttributes(replica2Resource),
@@ -945,7 +937,6 @@ func TestCckmAWSKeyMaterialMultiRegionOOBDeleteMaterial(t *testing.T) {
 				// Step 3.  Refresh state and check the rotation history of the keys
 				RefreshState: true,
 				Check: resource.ComposeTestCheckFunc(
-					tellMe("STEP 3"),
 					testAccListResourceAttributes(primaryResource),
 					testAccListResourceAttributes(replica1Resource),
 					testAccListResourceAttributes(replica2Resource),
@@ -1000,7 +991,6 @@ func TestCckmAWSKeyMaterialMultiRegionOOBDeleteMaterial(t *testing.T) {
 				// Step 4. Add material3. Primary rotates to material2; replicas sync.
 				Config: addNewMaterial3Config,
 				Check: resource.ComposeTestCheckFunc(
-					tellMe("STEP 4"),
 					testAccListResourceAttributes(primaryResource),
 					testAccListResourceAttributes(replica1Resource),
 					testAccListResourceAttributes(replica2Resource),
@@ -1041,7 +1031,6 @@ func TestCckmAWSKeyMaterialMultiRegionOOBDeleteMaterial(t *testing.T) {
 				// Step 5. Refresh state and check keys
 				RefreshState: true,
 				Check: resource.ComposeTestCheckFunc(
-					tellMe("STEP 5"),
 					testAccListResourceAttributes(primaryResource),
 					testAccListResourceAttributes(replica1Resource),
 					testAccListResourceAttributes(replica2Resource),
@@ -1110,11 +1099,8 @@ func TestCckmAWSKeyMaterialMultiRegionOOBDeleteMaterial(t *testing.T) {
 				// Primary key remains Enabled because material3 is still current.
 				// Provider detects missing rotation entry -> non-empty plan.
 				PreConfig: func() {
-					deleteByokKeyMaterialAtIndex(
-						"TestCckmAWSKeyMaterialMultiRegion/OOB",
-						capturedPrimaryKeyID, 1,
-					)
-					refreshKeyAndWait("TestCckmAWSKeyMaterialMultiRegion", capturedPrimaryKeyID, capturedCmKeyID)
+					deleteByokKeyMaterialAtIndex(capturedPrimaryKeyID, 1)
+					refreshKeyAndWait(capturedPrimaryKeyID, capturedCmKeyID)
 				},
 				RefreshState:       true,
 				ExpectNonEmptyPlan: true,
@@ -1124,7 +1110,6 @@ func TestCckmAWSKeyMaterialMultiRegionOOBDeleteMaterial(t *testing.T) {
 				// rotation_history.# should return to 3 on primary and all 3 replicas.
 				Config: addNewMaterial3Config,
 				Check: resource.ComposeTestCheckFunc(
-					tellMe("STEP 7"),
 					testAccListResourceAttributes(primaryResource),
 					testAccListResourceAttributes(replica1Resource),
 					testAccListResourceAttributes(replica2Resource),
@@ -1293,7 +1278,7 @@ func TestCckmAWSKeyMaterialRepairMultiRegionPendingImportAndRotation(t *testing.
 	// Step 5 (repair): original material + material2.
 	addMaterialConfig := `
 		resource "ciphertrust_aws_key_material" "km" {
-			aws_key_id = ciphertrust_aws_byok_key.mr_primary.aws_key_id
+			aws_key_id = ciphertrust_aws_byok_key.mr_primary.aws_param.key_id
 			key_material = [
 				{
 					source_key_identifier = ciphertrust_cm_key.cm_aes_key.id
@@ -1326,13 +1311,11 @@ func TestCckmAWSKeyMaterialRepairMultiRegionPendingImportAndRotation(t *testing.
 				// Step 1: create primary MR key + 3 replicas
 				Config: awsConnectionResource + createConfigStr,
 				Check: resource.ComposeTestCheckFunc(
-					tellMe("******** STEP 1 ********"),
 					testAccListResourceAttributes(primaryResource),
 					testAccListResourceAttributes("ciphertrust_cm_key.cm_aes_key"),
 					testAccListResourceAttributes("ciphertrust_cm_key.cm_aes_key2"),
 					testAccListResourceAttributes(rotationHistoryDSResource),
 					resource.TestCheckResourceAttr(primaryResource, "aws_param.multi_region", "true"),
-					resource.TestCheckResourceAttr(primaryResource, "aws_param.next_rotation_date", ""),
 					resource.TestCheckResourceAttr(primaryResource, "aws_param.origin", "EXTERNAL"),
 				),
 			},
@@ -1341,7 +1324,6 @@ func TestCckmAWSKeyMaterialRepairMultiRegionPendingImportAndRotation(t *testing.
 				// Capture primary CM UUID and material2 CM key ID for later OOB import.
 				Config: awsConnectionResource + createConfigStr,
 				Check: resource.ComposeTestCheckFunc(
-					tellMe("******** STEP 2 ********"),
 					testAccListResourceAttributes(primaryResource),
 					resource.TestCheckResourceAttr(primaryResource, "rotation_history.#", "1"),
 					func(s *terraform.State) error {
@@ -1374,8 +1356,7 @@ func TestCckmAWSKeyMaterialRepairMultiRegionPendingImportAndRotation(t *testing.
 						"TestCckmAWSKeyMaterialRepairMultiRegionPendingImportAndRotation",
 						capturedPrimaryKeyID, capturedCmKey2ID, "local", "NEW_KEY_MATERIAL",
 					)
-					refreshKeyAndWait(
-						"TestCckmAWSKeyMaterialRepairMultiRegionPendingImportAndRotation", capturedPrimaryKeyID, capturedCmKey2ID)
+					refreshKeyAndWait(capturedPrimaryKeyID, capturedCmKey2ID)
 				},
 				RefreshState:       true,
 				ExpectNonEmptyPlan: true,
@@ -1386,7 +1367,6 @@ func TestCckmAWSKeyMaterialRepairMultiRegionPendingImportAndRotation(t *testing.
 				// material1 is not included in the plan so won't cant be repaired
 				Config: awsConnectionResource + createConfigStr,
 				Check: resource.ComposeTestCheckFunc(
-					tellMe("******** STEP 4 ********"),
 					testAccListResourceAttributes(rotationHistoryDSResource),
 					resource.TestCheckResourceAttr(rotationHistoryDSResource, "rotations.0.aws_params.key_material_state", "PENDING_MULTI_REGION_IMPORT_AND_ROTATION"),
 					resource.TestCheckResourceAttr(rotationHistoryDSResource, "rotations.1.aws_params.key_material_state", "CURRENT"),
@@ -1400,7 +1380,6 @@ func TestCckmAWSKeyMaterialRepairMultiRegionPendingImportAndRotation(t *testing.
 				// Both keys should become Enabled with rotation_history.#=2.
 				Config: awsConnectionResource + addMaterialConfigStr,
 				Check: resource.ComposeTestCheckFunc(
-					tellMe("******** STEP 5 ********"),
 					testAccListResourceAttributes(kmResource),
 					testAccListResourceAttributes(rotationHistoryDSResource),
 					resource.TestCheckResourceAttr(kmResource, "rotation_history.#", "2"),
@@ -1465,7 +1444,7 @@ func TestCckmAWSKeyMaterialAdoptPendingRotation(t *testing.T) {
 	`
 	adoptMaterialConfig := `
 		resource "ciphertrust_aws_key_material" "km" {
-			aws_key_id = ciphertrust_aws_byok_key.ext_key.aws_key_id
+			aws_key_id = ciphertrust_aws_byok_key.ext_key.aws_param.key_id
 			key_material = [{
 				source_key_identifier = ciphertrust_cm_key.cm_aes_key.id
 				source_key_tier       = "local"
@@ -1635,7 +1614,7 @@ func TestCckmAWSKeyMaterialAdoptPendingMRRotation(t *testing.T) {
 				ciphertrust_aws_byok_key.mr_replica_1,
 				ciphertrust_aws_byok_key.mr_replica_2,
 			]
-			aws_key_id = ciphertrust_aws_byok_key.mr_primary.aws_key_id
+		aws_key_id = ciphertrust_aws_byok_key.mr_primary.aws_param.key_id
 			key_material = [
 				# This is the original material - it will be 'adopted' into this resource
 				{
@@ -1681,7 +1660,6 @@ func TestCckmAWSKeyMaterialAdoptPendingMRRotation(t *testing.T) {
 				// Capture the primary CM id, replica_1 CM id, and cm_aes_key2 CM id.
 				Config: awsConnectionResource + createConfigStr,
 				Check: resource.ComposeTestCheckFunc(
-					tellMe("STEP 1 - create key and 2 replicas"),
 					testAccListResourceAttributes(primaryResource),
 					testAccListResourceAttributes(replica1Resource),
 					testAccListResourceAttributes(replica2Resource),
@@ -1689,7 +1667,6 @@ func TestCckmAWSKeyMaterialAdoptPendingMRRotation(t *testing.T) {
 					resource.TestCheckResourceAttr(primaryResource, "aws_param.key_state", "Enabled"),
 					resource.TestCheckResourceAttr(primaryResource, "aws_param.origin", "EXTERNAL"),
 					resource.TestCheckResourceAttr(primaryResource, "aws_param.multi_region", "true"),
-					resource.TestCheckResourceAttr(primaryResource, "aws_param.next_rotation_date", ""),
 					resource.TestCheckResourceAttrSet(replica1Resource, "id"),
 					resource.TestCheckResourceAttrSet(replica2Resource, "id"),
 					func(s *terraform.State) error {
@@ -1727,7 +1704,6 @@ func TestCckmAWSKeyMaterialAdoptPendingMRRotation(t *testing.T) {
 			{
 				RefreshState: true,
 				Check: resource.ComposeTestCheckFunc(
-					tellMe("STEP 2 - refresh"),
 					testAccListResourceAttributes(primaryResource),
 					testAccListResourceAttributes(replica1Resource),
 					testAccListResourceAttributes(replica2Resource),
@@ -1784,7 +1760,6 @@ func TestCckmAWSKeyMaterialAdoptPendingMRRotation(t *testing.T) {
 				},
 				Config: awsConnectionResource + adoptOriginalAndAddConfigStr,
 				Check: resource.ComposeTestCheckFunc(
-					tellMe("STEP 3 - adoptOriginalAndAddConfigStr"),
 					testAccListResourceAttributes(primaryResource),
 					testAccListResourceAttributes(replica1Resource),
 					testAccListResourceAttributes(replica2Resource),
@@ -1836,16 +1811,13 @@ func TestCckmAWSKeyMaterialAdoptPendingMRRotation(t *testing.T) {
 				// Step 4: confirm plan is stable after Create-path adoption of
 				// PENDING_MULTI_REGION_IMPORT_AND_ROTATION material.
 				RefreshState: true,
-				Check: resource.ComposeTestCheckFunc(
-					tellMe("STEP 3 - Refresh"),
-				),
+				Check:        resource.ComposeTestCheckFunc(),
 			},
 			{
 				// Step 5: verify all keys have settled to Enabled with fully resolved
 				// rotation history after RefreshState confirms no drift.
 				Config: awsConnectionResource + adoptOriginalAndAddConfigStr,
 				Check: resource.ComposeTestCheckFunc(
-					tellMe("STEP 3 - verify all keys have settled"),
 					testAccListResourceAttributes(kmResource),
 					testAccListResourceAttributes(primaryResource),
 					testAccListResourceAttributes(replica1Resource),
@@ -1918,7 +1890,7 @@ func TestCckmAWSKeyMaterialMRPendingImportFirstMaterial(t *testing.T) {
 	// Step 2 config: add aws_key_material to import the first material to the primary.
 	updateConfig := createConfig + `
 		resource "ciphertrust_aws_key_material" "km" {
-			aws_key_id = ciphertrust_aws_byok_key.mr_primary.aws_key_id
+			aws_key_id = ciphertrust_aws_byok_key.mr_primary.aws_param.key_id
 			key_material = [{
 				source_key_identifier = ciphertrust_cm_key.cm_aes_key.id
 				source_key_tier       = "local"
@@ -1941,7 +1913,6 @@ func TestCckmAWSKeyMaterialMRPendingImportFirstMaterial(t *testing.T) {
 					resource.TestCheckResourceAttr(primaryResource, "aws_param.key_state", "PendingImport"),
 					resource.TestCheckResourceAttr(primaryResource, "aws_param.origin", "EXTERNAL"),
 					resource.TestCheckResourceAttr(primaryResource, "aws_param.multi_region", "true"),
-					resource.TestCheckResourceAttr(primaryResource, "aws_param.next_rotation_date", ""),
 					resource.TestCheckResourceAttr(primaryResource, "rotation_history.#", "0"),
 				),
 			},
@@ -2010,7 +1981,7 @@ func TestCckmAWSKeyMaterialPlanValidation(t *testing.T) {
 	dupValidTo2 := awsKeyValidTo(270)
 	duplicateSrcKeyConfig := baseConfig + fmt.Sprintf(`
 		resource "ciphertrust_aws_key_material" "km" {
-			aws_key_id = ciphertrust_aws_byok_key.ext_key.aws_key_id
+			aws_key_id = ciphertrust_aws_byok_key.ext_key.aws_param.key_id
 			key_material = [
 				{
 					source_key_identifier = ciphertrust_cm_key.cm_aes_key.id
@@ -2028,7 +1999,7 @@ func TestCckmAWSKeyMaterialPlanValidation(t *testing.T) {
 	// Zero entries on create: should be rejected at plan time.
 	zeroOnCreateConfig := baseConfig + `
 		resource "ciphertrust_aws_key_material" "km" {
-			aws_key_id   = ciphertrust_aws_byok_key.ext_key.aws_key_id
+			aws_key_id   = ciphertrust_aws_byok_key.ext_key.aws_param.key_id
 			key_material = []
 		}`
 
@@ -2039,7 +2010,7 @@ func TestCckmAWSKeyMaterialPlanValidation(t *testing.T) {
 			algorithm                    = "AES"
 		}
 		resource "ciphertrust_aws_key_material" "km" {
-			aws_key_id = ciphertrust_aws_byok_key.ext_key.aws_key_id
+			aws_key_id = ciphertrust_aws_byok_key.ext_key.aws_param.key_id
 			key_material = [
 				{
 					source_key_identifier = ciphertrust_cm_key.cm_aes_key.id
@@ -2060,7 +2031,7 @@ func TestCckmAWSKeyMaterialPlanValidation(t *testing.T) {
 	// Step 4 (apply): create with m1 so the resource exists in state.
 	createConfig := baseConfig + `
 		resource "ciphertrust_aws_key_material" "km" {
-			aws_key_id = ciphertrust_aws_byok_key.ext_key.aws_key_id
+			aws_key_id = ciphertrust_aws_byok_key.ext_key.aws_param.key_id
 			key_material = [{
 				source_key_identifier = ciphertrust_cm_key.cm_aes_key.id
 				source_key_tier       = "local"
@@ -2073,7 +2044,7 @@ func TestCckmAWSKeyMaterialPlanValidation(t *testing.T) {
 			algorithm                    = "AES"
 		}
 		resource "ciphertrust_aws_key_material" "km" {
-			aws_key_id = ciphertrust_aws_byok_key.ext_key.aws_key_id
+			aws_key_id = ciphertrust_aws_byok_key.ext_key.aws_param.key_id
 			key_material = [
 				{
 					source_key_identifier = ciphertrust_cm_key.cm_aes_key.id
@@ -2094,7 +2065,7 @@ func TestCckmAWSKeyMaterialPlanValidation(t *testing.T) {
 	// All material bytes are deleted; rotation history entries remain but move to PENDING_IMPORT.
 	removeAllMaterialConfig := baseConfig + `
 		resource "ciphertrust_aws_key_material" "km" {
-			aws_key_id   = ciphertrust_aws_byok_key.ext_key.aws_key_id
+			aws_key_id   = ciphertrust_aws_byok_key.ext_key.aws_param.key_id
 			key_material = []
 		}`
 
@@ -2143,21 +2114,14 @@ func TestCckmAWSKeyMaterialPlanValidation(t *testing.T) {
 	})
 }
 
-func tellMe(resourceName string) resource.TestCheckFunc {
-	return func(s *terraform.State) error {
-		fmt.Printf("\n************ %s attributes\n", resourceName)
-		return nil
-	}
-}
-
 // deleteByokKeyMaterialAtIndex fetches the rotation history for the CCKM BYOK key
 // identified by keyID and deletes the AWS key material at rotationIndex (0-based,
 // ordered as returned by the rotations API - typically newest-first). The testName
 // prefix is included in log output to identify which test triggered the operation.
-func deleteByokKeyMaterialAtIndex(testName, keyID string, rotationIndex int) {
+func deleteByokKeyMaterialAtIndex(keyID string, rotationIndex int) {
 	client, ok := createCMClient()
 	if !ok {
-		fmt.Printf("%s: could not create CM client, skipping delete-material\n", testName)
+		fmt.Printf("Could not create CM client, skipping delete-material\n")
 		return
 	}
 	ctx := context.Background()
@@ -2169,28 +2133,28 @@ func deleteByokKeyMaterialAtIndex(testName, keyID string, rotationIndex int) {
 	rotationsEndpoint := common.URL_AWS_KEY + "/" + keyID + "/rotations"
 	rotationsJSON, err := client.ListWithFilters(ctx, id, rotationsEndpoint, filters)
 	if err != nil {
-		fmt.Printf("%s: failed to list rotations: %s\n", testName, err.Error())
+		fmt.Printf("Failed to list rotations: %s\n", err.Error())
 		return
 	}
 	resources := gjson.Get(rotationsJSON, "resources").Array()
 	if rotationIndex >= len(resources) {
-		fmt.Printf("%s: rotationIndex %d out of range (have %d entries)\n", testName, rotationIndex, len(resources))
+		fmt.Printf("rotationIndex %d out of range (have %d entries)\n", rotationIndex, len(resources))
 		return
 	}
 	keyMaterialID := resources[rotationIndex].Get("aws_param.KeyMaterialId").String()
 	if keyMaterialID == "" {
-		fmt.Printf("%s: KeyMaterialId not found at rotation index %d\n", testName, rotationIndex)
+		fmt.Printf("KeyMaterialId not found at rotation index %d\n", rotationIndex)
 		return
 	}
-	fmt.Printf("%s: deleting key material id=%s (rotation index %d)\n", testName, keyMaterialID, rotationIndex)
+	fmt.Printf("Ddeleting key material id=%s (rotation index %d)\n", keyMaterialID, rotationIndex)
 	payload, _ := json.Marshal(map[string]string{"key_material_id": keyMaterialID})
 	deleteMaterialURL := common.URL_AWS_KEY + "/" + keyID + "/delete-material"
 	_, err = client.PostDataV2(ctx, id, deleteMaterialURL, payload)
 	if err != nil {
-		fmt.Printf("%s: delete-material failed: %s\n", testName, err.Error())
+		fmt.Printf("delete-material failed: %s\n", err.Error())
 		return
 	}
-	fmt.Printf("%s: key material deleted out-of-band\n", testName)
+	fmt.Printf("Key material deleted out-of-band\n")
 	time.Sleep(30 * time.Second)
 }
 
@@ -2226,7 +2190,7 @@ func callByokImportMaterialOutOfBand(testName, keyID, sourceKeyID, sourceKeyTier
 	time.Sleep(30 * time.Second)
 }
 
-func refreshKeyAndWait(testName, keyID string, sourceKeyID string) {
+func refreshKeyAndWait(keyID string, sourceKeyID string) {
 	client, ok := createCMClient()
 	if !ok {
 		fmt.Println("testName: could not create CM client")
@@ -2248,30 +2212,6 @@ func refreshKeyAndWait(testName, keyID string, sourceKeyID string) {
 	if diags.WarningsCount() > 0 {
 		fmt.Printf("testName: RefreshKeyAndWait warnings: %v\n", diags)
 	}
-}
-
-// refreshKeyOutOfBand calls the CM refresh API for a BYOK key out-of-band.
-// POST /v1/cckm/aws/keys/{id}/refresh instructs CM to re-sync its DB with AWS,
-// updating key state, rotation history, and multi-region info. A 15-second sleep
-// follows the call to allow CM to complete the sync. The testName prefix is included
-// in log output to identify which test triggered the call.
-func refreshKeyOutOfBand(testName, keyID string) {
-	client, ok := createCMClient()
-	if !ok {
-		fmt.Printf("%s: could not create CM client, skipping refresh\n", testName)
-		return
-	}
-	ctx := context.Background()
-	id := uuid.New().String()
-	refreshURL := common.URL_AWS_KEY + "/" + keyID + "/refresh"
-	_, err := client.PostNoData(ctx, id, refreshURL)
-	if err != nil {
-		fmt.Printf("%s: refresh failed for key %s: %s\n", testName, keyID, err.Error())
-	} else {
-		fmt.Printf("%s: refresh called out-of-band for key %s\n", testName, keyID)
-	}
-	fmt.Printf("%s: sleeping 15s after refresh for CM sync to complete\n", testName)
-	time.Sleep(15 * time.Second)
 }
 
 // TestCckmAWSByokKeyCreatePendingImport verifies that an EXTERNAL (BYOK) key created with
@@ -2305,11 +2245,11 @@ func TestCckmAWSByokKeyCreatePendingImport(t *testing.T) {
 				Config: awsConnectionResource + createConfig,
 				Check: resource.ComposeTestCheckFunc(
 					testAccListResourceAttributes(keyResource),
-					resource.TestCheckResourceAttrSet(keyResource, "aws_param.arn"),
 					resource.TestCheckResourceAttrSet(keyResource, "id"),
+					resource.TestCheckResourceAttr(keyResource, "rotation_history.#", "0"),
+					resource.TestCheckResourceAttrSet(keyResource, "aws_param.arn"),
 					resource.TestCheckResourceAttr(keyResource, "aws_param.key_state", "PendingImport"),
 					resource.TestCheckResourceAttr(keyResource, "aws_param.origin", "EXTERNAL"),
-					resource.TestCheckResourceAttr(keyResource, "rotation_history.#", "0"),
 				),
 			},
 		},

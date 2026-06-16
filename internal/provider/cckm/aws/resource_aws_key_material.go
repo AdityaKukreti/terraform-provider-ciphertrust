@@ -59,7 +59,7 @@ func (r *resourceAWSKeyMaterial) Configure(_ context.Context, req resource.Confi
 	if !ok {
 		resp.Diagnostics.AddError(
 			"Error in fetching client from provider",
-			fmt.Sprintf("SARAH Expected *provider.Client, got: %T. Please report this issue to the provider developers.", req.ProviderData),
+			fmt.Sprintf("Expected *provider.Client, got: %T. Please report this issue to the provider developers.", req.ProviderData),
 		)
 		return
 	}
@@ -169,8 +169,8 @@ func (r *resourceAWSKeyMaterial) Schema(_ context.Context, _ resource.SchemaRequ
 //   - History entry in CURRENT or NON_CURRENT: silently adopted with no API call.
 func (r *resourceAWSKeyMaterial) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
 	id := uuid.New().String()
-	tflog.Debug(ctx, common.MSG_METHOD_START+"[SARAH resource_aws_key_material.go -> Create]["+id+"]")
-	defer tflog.Debug(ctx, common.MSG_METHOD_END+"[SARAH resource_aws_key_material.go -> Create]["+id+"]")
+	tflog.Debug(ctx, common.MSG_METHOD_START+"[resource_aws_key_material.go -> Create]["+id+"]")
+	defer tflog.Debug(ctx, common.MSG_METHOD_END+"[resource_aws_key_material.go -> Create]["+id+"]")
 	var plan AWSKeyMaterialTFSDK
 	resp.Diagnostics.Append(req.Plan.Get(ctx, &plan)...)
 	if resp.Diagnostics.HasError() {
@@ -200,7 +200,7 @@ func (r *resourceAWSKeyMaterial) Create(ctx context.Context, req resource.Create
 	if keyOrigin != "EXTERNAL" {
 		resp.Diagnostics.AddError(
 			"Target AWS key is not an EXTERNAL key",
-			fmt.Sprintf("SARAH The ciphertrust_aws_key_material resource only supports AWS keys with Origin=EXTERNAL (BYOK). "+
+			fmt.Sprintf("The ciphertrust_aws_key_material resource only supports AWS keys with Origin=EXTERNAL (BYOK). "+
 				"Key %q has Origin=%q. Use ciphertrust_aws_key to manage non-EXTERNAL keys.",
 				plan.AWSKeyID.ValueString(), keyOrigin,
 			),
@@ -211,7 +211,7 @@ func (r *resourceAWSKeyMaterial) Create(ctx context.Context, req resource.Create
 	if keyType != "symmetric" {
 		resp.Diagnostics.AddError(
 			"Target AWS key is not a symmetric key",
-			fmt.Sprintf("SARAH The ciphertrust_aws_key_material resource only supports symmetric EXTERNAL keys. "+
+			fmt.Sprintf("The ciphertrust_aws_key_material resource only supports symmetric EXTERNAL keys. "+
 				"Key %q has key_type=%q.",
 				plan.AWSKeyID.ValueString(), keyType,
 			),
@@ -285,8 +285,8 @@ func (r *resourceAWSKeyMaterial) Read(ctx context.Context, req resource.ReadRequ
 //  6. Read final state back from CM.
 func (r *resourceAWSKeyMaterial) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
 	id := uuid.New().String()
-	tflog.Debug(ctx, common.MSG_METHOD_START+"[SARAH resource_aws_key_material.go -> Update]["+id+"]")
-	defer tflog.Debug(ctx, common.MSG_METHOD_END+"[SARAH resource_aws_key_material.go -> Update]["+id+"]")
+	tflog.Debug(ctx, common.MSG_METHOD_START+"[resource_aws_key_material.go -> Update]["+id+"]")
+	defer tflog.Debug(ctx, common.MSG_METHOD_END+"[resource_aws_key_material.go -> Update]["+id+"]")
 	var (
 		plan  AWSKeyMaterialTFSDK
 		state AWSKeyMaterialTFSDK
@@ -503,8 +503,8 @@ func (r *resourceAWSKeyMaterial) ModifyPlan(ctx context.Context, req resource.Mo
 // ImportState imports an existing AWS BYOK key into Terraform state using its resource ID.
 func (r *resourceAWSKeyMaterial) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
 	id := uuid.New().String()
-	tflog.Debug(ctx, common.MSG_METHOD_START+"[SARAH resource_aws_key_material.go -> ImportState]["+id+"]")
-	defer tflog.Debug(ctx, common.MSG_METHOD_END+"[SARAH resource_aws_key_material.go -> ImportState]["+id+"]")
+	tflog.Debug(ctx, common.MSG_METHOD_START+"[resource_aws_key_material.go -> ImportState]["+id+"]")
+	defer tflog.Debug(ctx, common.MSG_METHOD_END+"[resource_aws_key_material.go -> ImportState]["+id+"]")
 	resource.ImportStatePassthroughID(ctx, path.Root("id"), req, resp)
 }
 
@@ -514,7 +514,7 @@ func (r *resourceAWSKeyMaterial) ImportState(ctx context.Context, req resource.I
 // responsible for preserving Required/Optional input fields (aws_key_id, key_material) that are
 // not returned by the key API.
 func (r *resourceAWSKeyMaterial) setAwsKeyMaterialState(ctx context.Context, cmKeyID string, state *AWSKeyMaterialTFSDK, diags *diag.Diagnostics) {
-	tflog.Debug(ctx, "SARAH [resource_aws_key_material.go -> setAwsKeyMaterialState][cmKeyID:"+cmKeyID+"]")
+	tflog.Debug(ctx, "[resource_aws_key_material.go -> setAwsKeyMaterialState] cmKeyID: "+cmKeyID)
 	if cmKeyID == "" {
 		diags.AddError("setAwsKeyMaterialState called with empty cmKeyID", "Internal error: cmKeyID must not be empty.")
 		return
@@ -549,8 +549,8 @@ func (r *resourceAWSKeyMaterial) setAwsKeyMaterialState(ctx context.Context, cmK
 // no removedMats and no metadataUpdates are produced.
 func (r *resourceAWSKeyMaterial) updateKeyMaterial(ctx context.Context, id string, keyID string, plan *AWSKeyMaterialTFSDK, stateKeyMaterial types.Set, keyJSON string, diags *diag.Diagnostics) {
 
-	tflog.Debug(ctx, common.MSG_METHOD_START+"[SARAH resource_aws_key_material.go -> updateKeyMaterial]["+id+"]")
-	defer tflog.Debug(ctx, common.MSG_METHOD_END+"[SARAH resource_aws_key_material.go -> updateKeyMaterial]["+id+"]")
+	tflog.Debug(ctx, common.MSG_METHOD_START+"[resource_aws_key_material.go -> updateKeyMaterial]["+id+"]")
+	defer tflog.Debug(ctx, common.MSG_METHOD_END+"[resource_aws_key_material.go -> updateKeyMaterial]["+id+"]")
 
 	// Check for duplicate source_key_identifier values.
 	if !plan.KeyMaterial.IsNull() && !plan.KeyMaterial.IsUnknown() {
@@ -672,7 +672,7 @@ func (r *resourceAWSKeyMaterial) updateKeyMaterial(ctx context.Context, id strin
 				}
 			}
 		}
-		tflog.Debug(ctx, fmt.Sprintf("SARAH fetchHistoryAndClassify: pendingMR: %d pendingImport: %d pendingRotation: %d new: %d removed: %d keyID: %s",
+		tflog.Debug(ctx, fmt.Sprintf("[resource_aws_key_material.go -> fetchHistoryAndClassify] pendingMR: %d pendingImport: %d pendingRotation: %d new: %d removed: %d keyID: %s",
 			len(pendingMRRepairs), len(pendingImportRepairs), len(pendingRotationRepairs),
 			len(newCandidates), len(removed), keyID))
 	}
@@ -687,7 +687,7 @@ func (r *resourceAWSKeyMaterial) updateKeyMaterial(ctx context.Context, id strin
 	if len(newCandidates) > 1 {
 		diags.AddError(
 			"Too many new key_material entries",
-			fmt.Sprintf("SARAH Only one new key_material entry may be added per apply. "+
+			fmt.Sprintf("Only one new key_material entry may be added per apply. "+
 				"Got %d new entries - add entries one at a time.",
 				len(newCandidates),
 			),
@@ -708,9 +708,9 @@ func (r *resourceAWSKeyMaterial) updateKeyMaterial(ctx context.Context, id strin
 
 		numOperations := len(pendingMRRepairs) + len(pendingImportRepairs) + len(pendingRotationRepairs) +
 			len(newCandidates) + len(removed) + len(metadataUpdates)
-		tflog.Debug(ctx, fmt.Sprintf("SARAH updateKeyMaterial: retry: %d num operations: %d", retry, numOperations))
+		tflog.Debug(ctx, fmt.Sprintf("[resource_aws_key_material.go -> updateKeyMaterial] retry: %d num operations: %d", retry, numOperations))
 		if numOperations == 0 {
-			tflog.Debug(ctx, fmt.Sprintf("SARAH updateKeyMaterial: 0 operations to process."))
+			tflog.Debug(ctx, "[resource_aws_key_material.go -> updateKeyMaterial] 0 operations to process.")
 			break
 		}
 
@@ -793,7 +793,7 @@ func (r *resourceAWSKeyMaterial) updateKeyMaterial(ctx context.Context, id strin
 			srcID := mat.SourceKeyID.ValueString()
 			if len(historyBySourceKey) == 0 {
 				// No rotation history at all - key is back in PendingImport state.
-				tflog.Debug(ctx, fmt.Sprintf("SARAH updateKeyMaterial: historyBySourceKey is empty, using import-material (NEW_KEY_MATERIAL). srcID: %s keyID: %s", srcID, keyID))
+				tflog.Debug(ctx, fmt.Sprintf("[resource_aws_key_material.go -> updateKeyMaterial] historyBySourceKey is empty, using import-material (NEW_KEY_MATERIAL). srcID: %s keyID: %s", srcID, keyID))
 				ImportByokKeyMaterial(ctx, id, r.client, keyID, srcID,
 					mat.SourceKeyTier.ValueString(),
 					mat.ValidTo.ValueString(),
@@ -808,7 +808,7 @@ func (r *resourceAWSKeyMaterial) updateKeyMaterial(ctx context.Context, id strin
 					waitForReplicasMaterialCurrent(ctx, id, r.client, keyID, srcID, keyJSON, diags)
 				}
 			} else {
-				tflog.Debug(ctx, fmt.Sprintf("SARAH updateKeyMaterial: historyBySourceKey has %d entries, rotate to new material.", len(historyBySourceKey)))
+				tflog.Debug(ctx, fmt.Sprintf("[resource_aws_key_material.go -> updateKeyMaterial] historyBySourceKey has %d entries, rotate to new material.", len(historyBySourceKey)))
 				rotateToNewMaterial(ctx, id, r.client, keyID, srcID, mat.SourceKeyTier.ValueString(),
 					mat.ValidTo.ValueString(), mat.KeyMaterialDescription.ValueString(), keyJSON, diags)
 			}
@@ -856,11 +856,11 @@ func (r *resourceAWSKeyMaterial) updateKeyMaterial(ctx context.Context, id strin
 // The key material does not enter a pending state during this operation, so no polling
 // is needed after the call.
 func (r *resourceAWSKeyMaterial) updateExistingKeyMaterialMetadata(ctx context.Context, id string, keyID string, mat AWSByokImportMaterialTFSDK, diags *diag.Diagnostics) {
-	tflog.Debug(ctx, common.MSG_METHOD_START+"[SARAH resource_aws_key_material.go -> updateExistingKeyMaterialMetadata]["+id+"]")
-	defer tflog.Debug(ctx, common.MSG_METHOD_END+"[SARAH resource_aws_key_material.go -> updateExistingKeyMaterialMetadata]["+id+"]")
+	tflog.Debug(ctx, common.MSG_METHOD_START+"[resource_aws_key_material.go -> updateExistingKeyMaterialMetadata]["+id+"]")
+	defer tflog.Debug(ctx, common.MSG_METHOD_END+"[resource_aws_key_material.go -> updateExistingKeyMaterialMetadata]["+id+"]")
 
 	srcID := mat.SourceKeyID.ValueString()
-	tflog.Debug(ctx, fmt.Sprintf("SARAH updateExistingKeyMaterialMetadata: srcID: %s keyID: %s validTo: %s desc: %s",
+	tflog.Debug(ctx, fmt.Sprintf("[resource_aws_key_material.go -> updateExistingKeyMaterialMetadata] srcID: %s keyID: %s validTo: %s desc: %s",
 		srcID, keyID, mat.ValidTo.ValueString(), mat.KeyMaterialDescription.ValueString()))
 
 	ImportByokKeyMaterial(ctx, id, r.client, keyID, srcID, mat.SourceKeyTier.ValueString(),
@@ -886,8 +886,8 @@ func (r *resourceAWSKeyMaterial) updateExistingKeyMaterialMetadata(ctx context.C
 // PENDING_MULTI_REGION_IMPORT_AND_ROTATION; the caller (updateKeyMaterial) is responsible
 // for that pre-filtering.
 func (r *resourceAWSKeyMaterial) repairPendingMultiRegionImportAndRotation(ctx context.Context, id string, primaryKeyID string, primaryKeyJSON string, pendingMRRepairs []AWSByokImportMaterialTFSDK, historyBySourceKey map[string]RotationHistoryEntryFullTFSDK, diags *diag.Diagnostics) {
-	tflog.Debug(ctx, common.MSG_METHOD_START+"[SARAH resource_aws_key_material.go -> repairPendingMultiRegionImportAndRotation]["+id+"]")
-	defer tflog.Debug(ctx, common.MSG_METHOD_END+"[SARAH resource_aws_key_material.go -> repairPendingMultiRegionImportAndRotation]["+id+"]")
+	tflog.Debug(ctx, common.MSG_METHOD_START+"[resource_aws_key_material.go -> repairPendingMultiRegionImportAndRotation]["+id+"]")
+	defer tflog.Debug(ctx, common.MSG_METHOD_END+"[resource_aws_key_material.go -> repairPendingMultiRegionImportAndRotation]["+id+"]")
 
 	for _, mat := range pendingMRRepairs {
 		srcID := mat.SourceKeyID.ValueString()
@@ -895,7 +895,7 @@ func (r *resourceAWSKeyMaterial) repairPendingMultiRegionImportAndRotation(ctx c
 		replicaSourceKeyID := entry.SourceKeyIdentifier.ValueString()
 		replicaSourceKeyTier := entry.SourceKeyTier.ValueString()
 
-		tflog.Debug(ctx, fmt.Sprintf("SARAH repairPendingMultiRegionImportAndRotation: importing material to replicas keyID: %s sourceKeyID: %s", primaryKeyID, replicaSourceKeyID))
+		tflog.Debug(ctx, fmt.Sprintf("[resource_aws_key_material.go -> repairPendingMultiRegionImportAndRotation] importing material to replicas keyID: %s sourceKeyID: %s", primaryKeyID, replicaSourceKeyID))
 
 		// Step 1: import the existing key material to all replicas that are missing it.
 		// repairMultiRegionReplicas also calls refresh on the primary after all imports so
@@ -931,10 +931,10 @@ func (r *resourceAWSKeyMaterial) repairPendingMultiRegionImportAndRotation(ctx c
 //  3. Waits for import_state to leave PENDING_IMPORT (i.e. arrive at Imported). A poll
 //     timeout is a warning only because the import call itself succeeded.
 func (r *resourceAWSKeyMaterial) repairPendingImport(ctx context.Context, id string, keyID string, pendingImportRepairs []AWSByokImportMaterialTFSDK, diags *diag.Diagnostics) {
-	tflog.Debug(ctx, common.MSG_METHOD_START+"[SARAH resource_aws_key_material.go -> repairPendingImport]["+id+"]")
-	defer tflog.Debug(ctx, common.MSG_METHOD_END+"[SARAH resource_aws_key_material.go -> repairPendingImport]["+id+"]")
+	tflog.Debug(ctx, common.MSG_METHOD_START+"[resource_aws_key_material.go -> repairPendingImport]["+id+"]")
+	defer tflog.Debug(ctx, common.MSG_METHOD_END+"[resource_aws_key_material.go -> repairPendingImport]["+id+"]")
 
-	tflog.Debug(ctx, fmt.Sprintf("SARAH repairPendingImport: keyID: %s", keyID))
+	tflog.Debug(ctx, fmt.Sprintf("[resource_aws_key_material.go -> repairPendingImport] keyID: %s", keyID))
 
 	for _, mat := range pendingImportRepairs {
 		srcID := mat.SourceKeyID.ValueString()
@@ -946,7 +946,7 @@ func (r *resourceAWSKeyMaterial) repairPendingImport(ctx context.Context, id str
 		if validTo != "" {
 			t, parseErr := time.Parse(time.RFC3339, validTo)
 			if parseErr != nil || t.Before(time.Now().UTC()) {
-				msg := fmt.Sprintf("SARAH Key material %s/%s is in PENDING_IMPORT and the configured valid_to date has already passed. "+
+				msg := fmt.Sprintf("Key material %s/%s is in PENDING_IMPORT and the configured valid_to date has already passed. "+
 					"Update valid_to to a future date before Terraform can re-import this material.",
 					srcID, mat.SourceKeyTier.ValueString(),
 				)
@@ -961,7 +961,7 @@ func (r *resourceAWSKeyMaterial) repairPendingImport(ctx context.Context, id str
 		ImportByokKeyMaterial(ctx, id, r.client, keyID, srcID, mat.SourceKeyTier.ValueString(), validTo, mat.KeyMaterialDescription.ValueString(), "EXISTING_KEY_MATERIAL", &importDiags)
 		diags.Append(importDiags...)
 		if importDiags.HasError() {
-			tflog.Error(ctx, fmt.Sprintf("SARAH repairPendingImport: ImportByokKeyMaterial failed sourceKeyID: %s keyID: %s", srcID, keyID))
+			tflog.Error(ctx, fmt.Sprintf("[resource_aws_key_material.go -> repairPendingImport] ImportByokKeyMaterial failed sourceKeyID: %s keyID: %s", srcID, keyID))
 			continue
 		}
 
@@ -989,16 +989,16 @@ func (r *resourceAWSKeyMaterial) repairPendingImport(ctx context.Context, id str
 //
 // keyJSON is the full CM key record for keyID, used to detect the multi-region case.
 func (r *resourceAWSKeyMaterial) repairKeyMaterialRotations(ctx context.Context, id string, keyID string, pendingRotationRepairs []AWSByokImportMaterialTFSDK, keyJSON string, diags *diag.Diagnostics) {
-	tflog.Debug(ctx, common.MSG_METHOD_START+"[SARAH resource_aws_key_material.go -> repairKeyMaterialRotations]["+id+"]")
-	defer tflog.Debug(ctx, common.MSG_METHOD_END+"[SARAH resource_aws_key_material.go -> repairKeyMaterialRotations]["+id+"]")
+	tflog.Debug(ctx, common.MSG_METHOD_START+"[resource_aws_key_material.go -> repairKeyMaterialRotations]["+id+"]")
+	defer tflog.Debug(ctx, common.MSG_METHOD_END+"[resource_aws_key_material.go -> repairKeyMaterialRotations]["+id+"]")
 
-	tflog.Debug(ctx, fmt.Sprintf("SARAH repairKeyMaterialRotations: keyID: %s", keyID))
+	tflog.Debug(ctx, fmt.Sprintf("[resource_aws_key_material.go -> repairKeyMaterialRotations] keyID: %s", keyID))
 
 	isMRPrimary := gjson.Get(keyJSON, "aws_param.MultiRegion").Bool()
 
 	for _, mat := range pendingRotationRepairs {
 		srcID := mat.SourceKeyID.ValueString()
-		tflog.Debug(ctx, fmt.Sprintf("SARAH repairKeyMaterialRotations: rotating keyID: %s to sourceKeyID: %s", keyID, srcID))
+		tflog.Debug(ctx, fmt.Sprintf("[resource_aws_key_material.go -> repairKeyMaterialRotations] rotating keyID: %s to sourceKeyID: %s", keyID, srcID))
 
 		// Step 1: call rotate-material with an empty body to activate the pending material.
 		// Hard error - stop the loop immediately if this fails.
@@ -1010,7 +1010,7 @@ func (r *resourceAWSKeyMaterial) repairKeyMaterialRotations(ctx context.Context,
 			diags.AddError(details, "")
 			return
 		}
-		tflog.Info(ctx, fmt.Sprintf("SARAH repairKeyMaterialRotations: SUCCESS keyID: %s sourceKeyID: %s", keyID, srcID))
+		tflog.Info(ctx, fmt.Sprintf("[resource_aws_key_material.go -> repairKeyMaterialRotations] SUCCESS keyID: %s sourceKeyID: %s", keyID, srcID))
 
 		// Step 2: wait for key_material_state to leave PENDING_ROTATION.
 		// The material arrives at CURRENT or NON-CURRENT depending on whether a newer
@@ -1047,10 +1047,10 @@ func (r *resourceAWSKeyMaterial) repairKeyMaterialRotations(ctx context.Context,
 // Errors from individual replica imports are added to diags and the loop continues so the
 // caller receives a full picture of which replicas need attention.
 func (r *resourceAWSKeyMaterial) repairMultiRegionReplicas(ctx context.Context, id string, primaryKeyID string, sourceKeyID string, sourceKeyTier string, validTo string, primaryKeyJSON string, diags *diag.Diagnostics) {
-	tflog.Debug(ctx, common.MSG_METHOD_START+"[SARAH resource_aws_key_material.go -> repairMultiRegionReplicas]["+id+"]")
-	defer tflog.Debug(ctx, common.MSG_METHOD_END+"[SARAH resource_aws_key_material.go -> repairMultiRegionReplicas]["+id+"]")
+	tflog.Debug(ctx, common.MSG_METHOD_START+"[resource_aws_key_material.go -> repairMultiRegionReplicas]["+id+"]")
+	defer tflog.Debug(ctx, common.MSG_METHOD_END+"[resource_aws_key_material.go -> repairMultiRegionReplicas]["+id+"]")
 
-	tflog.Debug(ctx, fmt.Sprintf("SARAH repairMultiRegionReplicas: keyID: %s sourceKeyID: %s", primaryKeyID, sourceKeyID))
+	tflog.Debug(ctx, fmt.Sprintf("[resource_aws_key_material.go -> repairMultiRegionReplicas] keyID: %s sourceKeyID: %s", primaryKeyID, sourceKeyID))
 
 	replicaKeysResult := gjson.Get(primaryKeyJSON, "aws_param.MultiRegionConfiguration.ReplicaKeys")
 	if !replicaKeysResult.Exists() || len(replicaKeysResult.Array()) == 0 {
@@ -1118,14 +1118,14 @@ func (r *resourceAWSKeyMaterial) repairMultiRegionReplicas(ctx context.Context, 
 			continue
 		}
 
-		tflog.Debug(ctx, fmt.Sprintf("SARAH repairMultiRegionReplicas: replica region: %s replicaKeyID: %s ", replicaRegion, replicaCMKeyID))
+		tflog.Debug(ctx, fmt.Sprintf("[resource_aws_key_material.go -> repairMultiRegionReplicas] replica region: %s replicaKeyID: %s", replicaRegion, replicaCMKeyID))
 
 		// Check the replica's rotation history to see whether material already exists.
 		replicaHistory, _ := fetchRotationHistoryByokFull(ctx, id, r.client, replicaCMKeyID)
 		var replicaEntries []RotationHistoryEntryFullTFSDK
 		if hd := replicaHistory.ElementsAs(ctx, &replicaEntries, false); !hd.HasError() {
 			for ri, entry := range replicaEntries {
-				tflog.Debug(ctx, fmt.Sprintf("SARAH repairMultiRegionReplicas: sourceKeyID: %s history[%d] "+
+				tflog.Debug(ctx, fmt.Sprintf("[resource_aws_key_material.go -> repairMultiRegionReplicas] sourceKeyID: %s history[%d] "+
 					"importState: %s materialState: %v", entry.SourceKeyIdentifier.ValueString(), ri,
 					entry.AWSParams.ImportState.ValueString(), entry.AWSParams.KeyMaterialState.ValueString()))
 			}
@@ -1138,10 +1138,10 @@ func (r *resourceAWSKeyMaterial) repairMultiRegionReplicas(ctx context.Context, 
 				}
 			}
 			if alreadyImported {
-				tflog.Debug(ctx, fmt.Sprintf("SARAH repairMultiRegionReplicas: replicaCMKeyID: %s already has material for sourceKeyID: %s (not PENDING_IMPORT), skipping", replicaCMKeyID, sourceKeyID))
+				tflog.Debug(ctx, fmt.Sprintf("[resource_aws_key_material.go -> repairMultiRegionReplicas] replicaCMKeyID: %s already has material for sourceKeyID: %s (not PENDING_IMPORT), skipping", replicaCMKeyID, sourceKeyID))
 				continue
 			}
-			tflog.Warn(ctx, fmt.Sprintf("SARAH repairMultiRegionReplicas: replicaCMKeyID: %s material for sourceKeyID: %s not found or in PENDING_IMPORT - will import", replicaCMKeyID, sourceKeyID))
+			tflog.Warn(ctx, fmt.Sprintf("[resource_aws_key_material.go -> repairMultiRegionReplicas] replicaCMKeyID: %s material for sourceKeyID: %s not found or in PENDING_IMPORT - will import", replicaCMKeyID, sourceKeyID))
 		}
 
 		// Import the material to the replica using EXISTING_KEY_MATERIAL.
@@ -1169,10 +1169,10 @@ func (r *resourceAWSKeyMaterial) repairMultiRegionReplicas(ctx context.Context, 
 // validTo is the expiry date string (RFC3339); pass an empty string when no expiry is configured.
 // keyMaterialDescription is optional; pass an empty string to omit it from the request.
 func ImportByokKeyMaterial(ctx context.Context, id string, client *common.Client, keyID string, sourceKeyID string, sourceKeyTier string, validTo string, keyMaterialDescription string, importType string, diags *diag.Diagnostics) {
-	tflog.Debug(ctx, common.MSG_METHOD_START+"[SARAH resource_aws_key_material.go -> ImportByokKeyMaterial]["+id+"]")
-	defer tflog.Debug(ctx, common.MSG_METHOD_END+"[SARAH resource_aws_key_material.go -> ImportByokKeyMaterial]["+id+"]")
+	tflog.Debug(ctx, common.MSG_METHOD_START+"[resource_aws_key_material.go -> ImportByokKeyMaterial]["+id+"]")
+	defer tflog.Debug(ctx, common.MSG_METHOD_END+"[resource_aws_key_material.go -> ImportByokKeyMaterial]["+id+"]")
 
-	tflog.Debug(ctx, fmt.Sprintf("SARAH ImportByokKeyMaterial: keyID: %s sourceKeyID: %s", keyID, sourceKeyID))
+	tflog.Debug(ctx, fmt.Sprintf("[resource_aws_key_material.go -> ImportByokKeyMaterial] keyID: %s sourceKeyID: %s", keyID, sourceKeyID))
 
 	payload := AWSKeyImportMaterialJSON{
 		SourceKeyID:   sourceKeyID,
@@ -1195,17 +1195,17 @@ func ImportByokKeyMaterial(ctx context.Context, id string, client *common.Client
 	response, err := client.PostDataV2(ctx, id, common.URL_AWS_KEY+"/"+keyID+"/import-material", payloadJSON)
 	if err != nil {
 		if !strings.Contains(err.Error(), materialAlreadyExistsError) {
-			tflog.Error(ctx, fmt.Sprintf("SARAH ImportByokKeyMaterial: FAILED keyID: %s error: %s", keyID, err.Error()))
+			tflog.Error(ctx, fmt.Sprintf("[resource_aws_key_material.go -> ImportByokKeyMaterial] FAILED keyID: %s error: %s", keyID, err.Error()))
 			msg := "Error importing key material for AWS BYOK key."
 			details := utils.ApiError(msg, map[string]interface{}{"error": err.Error(), "key_id": keyID})
 			tflog.Error(ctx, details)
 			diags.AddError(details, "")
 			return
 		}
-		tflog.Warn(ctx, fmt.Sprintf("SARAH ImportByokKeyMaterial: Key material already exists! sourceKeyID: %s error: %s", sourceKeyID, err.Error()))
+		tflog.Warn(ctx, fmt.Sprintf("[resource_aws_key_material.go -> ImportByokKeyMaterial] Key material already exists. sourceKeyID: %s error: %s", sourceKeyID, err.Error()))
 		return
 	}
-	tflog.Info(ctx, fmt.Sprintf("SARAH ImportByokKeyMaterial: SUCCESS keyID: %s response: %s", keyID, redactAWSResponse(response)))
+	tflog.Info(ctx, fmt.Sprintf("[resource_aws_key_material.go -> ImportByokKeyMaterial] SUCCESS keyID: %s response: %s", keyID, redactAWSResponse(response)))
 }
 
 // rotateToNewMaterial calls rotate-material on cmKeyID to import new key material and
@@ -1227,10 +1227,10 @@ func ImportByokKeyMaterial(ctx context.Context, id string, client *common.Client
 // If rotate-material fails with replica pending import cannot rotate error we need to attempt to fix up
 // Return true to re-calculate material states and try again
 func rotateToNewMaterial(ctx context.Context, id string, client *common.Client, cmKeyID string, srcID string, srcTier string, validTo string, keyMaterialDescription string, keyJSON string, diags *diag.Diagnostics) {
-	tflog.Debug(ctx, common.MSG_METHOD_START+"[SARAH resource_aws_key_material.go -> rotateToNewMaterial]["+id+"]")
-	defer tflog.Debug(ctx, common.MSG_METHOD_END+"[SARAH resource_aws_key_material.go -> rotateToNewMaterial]["+id+"]")
+	tflog.Debug(ctx, common.MSG_METHOD_START+"[resource_aws_key_material.go -> rotateToNewMaterial]["+id+"]")
+	defer tflog.Debug(ctx, common.MSG_METHOD_END+"[resource_aws_key_material.go -> rotateToNewMaterial]["+id+"]")
 
-	tflog.Debug(ctx, fmt.Sprintf("SARAH rotateToNewMaterial: primaryKeyID: %s sourceKeyID: %s", cmKeyID, srcID))
+	tflog.Debug(ctx, fmt.Sprintf("[resource_aws_key_material.go -> rotateToNewMaterial] primaryKeyID: %s sourceKeyID: %s", cmKeyID, srcID))
 
 	rotPayload := RotateMaterialPayloadJSON{
 		SourceKeyID:            srcID,
@@ -1256,7 +1256,7 @@ func rotateToNewMaterial(ctx context.Context, id string, client *common.Client, 
 		return
 	}
 
-	tflog.Info(ctx, fmt.Sprintf("SARAH rotateToNewMaterial: SUCCESS keyID: %s sourceKeyID: %s", cmKeyID, srcID))
+	tflog.Info(ctx, fmt.Sprintf("[resource_aws_key_material.go -> rotateToNewMaterial] SUCCESS keyID: %s sourceKeyID: %s", cmKeyID, srcID))
 
 	// Wait for the rotation history record to appear (CCKM creates it during the import step,
 	// before the rotate-material overall_status reaches "success").
@@ -1265,7 +1265,7 @@ func rotateToNewMaterial(ctx context.Context, id string, client *common.Client, 
 	// Wait for the rotate-material background task to complete.
 	retryOperation := waitForMaterialRotation(ctx, id, client, cmKeyID, diags)
 	if retryOperation {
-		tflog.Debug(ctx, fmt.Sprintf("SARAH rotateToNewMaterial: waiting for material rotation failed with soft error, continuing."))
+		tflog.Debug(ctx, "[resource_aws_key_material.go -> rotateToNewMaterial] waiting for material rotation failed with soft error, continuing.")
 		// Known errors - re-calculate material states and try again - probably should refresh here.
 		return
 	}
@@ -1314,10 +1314,10 @@ func (r *resourceAWSKeyMaterial) deleteRemovedKeyMaterial(
 	keyJSON string,
 	diags *diag.Diagnostics,
 ) {
-	tflog.Debug(ctx, common.MSG_METHOD_START+"[SARAH resource_aws_key_material.go -> deleteRemovedKeyMaterial]["+id+"]")
-	defer tflog.Debug(ctx, common.MSG_METHOD_END+"[SARAH resource_aws_key_material.go -> deleteRemovedKeyMaterial]["+id+"]")
+	tflog.Debug(ctx, common.MSG_METHOD_START+"[resource_aws_key_material.go -> deleteRemovedKeyMaterial]["+id+"]")
+	defer tflog.Debug(ctx, common.MSG_METHOD_END+"[resource_aws_key_material.go -> deleteRemovedKeyMaterial]["+id+"]")
 
-	tflog.Debug(ctx, fmt.Sprintf("SARAH deleteRemovedKeyMaterial: keyID: %s", keyID))
+	tflog.Debug(ctx, fmt.Sprintf("[resource_aws_key_material.go -> deleteRemovedKeyMaterial] keyID: %s", keyID))
 
 	// Determine whether this is a multi-region primary key once, outside the per-mat loop.
 	isMRPrimary := gjson.Get(keyJSON, "aws_param.MultiRegion").Bool() &&
@@ -1329,7 +1329,7 @@ func (r *resourceAWSKeyMaterial) deleteRemovedKeyMaterial(
 		// Step 1: look up the history entry.
 		entry, inHistory := historyBySourceKey[srcID]
 		if !inHistory {
-			tflog.Debug(ctx, fmt.Sprintf("SARAH deleteRemovedKeyMaterial: sourceKeyID: %s not in rotation history - skipping delete", srcID))
+			tflog.Debug(ctx, fmt.Sprintf("[resource_aws_key_material.go -> deleteRemovedKeyMaterial] sourceKeyID: %s not in rotation history - skipping delete", srcID))
 			continue
 		}
 
@@ -1340,7 +1340,7 @@ func (r *resourceAWSKeyMaterial) deleteRemovedKeyMaterial(
 		//   - PENDING_ROTATION / PENDING_MULTI_REGION_IMPORT_AND_ROTATION: material exists and is deleted.
 		// The only skip is when the entry is not in rotation history at all (handled above).
 		matState := entry.AWSParams.KeyMaterialState.ValueString()
-		tflog.Debug(ctx, fmt.Sprintf("SARAH deleteRemovedKeyMaterial: sourceKeyID: %s key_material_state:%s", srcID, matState))
+		tflog.Debug(ctx, fmt.Sprintf("[resource_aws_key_material.go -> deleteRemovedKeyMaterial] sourceKeyID: %s key_material_state: %s", srcID, matState))
 
 		// Step 3: build the list of CM key IDs to delete from, together with the
 		// key_material_id to use for each key. Passing the key_material_id ensures
@@ -1359,7 +1359,7 @@ func (r *resourceAWSKeyMaterial) deleteRemovedKeyMaterial(
 				replicaARN := replicaResult.Get("Arn").String()
 				replicaRegion := replicaResult.Get("Region").String()
 				if replicaARN == "" || replicaRegion == "" {
-					tflog.Warn(ctx, fmt.Sprintf("SARAH deleteRemovedKeyMaterial: replica entry missing Arn or Region for sourceKeyID: %s - skipping replica", srcID))
+					tflog.Warn(ctx, fmt.Sprintf("[resource_aws_key_material.go -> deleteRemovedKeyMaterial] replica entry missing Arn or Region for sourceKeyID: %s - skipping replica", srcID))
 					continue
 				}
 
@@ -1452,7 +1452,7 @@ func (r *resourceAWSKeyMaterial) deleteRemovedKeyMaterial(
 				diags.AddError(details, "")
 				// Continue to attempt remaining keys - caller sees all failures.
 			} else {
-				tflog.Info(ctx, fmt.Sprintf("SARAH deleteRemovedKeyMaterial: SUCCESS keyID: %s sourceKeyID: %s", cmID, srcID))
+				tflog.Info(ctx, fmt.Sprintf("[resource_aws_key_material.go -> deleteRemovedKeyMaterial] SUCCESS keyID: %s sourceKeyID: %s", cmID, srcID))
 			}
 		}
 	}

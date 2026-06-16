@@ -139,10 +139,6 @@ func (r *resourceAWSByokKey) Schema(_ context.Context, _ resource.SchemaRequest,
 					},
 				},
 			},
-			// Read-only top-level attributes. AWS-specific fields (arn, aws_account_id, aws_key_id,
-			// deletion_date, enabled, encryption_algorithms, expiration_model, key_manager,
-			// key_rotation_enabled, key_state, mac_algorithms, origin, policy) have moved into
-			// the aws_param nested block.
 			"cloud_name": schema.StringAttribute{
 				Computed:    true,
 				Description: "AWS cloud.",
@@ -334,6 +330,10 @@ func (r *resourceAWSByokKey) Create(ctx context.Context, req resource.CreateRequ
 		}
 	}
 	if resp.Diagnostics.HasError() {
+		return
+	}
+	if response == "" {
+		resp.Diagnostics.AddError("Error creating AWS BYOK key: no response received from API.", "")
 		return
 	}
 
@@ -727,8 +727,8 @@ func (r *resourceAWSByokKey) ImportState(ctx context.Context, req resource.Impor
 // The key will be in PendingImport state until material is imported separately.
 // kmsID and commonAwsParams are pre-validated and pre-built by Create before calling this function.
 func (r *resourceAWSByokKey) createByokKey(ctx context.Context, id string, kmsID string, plan *AWSByokKeyTFSDK, commonAwsParams CommonAWSParamsJSON, diags *diag.Diagnostics) string {
-	tflog.Debug(ctx, common.MSG_METHOD_START+"SARAH [resource_aws_byok_key.go -> createByokKey]["+id+"]")
-	defer tflog.Debug(ctx, common.MSG_METHOD_END+"SARAH [resource_aws_byok_key.go -> createByokKey]["+id+"]")
+	tflog.Debug(ctx, common.MSG_METHOD_START+"[resource_aws_byok_key.go -> createByokKey]["+id+"]")
+	defer tflog.Debug(ctx, common.MSG_METHOD_END+"[resource_aws_byok_key.go -> createByokKey]["+id+"]")
 	keyCreateParams := r.getByokKeyCreateParams(ctx, plan, diags)
 	if diags.HasError() {
 		return ""
@@ -765,8 +765,8 @@ func (r *resourceAWSByokKey) createByokKey(ctx context.Context, id string, kmsID
 // uploadByokKey uploads CipherTrust Manager key material to an EXTERNAL AWS key via the upload-key API.
 // kmsID and commonAwsParams are pre-validated and pre-built by Create before calling this function.
 func (r *resourceAWSByokKey) uploadByokKey(ctx context.Context, id string, kmsID string, plan *AWSByokKeyTFSDK, commonAwsParams CommonAWSParamsJSON, diags *diag.Diagnostics) string {
-	tflog.Debug(ctx, common.MSG_METHOD_START+"SARAH [resource_aws_byok_key.go -> uploadByokKey]["+id+"]")
-	defer tflog.Debug(ctx, common.MSG_METHOD_END+"SARAH [resource_aws_byok_key.go -> uploadByokKey]["+id+"]")
+	tflog.Debug(ctx, common.MSG_METHOD_START+"[resource_aws_byok_key.go -> uploadByokKey]["+id+"]")
+	defer tflog.Debug(ctx, common.MSG_METHOD_END+"[resource_aws_byok_key.go -> uploadByokKey]["+id+"]")
 	keyCreateParams := r.getByokKeyCreateParams(ctx, plan, diags)
 	if diags.HasError() {
 		return ""
@@ -814,8 +814,8 @@ func (r *resourceAWSByokKey) uploadByokKey(ctx context.Context, id string, kmsID
 // The initial replication API call is a hard error; all subsequent steps are warnings only.
 // commonAwsParams is pre-built by Create before calling this function.
 func (r *resourceAWSByokKey) replicateByokKey(ctx context.Context, id string, plan *AWSByokKeyTFSDK, commonAwsParams CommonAWSParamsJSON, diags *diag.Diagnostics) string {
-	tflog.Debug(ctx, common.MSG_METHOD_START+"SARAH [resource_aws_byok_key.go -> replicateByokKey]["+id+"]")
-	defer tflog.Debug(ctx, common.MSG_METHOD_END+"SARAH [resource_aws_byok_key.go -> replicateByokKey]["+id+"]")
+	tflog.Debug(ctx, common.MSG_METHOD_START+"[resource_aws_byok_key.go -> replicateByokKey]["+id+"]")
+	defer tflog.Debug(ctx, common.MSG_METHOD_END+"[resource_aws_byok_key.go -> replicateByokKey]["+id+"]")
 	if plan.ReplicateKey == nil {
 		return ""
 	}
@@ -915,7 +915,7 @@ func (r *resourceAWSByokKey) setByokKeyState(ctx context.Context, response strin
 	state.LocalKeyName = types.StringValue(gjson.Get(response, "local_key_name").String())
 	keyID := gjson.Get(response, "id").String()
 	rotID := uuid.New().String()
-	tflog.Debug(ctx, "SARAH setByokKeyState calling fetchRotationHistorySummary")
+	tflog.Debug(ctx, "[resource_aws_byok_key.go -> setByokKeyState] calling fetchRotationHistorySummary")
 	state.RotationHistory, _ = fetchRotationHistoryByokSummary(ctx, rotID, r.client, keyID)
 	// If CurrentKeyMaterialID was not populated by the API,
 	// fall back to the rotation history entry with key_material_state == "CURRENT".

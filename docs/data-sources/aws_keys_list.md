@@ -55,47 +55,29 @@ data "ciphertrust_aws_keys_list" "all_keys_no_limit" {
 
 Read-Only:
 
-- `alias` (Set of String) Alias(es) of the key.
-- `arn` (String) The Amazon Resource Name (ARN) of the key.
 - `auto_rotate` (Boolean) True if AWS autorotation is enabled on the key.
 - `auto_rotation_period_in_days` (Number) Rotation period in days.
-- `aws_account_id` (String) AWS account ID.
-- `aws_key_id` (String) AWS key ID.
 - `aws_param` (Attributes) AWS key parameters returned by the API. (see [below for nested schema](#nestedatt--keys--aws_param))
 - `cloud_name` (String) AWS cloud.
 - `created_at` (String) Date the key was created.
-- `customer_master_key_spec` (String) Key specification.
-- `deletion_date` (String) Date the key is scheduled for deletion.
-- `description` (String) Description of the key.
-- `enable_key` (Boolean) Enable or disable the key.
-- `enabled` (Boolean) True if the key is enabled.
-- `encryption_algorithms` (List of String) Encryption algorithms of the key.
-- `expiration_model` (String) Expiration model.
 - `external_accounts` (Set of String) Other AWS accounts that have access to this key.
 - `id` (String) Terraform ID (composite of region and AWS key ID for aws_key).
 - `key_admins` (Set of String) Key administrators - users.
 - `key_admins_roles` (Set of String) Key administrators - roles.
 - `key_id` (String) CipherTrust Manager Key ID.
-- `key_manager` (String) Key manager.
 - `key_material_origin` (String) Key material origin.
-- `key_rotation_enabled` (Boolean) True if rotation is enabled in AWS for this key.
 - `key_source` (String) Source of the key.
-- `key_state` (String) Key state.
 - `key_type` (String) Key type.
-- `key_usage` (String) Specifies the intended use of the key.
 - `key_users` (Set of String) Key users - users.
 - `key_users_roles` (Set of String) Key users - roles.
-- `kms` (String) Name or ID of the KMS.
 - `kms_id` (String) ID of the KMS.
+- `kms_name` (String) Name of the KMS. On input this accepts a KMS name or ID; the returned value is the KMS name.
 - `labels` (Map of String) A list of key:value pairs associated with the key.
 - `local_key_id` (String) CipherTrust Manager key identifier of the external key.
 - `local_key_name` (String) CipherTrust Manager key name of the external key.
-- `mac_algorithms` (List of String) MAC algorithms supported by an HMAC key.
 - `multi_region` (Boolean) True if this is a multi-region key.
 - `multi_region_configuration` (Attributes) Multi-region configuration for the key. (see [below for nested schema](#nestedatt--keys--multi_region_configuration))
 - `next_rotation_date` (String) Date when auto-rotation will happen next.
-- `origin` (String) Source of the key material.
-- `policy` (String) AWS key policy.
 - `policy_template_tag` (Map of String) AWS key tag for an associated policy template.
 - `region` (String) AWS region the key belongs to.
 - `rotated_at` (String) Time when this key was rotated by a scheduled rotation job.
@@ -103,9 +85,7 @@ Read-Only:
 - `rotated_to` (String) CipherTrust Manager key ID which this key was rotated to.
 - `rotation_status` (String) Rotation status of the key.
 - `synced_at` (String) Date the key was synchronized.
-- `tags` (Map of String) Tags assigned to the key.
 - `updated_at` (String) Date the key was last updated.
-- `valid_to` (String) Date of key material expiry.
 
 <a id="nestedatt--keys--aws_param"></a>
 ### Nested Schema for `keys.aws_param`
@@ -115,7 +95,6 @@ Read-Only:
 - `alias` (Set of String) Alias(es) of the key.
 - `arn` (String) Amazon Resource Name (ARN) of the key.
 - `aws_custom_key_store_id` (String) AWS Custom Key Store ID associated with the key. Populated for XKS and CloudHSM keys.
-- `aws_key_id` (String) AWS key ID.
 - `creation_date` (String) Date the key was created in AWS.
 - `current_key_material_id` (String) AWS key material ID that is currently active for this key. Populated for EXTERNAL-origin keys.
 - `customer_master_key_spec` (String) Whether the KMS key contains a symmetric key or an asymmetric key pair.
@@ -124,6 +103,7 @@ Read-Only:
 - `enabled` (Boolean) True if the key is enabled in AWS.
 - `encryption_algorithms` (List of String) Encryption algorithms supported by the key. Populated for asymmetric keys.
 - `expiration_model` (String) Expiration model for EXTERNAL-origin keys.
+- `key_id` (String) AWS key ID.
 - `key_manager` (String) Key manager (e.g. CUSTOMER).
 - `key_rotation_enabled` (Boolean) True if AWS automatic key rotation is enabled.
 - `key_state` (String) State of the key in AWS (e.g. Enabled, Disabled, PendingDeletion).

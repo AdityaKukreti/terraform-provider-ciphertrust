@@ -251,59 +251,8 @@ type MultiRegionConfigTFSDK struct {
 	ReplicaKeys        []MultiRegionKeyTFSDK `tfsdk:"replica_keys"`
 }
 
-// AWSKeyCommonTFSDK holds the Terraform state fields that appear at the top level in ALL four AWS
-// key resource types (aws_key, aws_byok_key, aws_xks_key, aws_cloudhsm_key). Fields that differ
-// between key types (Alias, BypassPolicyLockoutSafetyCheck, CustomerMasterKeySpec, Description,
-// KeyUsage, Tags, ValidTo) are NOT included here; each resource struct adds them as needed.
-// All four resource TFSDK structs embed this struct directly.
-type AWSKeyCommonTFSDK struct {
-	ID                      types.String               `tfsdk:"id"`
-	Region                  types.String               `tfsdk:"region"`
-	EnableKey               types.Bool                 `tfsdk:"enable_key"`
-	EnableRotation          *AWSKeyEnableRotationTFSDK `tfsdk:"enable_rotation"`
-	KMSName                 types.String               `tfsdk:"kms_name"`
-	KMSID                   types.String               `tfsdk:"kms_id"`
-	Origin                  types.String               `tfsdk:"origin"`
-	ScheduleForDeletionDays types.Int64                `tfsdk:"schedule_for_deletion_days"`
-	ARN                     types.String               `tfsdk:"arn"`
-	AWSAccountID            types.String               `tfsdk:"aws_account_id"`
-	AWSKeyID                types.String               `tfsdk:"aws_key_id"`
-	CloudName               types.String               `tfsdk:"cloud_name"`
-	CreatedAt               types.String               `tfsdk:"created_at"`
-	DeletionDate            types.String               `tfsdk:"deletion_date"`
-	Enabled                 types.Bool                 `tfsdk:"enabled"`
-	EncryptionAlgorithms    types.List                 `tfsdk:"encryption_algorithms"`
-	ExpirationModel         types.String               `tfsdk:"expiration_model"`
-	MacAlgorithms           types.List                 `tfsdk:"mac_algorithms"`
-	ExternalAccounts        types.Set                  `tfsdk:"external_accounts"`
-	KeyAdmins               types.Set                  `tfsdk:"key_admins"`
-	KeyAdminsRoles          types.Set                  `tfsdk:"key_admins_roles"`
-	KeyManager              types.String               `tfsdk:"key_manager"`
-	KeyMaterialOrigin       types.String               `tfsdk:"key_material_origin"`
-	KeyPolicy               *AWSKeyPolicyTFSDK         `tfsdk:"key_policy"`
-	KeyRotationEnabled      types.Bool                 `tfsdk:"key_rotation_enabled"`
-	KeySource               types.String               `tfsdk:"key_source"`
-	KeyState                types.String               `tfsdk:"key_state"`
-	KeyType                 types.String               `tfsdk:"key_type"`
-	KeyUsers                types.Set                  `tfsdk:"key_users"`
-	KeyUsersRoles           types.Set                  `tfsdk:"key_users_roles"`
-	Labels                  types.Map                  `tfsdk:"labels"`
-	Policy                  types.String               `tfsdk:"policy"`
-	PolicyTemplateTag       types.Map                  `tfsdk:"policy_template_tag"`
-	RotatedAt               types.String               `tfsdk:"rotated_at"`
-	RotatedFrom             types.String               `tfsdk:"rotated_from"`
-	RotatedTo               types.String               `tfsdk:"rotated_to"`
-	RotationStatus          types.String               `tfsdk:"rotation_status"`
-	SyncedAt                types.String               `tfsdk:"synced_at"`
-	UpdatedAt               types.String               `tfsdk:"updated_at"`
-}
-
 // AWSNativeAndByokKeyCommonTFSDK holds the top-level Terraform state fields shared by the
-// aws_key and aws_byok_key resources. It is derived from AWSKeyCommonTFSDK but excludes
-// the 12 fields that have moved into the aws_param nested block (arn, aws_account_id,
-// aws_key_id, deletion_date, enabled, encryption_algorithms, expiration_model, key_manager,
-// key_rotation_enabled, key_state, mac_algorithms, origin). The top-level policy duplicate
-// is also omitted since policy lives inside aws_param.
+// aws_key and aws_byok_key resources. It is derived from AWSKeyCommonTFSDK.
 // XKS and CloudHSM keys continue to use AWSKeyCommonTFSDK unchanged.
 type AWSNativeAndByokKeyCommonTFSDK struct {
 	ID                      types.String               `tfsdk:"id"`
@@ -334,47 +283,6 @@ type AWSNativeAndByokKeyCommonTFSDK struct {
 	UpdatedAt               types.String               `tfsdk:"updated_at"`
 }
 
-type AWSKeyCommonImportMaterialTFSDK struct {
-	ID                    types.String `tfsdk:"id"`
-	Region                types.String `tfsdk:"region"`
-	CustomerMasterKeySpec types.String `tfsdk:"customer_master_key_spec"`
-	KeyUsage              types.String `tfsdk:"key_usage"`
-	KMS                   types.String `tfsdk:"kms"`
-	KMSID                 types.String `tfsdk:"kms_id"`
-	Origin                types.String `tfsdk:"origin"`
-	ARN                   types.String `tfsdk:"arn"`
-	AWSAccountID          types.String `tfsdk:"aws_account_id"`
-	AWSKeyID              types.String `tfsdk:"aws_key_id"`
-	CloudName             types.String `tfsdk:"cloud_name"`
-	CreatedAt             types.String `tfsdk:"created_at"`
-	DeletionDate          types.String `tfsdk:"deletion_date"`
-	EncryptionAlgorithms  types.List   `tfsdk:"encryption_algorithms"`
-	ExpirationModel       types.String `tfsdk:"expiration_model"`
-	MacAlgorithms         types.List   `tfsdk:"mac_algorithms"`
-	ExternalAccounts      types.Set    `tfsdk:"external_accounts"`
-	KeyAdmins             types.Set    `tfsdk:"key_admins"`
-	KeyAdminsRoles        types.Set    `tfsdk:"key_admins_roles"`
-	KeyID                 types.String `tfsdk:"key_id"`
-	KeyManager            types.String `tfsdk:"key_manager"`
-	KeyMaterialOrigin     types.String `tfsdk:"key_material_origin"`
-	KeyRotationEnabled    types.Bool   `tfsdk:"key_rotation_enabled"`
-	KeySource             types.String `tfsdk:"key_source"`
-	KeyState              types.String `tfsdk:"key_state"`
-	KeyType               types.String `tfsdk:"key_type"`
-	KeyUsers              types.Set    `tfsdk:"key_users"`
-	KeyUsersRoles         types.Set    `tfsdk:"key_users_roles"`
-	Labels                types.Map    `tfsdk:"labels"`
-	LocalKeyID            types.String `tfsdk:"local_key_id"`
-	LocalKeyName          types.String `tfsdk:"local_key_name"`
-	RotatedAt             types.String `tfsdk:"rotated_at"`
-	RotatedFrom           types.String `tfsdk:"rotated_from"`
-	RotatedTo             types.String `tfsdk:"rotated_to"`
-	RotationStatus        types.String `tfsdk:"rotation_status"`
-	SyncedAt              types.String `tfsdk:"synced_at"`
-	UpdatedAt             types.String `tfsdk:"updated_at"`
-	ValidTo               types.String `tfsdk:"valid_to"`
-}
-
 // AWSKeyTFSDK holds the Terraform state for the aws_key resource.
 // Common top-level computed fields are provided by AWSNativeAndByokKeyCommonTFSDK.
 // The aws_param-sourced computed fields (arn, aws_account_id, aws_key_id, deletion_date,
@@ -395,18 +303,6 @@ type AWSKeyTFSDK struct {
 	AWSParam        types.Object `tfsdk:"aws_param"`
 	RotationHistory types.List   `tfsdk:"rotation_history"`
 }
-
-// RotationHistoryEntryTFSDK holds the summary fields shown in the UI rotation history table.
-// Fields map to the aws_param sub-object and top-level fields of the rotations API response.
-//type RotationHistoryEntrySummaryTFSDK struct {
-//	KeyMaterialID       types.String `tfsdk:"key_material_id"`
-//	RotationDate        types.String `tfsdk:"rotation_date"`
-//	KeyMaterialState    types.String `tfsdk:"key_material_state"`
-//	ImportState         types.String `tfsdk:"import_state"`
-//	LastImportStatus    types.String `tfsdk:"last_import_status"`
-//	SourceKeyIdentifier types.String `tfsdk:"source_key_identifier"`
-//	SourceKeyTier       types.String `tfsdk:"source_key_tier"`
-//}
 
 // RotationHistoryEntryFullTFSDK holds all available fields from the rotation history API response.
 // It extends RotationHistoryEntryTFSDK with every field exposed by the AWSKeyRotation and
@@ -440,15 +336,6 @@ type RotationHistoryEntryFullTFSDK struct {
 	AWSParams KeyRotationAwsParamTFSDK `tfsdk:"aws_params"`
 }
 
-type AWSKeyForImportMaterialTFSDK struct {
-	AWSKeyCommonImportMaterialTFSDK
-	ImportKeyMaterial        *AWSKeyImportMaterialTFSDK `tfsdk:"import_key_material"`
-	MultiRegion              types.Bool                 `tfsdk:"multi_region"`
-	MultiRegionConfiguration types.Object               `tfsdk:"multi_region_configuration"`
-	NextRotationDate         types.String               `tfsdk:"next_rotation_date"`
-	RotationHistory          types.List                 `tfsdk:"rotation_history"`
-}
-
 // AWSCommonAwsParamTFSDK holds the aws_param fields shared by aws_key and aws_byok_key.
 // Input fields (alias, bypass_policy_lockout_safety_check, customer_master_key_spec,
 // description, key_usage, multi_region, tags) are Optional/Computed.
@@ -465,7 +352,7 @@ type AWSCommonAwsParamTFSDK struct {
 	// Computed-only fields (sourced from aws_param in the CCKM API response)
 	Arn                  types.String `tfsdk:"arn"`
 	AWSAccountID         types.String `tfsdk:"aws_account_id"`
-	AWSKeyID             types.String `tfsdk:"aws_key_id"`
+	AWSKeyID             types.String `tfsdk:"key_id"`
 	CurrentKeyMaterialID types.String `tfsdk:"current_key_material_id"`
 	DeletionDate         types.String `tfsdk:"deletion_date"`
 	Enabled              types.Bool   `tfsdk:"enabled"`
@@ -568,19 +455,25 @@ type XKSKeyLocalHostedParamsTFSDK struct {
 	Linked           types.Bool   `tfsdk:"linked"`
 }
 
+// AWSXKSKeyTFSDK holds the Terraform state for the aws_xks_key resource.
+// Top-level fields are provided by AWSKeyStoreResourceCommonTFSDK (slim struct).
+// All AWS response fields (arn, key_id, key_state, etc.) live inside AWSParam.
 type AWSXKSKeyTFSDK struct {
-	AWSKeyStoreKeyCommonTFSDK
+	AWSKeyStoreResourceCommonTFSDK
 	LocalHostParams *XKSKeyLocalHostedParamsTFSDK `tfsdk:"local_hosted_params"`
-	AWSXKSKeyID     types.String                  `tfsdk:"aws_xks_key_id"`
 }
 
+// AWSCloudHSMKeyTFSDK holds the Terraform state for the aws_cloudhsm_key resource.
+// Top-level fields are provided by AWSKeyStoreResourceCommonTFSDK (slim struct).
+// All AWS response fields (arn, key_id, key_state, etc.) live inside AWSParam.
 type AWSCloudHSMKeyTFSDK struct {
-	AWSKeyStoreKeyCommonTFSDK
+	AWSKeyStoreResourceCommonTFSDK
 }
 
 // AWSKeyStoreAwsParamTFSDK holds the aws_param block shared by both the aws_xks_key and
 // aws_cloudhsm_key resources. Alias, Description, and Tags are Optional/Computed inputs;
 // Policy is Computed-only (output of the resolved AWS key policy after creation).
+// Retained for use by datasource helpers that have not yet been migrated.
 type AWSKeyStoreAwsParamTFSDK struct {
 	Alias       types.Set    `tfsdk:"alias"`
 	Description types.String `tfsdk:"description"`
@@ -588,32 +481,99 @@ type AWSKeyStoreAwsParamTFSDK struct {
 	Tags        types.Map    `tfsdk:"tags"`
 }
 
-// AWSKeyStoreKeyCommonTFSDK holds the Terraform state fields shared by both the
-// aws_xks_key and aws_cloudhsm_key resources. Common computed fields are provided by
-// the embedded AWSKeyCommonTFSDK. Input AWS parameters (alias, description, tags) and
-// the resulting computed policy live inside the AWSParam nested block.
-// Keystore-specific input fields (bypass_policy_lockout_safety_check, customer_master_key_spec,
-// key_usage) are exposed at the top level (not inside aws_param) and are added here.
-type AWSKeyStoreKeyCommonTFSDK struct {
-	AWSKeyCommonTFSDK
-	// Keystore-specific input fields not present in AWSKeyCommonTFSDK
+// AWSKeyStoreCommonAwsParamTFSDK is the shared base for the aws_param block of the
+// aws_xks_key and aws_cloudhsm_key resources. It includes all input and computed fields
+// that are common to both key types. XKS and CloudHSM extend it with type-specific fields.
+type AWSKeyStoreCommonAwsParamTFSDK struct {
+	// Input/Computed fields
+	Alias       types.Set    `tfsdk:"alias"`
+	Description types.String `tfsdk:"description"`
+	Tags        types.Map    `tfsdk:"tags"`
+	// Computed-only fields sourced from aws_param in the CCKM API response
+	Arn                   types.String `tfsdk:"arn"`
+	AWSAccountID          types.String `tfsdk:"aws_account_id"`
+	AWSCustomKeyStoreID   types.String `tfsdk:"aws_custom_key_store_id"`
+	CustomerMasterKeySpec types.String `tfsdk:"customer_master_key_spec"`
+	CreationDate          types.String `tfsdk:"creation_date"`
+	DeletionDate          types.String `tfsdk:"deletion_date"`
+	Enabled               types.Bool   `tfsdk:"enabled"`
+	EncryptionAlgorithms  types.List   `tfsdk:"encryption_algorithms"`
+	ExpirationModel       types.String `tfsdk:"expiration_model"`
+	KeyID                 types.String `tfsdk:"key_id"`
+	KeyManager            types.String `tfsdk:"key_manager"`
+	KeyState              types.String `tfsdk:"key_state"`
+	KeyUsage              types.String `tfsdk:"key_usage"`
+	MacAlgorithms         types.List   `tfsdk:"mac_algorithms"`
+	Origin                types.String `tfsdk:"origin"`
+	Policy                types.String `tfsdk:"policy"`
+}
+
+// XksKeyConfigurationTFSDK holds the XksKeyConfiguration object returned by AWS
+// in the aws_param block for XKS keys. It has a single field: the external key ID
+// assigned by the XKS proxy (XksKeyConfigurationType.Id).
+type XksKeyConfigurationTFSDK struct {
+	ID types.String `tfsdk:"id"`
+}
+
+// AWSXKSKeyAwsParamTFSDK is the aws_param block for the aws_xks_key resource.
+// It embeds AWSKeyStoreCommonAwsParamTFSDK and adds xks_key_configuration (Computed),
+// which is a nested object containing the XksKeyConfiguration.Id assigned by AWS.
+type AWSXKSKeyAwsParamTFSDK struct {
+	AWSKeyStoreCommonAwsParamTFSDK
+	XksKeyConfiguration *XksKeyConfigurationTFSDK `tfsdk:"xks_key_configuration"`
+}
+
+// AWSCloudHSMKeyAwsParamTFSDK is the aws_param block for the aws_cloudhsm_key resource.
+// It embeds AWSKeyStoreCommonAwsParamTFSDK and adds key_rotation_enabled (Computed).
+// XKS keys do not support AWS automatic key rotation; CloudHSM keys do.
+type AWSCloudHSMKeyAwsParamTFSDK struct {
+	AWSKeyStoreCommonAwsParamTFSDK
+	KeyRotationEnabled types.Bool `tfsdk:"key_rotation_enabled"`
+}
+
+// AWSKeyStoreResourceCommonTFSDK holds the top-level Terraform state fields shared by
+// the aws_xks_key and aws_cloudhsm_key resources. It is a slim struct: fields that come
+// from the API aws_param block (arn, key_id, enabled, key_state, etc.) are now inside
+// the AWSParam nested object rather than at the top level.
+type AWSKeyStoreResourceCommonTFSDK struct {
+	ID                      types.String               `tfsdk:"id"`
+	Region                  types.String               `tfsdk:"region"`
+	EnableKey               types.Bool                 `tfsdk:"enable_key"`
+	EnableRotation          *AWSKeyEnableRotationTFSDK `tfsdk:"enable_rotation"`
+	KMSName                 types.String               `tfsdk:"kms_name"`
+	KMSID                   types.String               `tfsdk:"kms_id"`
+	ScheduleForDeletionDays types.Int64                `tfsdk:"schedule_for_deletion_days"`
+	CloudName               types.String               `tfsdk:"cloud_name"`
+	CreatedAt               types.String               `tfsdk:"created_at"`
+	ExternalAccounts        types.Set                  `tfsdk:"external_accounts"`
+	KeyAdmins               types.Set                  `tfsdk:"key_admins"`
+	KeyAdminsRoles          types.Set                  `tfsdk:"key_admins_roles"`
+	KeyMaterialOrigin       types.String               `tfsdk:"key_material_origin"`
+	KeyPolicy               *AWSKeyPolicyTFSDK         `tfsdk:"key_policy"`
+	KeySource               types.String               `tfsdk:"key_source"`
+	KeyType                 types.String               `tfsdk:"key_type"`
+	KeyUsers                types.Set                  `tfsdk:"key_users"`
+	KeyUsersRoles           types.Set                  `tfsdk:"key_users_roles"`
+	Labels                  types.Map                  `tfsdk:"labels"`
+	PolicyTemplateTag       types.Map                  `tfsdk:"policy_template_tag"`
+	RotatedAt               types.String               `tfsdk:"rotated_at"`
+	RotatedFrom             types.String               `tfsdk:"rotated_from"`
+	RotatedTo               types.String               `tfsdk:"rotated_to"`
+	RotationStatus          types.String               `tfsdk:"rotation_status"`
+	SyncedAt                types.String               `tfsdk:"synced_at"`
+	UpdatedAt               types.String               `tfsdk:"updated_at"`
+	// Keystore-specific fields
 	BypassPolicyLockoutSafetyCheck types.Bool   `tfsdk:"bypass_policy_lockout_safety_check"`
-	CustomerMasterKeySpec          types.String `tfsdk:"customer_master_key_spec"`
-	KeyUsage                       types.String `tfsdk:"key_usage"`
-	// aws_param block: alias/description/tags as inputs; policy as computed output.
-	// Uses types.Object so the Framework can represent unknown values when the block
-	// is Optional+Computed but not set in config (avoids "Value Conversion Error").
+	ValidTo                        types.String `tfsdk:"valid_to"`
+	KeySourceContainerName         types.String `tfsdk:"key_source_container_name"`
+	KeySourceContainerID           types.String `tfsdk:"key_source_container_id"`
+	CustomKeyStoreID               types.String `tfsdk:"custom_key_store_id"`
+	Linked                         types.Bool   `tfsdk:"linked"`
+	Blocked                        types.Bool   `tfsdk:"blocked"`
+	LocalKeyID                     types.String `tfsdk:"local_key_id"`
+	LocalKeyName                   types.String `tfsdk:"local_key_name"`
+	// aws_param holds the full AWS parameter block as a typed Object.
 	AWSParam types.Object `tfsdk:"aws_param"`
-	// Keystore-specific computed fields not present in AWSKeyCommonTFSDK
-	ValidTo                types.String `tfsdk:"valid_to"`
-	KeySourceContainerName types.String `tfsdk:"key_source_container_name"`
-	KeySourceContainerID   types.String `tfsdk:"key_source_container_id"`
-	CustomKeyStoreID       types.String `tfsdk:"custom_key_store_id"`
-	Linked                 types.Bool   `tfsdk:"linked"`
-	Blocked                types.Bool   `tfsdk:"blocked"`
-	AWSCustomKeyStoreID    types.String `tfsdk:"aws_custom_key_store_id"`
-	LocalKeyID             types.String `tfsdk:"local_key_id"`
-	LocalKeyName           types.String `tfsdk:"local_key_name"`
 }
 
 type AWSAccountDetailsModelTFSDK struct {
@@ -652,7 +612,6 @@ type AWSKeyDSAwsParamTFSDK struct {
 	Alias                    types.Set    `tfsdk:"alias"`
 	Arn                      types.String `tfsdk:"arn"`
 	AWSCustomKeyStoreID      types.String `tfsdk:"aws_custom_key_store_id"`
-	AWSKeyID                 types.String `tfsdk:"aws_key_id"`
 	CreationDate             types.String `tfsdk:"creation_date"`
 	CurrentKeyMaterialID     types.String `tfsdk:"current_key_material_id"`
 	CustomerMasterKeySpec    types.String `tfsdk:"customer_master_key_spec"`
@@ -661,6 +620,7 @@ type AWSKeyDSAwsParamTFSDK struct {
 	Enabled                  types.Bool   `tfsdk:"enabled"`
 	EncryptionAlgorithms     types.List   `tfsdk:"encryption_algorithms"`
 	ExpirationModel          types.String `tfsdk:"expiration_model"`
+	KeyID                    types.String `tfsdk:"key_id"`
 	KeyManager               types.String `tfsdk:"key_manager"`
 	KeyRotationEnabled       types.Bool   `tfsdk:"key_rotation_enabled"`
 	KeyState                 types.String `tfsdk:"key_state"`
@@ -681,12 +641,36 @@ type AWSKeyDSAwsParamTFSDK struct {
 
 // AWSKeyStoreDSAwsParamTFSDK is the computed-only aws_param block for the
 // aws_xks_key and aws_cloudhsm_key data sources.
-// It mirrors AWSKeyStoreAwsParamTFSDK but all fields are Computed (no user input).
+// It covers all fields from AwsParam that are relevant to key-store (XKS/CloudHSM) keys.
+// All fields are Computed. Fields that are type-specific (xks_key_configuration for XKS,
+// key_rotation_enabled for CloudHSM) are present in both but will be null/zero for the
+// key type that does not use them.
 type AWSKeyStoreDSAwsParamTFSDK struct {
+	// Input/Computed fields (populated only for linked keys)
 	Alias       types.Set    `tfsdk:"alias"`
 	Description types.String `tfsdk:"description"`
-	Policy      types.String `tfsdk:"policy"`
 	Tags        types.Map    `tfsdk:"tags"`
+	// Computed-only fields sourced from aws_param in the CCKM API response
+	Arn                   types.String `tfsdk:"arn"`
+	AWSAccountID          types.String `tfsdk:"aws_account_id"`
+	AWSCustomKeyStoreID   types.String `tfsdk:"aws_custom_key_store_id"`
+	CustomerMasterKeySpec types.String `tfsdk:"customer_master_key_spec"`
+	CreationDate          types.String `tfsdk:"creation_date"`
+	DeletionDate          types.String `tfsdk:"deletion_date"`
+	Enabled               types.Bool   `tfsdk:"enabled"`
+	EncryptionAlgorithms  types.List   `tfsdk:"encryption_algorithms"`
+	ExpirationModel       types.String `tfsdk:"expiration_model"`
+	KeyID                 types.String `tfsdk:"key_id"`
+	KeyManager            types.String `tfsdk:"key_manager"`
+	// key_rotation_enabled is populated for CloudHSM keys; null for XKS keys.
+	KeyRotationEnabled types.Bool   `tfsdk:"key_rotation_enabled"`
+	KeyState           types.String `tfsdk:"key_state"`
+	KeyUsage           types.String `tfsdk:"key_usage"`
+	MacAlgorithms      types.List   `tfsdk:"mac_algorithms"`
+	Origin             types.String `tfsdk:"origin"`
+	Policy             types.String `tfsdk:"policy"`
+	// xks_key_configuration is populated for XKS keys (raw JSON); null for CloudHSM keys.
+	XksKeyConfiguration types.String `tfsdk:"xks_key_configuration"`
 }
 
 type AWSKeyDataSourceTFSDK struct {
@@ -694,63 +678,46 @@ type AWSKeyDataSourceTFSDK struct {
 	AutoRotate               types.Bool             `tfsdk:"auto_rotate"`
 	AutoRotationPeriodInDays types.Int64            `tfsdk:"auto_rotation_period_in_days"`
 	AWSParam                 *AWSKeyDSAwsParamTFSDK `tfsdk:"aws_param"`
-	KMS                      types.String           `tfsdk:"kms"`
+	KMSName                  types.String           `tfsdk:"kms_name"`
 	KMSID                    types.String           `tfsdk:"kms_id"`
 	MultiRegion              types.Bool             `tfsdk:"multi_region"`
 	MultiRegionConfiguration types.Object           `tfsdk:"multi_region_configuration"`
 	NextRotationDate         types.String           `tfsdk:"next_rotation_date"`
 }
 
+// AWSKeyDataSourceCommonTFSDK holds the Terraform state fields that are common to all three
+// AWS key list datasource item types (aws_key, aws_xks_key, aws_cloudhsm_key) and that do
+// not originate from the API aws_param block.
 type AWSKeyDataSourceCommonTFSDK struct {
-	ID                    types.String `tfsdk:"id"`
-	Region                types.String `tfsdk:"region"`
-	Alias                 types.Set    `tfsdk:"alias"`
-	CustomerMasterKeySpec types.String `tfsdk:"customer_master_key_spec"`
-	Description           types.String `tfsdk:"description"`
-	EnableKey             types.Bool   `tfsdk:"enable_key"`
-	KeyUsage              types.String `tfsdk:"key_usage"`
-	Origin                types.String `tfsdk:"origin"`
-	Tags                  types.Map    `tfsdk:"tags"`
-	ARN                   types.String `tfsdk:"arn"`
-	AWSAccountID          types.String `tfsdk:"aws_account_id"`
-	AWSKeyID              types.String `tfsdk:"aws_key_id"`
-	CloudName             types.String `tfsdk:"cloud_name"`
-	CreatedAt             types.String `tfsdk:"created_at"`
-	DeletionDate          types.String `tfsdk:"deletion_date"`
-	Enabled               types.Bool   `tfsdk:"enabled"`
-	EncryptionAlgorithms  types.List   `tfsdk:"encryption_algorithms"`
-	ExpirationModel       types.String `tfsdk:"expiration_model"`
-	MacAlgorithms         types.List   `tfsdk:"mac_algorithms"`
-	ExternalAccounts      types.Set    `tfsdk:"external_accounts"`
-	KeyAdmins             types.Set    `tfsdk:"key_admins"`
-	KeyAdminsRoles        types.Set    `tfsdk:"key_admins_roles"`
-	KeyID                 types.String `tfsdk:"key_id"`
-	KeyManager            types.String `tfsdk:"key_manager"`
-	KeyMaterialOrigin     types.String `tfsdk:"key_material_origin"`
-	KeyRotationEnabled    types.Bool   `tfsdk:"key_rotation_enabled"`
-	KeySource             types.String `tfsdk:"key_source"`
-	KeyState              types.String `tfsdk:"key_state"`
-	KeyType               types.String `tfsdk:"key_type"`
-	KeyUsers              types.Set    `tfsdk:"key_users"`
-	KeyUsersRoles         types.Set    `tfsdk:"key_users_roles"`
-	Labels                types.Map    `tfsdk:"labels"`
-	LocalKeyID            types.String `tfsdk:"local_key_id"`
-	LocalKeyName          types.String `tfsdk:"local_key_name"`
-	Policy                types.String `tfsdk:"policy"`
-	PolicyTemplateTag     types.Map    `tfsdk:"policy_template_tag"`
-	RotatedAt             types.String `tfsdk:"rotated_at"`
-	RotatedFrom           types.String `tfsdk:"rotated_from"`
-	RotatedTo             types.String `tfsdk:"rotated_to"`
-	RotationStatus        types.String `tfsdk:"rotation_status"`
-	SyncedAt              types.String `tfsdk:"synced_at"`
-	UpdatedAt             types.String `tfsdk:"updated_at"`
-	ValidTo               types.String `tfsdk:"valid_to"`
+	ID                types.String `tfsdk:"id"`
+	Region            types.String `tfsdk:"region"`
+	CloudName         types.String `tfsdk:"cloud_name"`
+	CreatedAt         types.String `tfsdk:"created_at"`
+	ExternalAccounts  types.Set    `tfsdk:"external_accounts"`
+	KeyAdmins         types.Set    `tfsdk:"key_admins"`
+	KeyAdminsRoles    types.Set    `tfsdk:"key_admins_roles"`
+	KeyID             types.String `tfsdk:"key_id"`
+	KeyMaterialOrigin types.String `tfsdk:"key_material_origin"`
+	KeySource         types.String `tfsdk:"key_source"`
+	KeyType           types.String `tfsdk:"key_type"`
+	KeyUsers          types.Set    `tfsdk:"key_users"`
+	KeyUsersRoles     types.Set    `tfsdk:"key_users_roles"`
+	Labels            types.Map    `tfsdk:"labels"`
+	LocalKeyID        types.String `tfsdk:"local_key_id"`
+	LocalKeyName      types.String `tfsdk:"local_key_name"`
+	PolicyTemplateTag types.Map    `tfsdk:"policy_template_tag"`
+	RotatedAt         types.String `tfsdk:"rotated_at"`
+	RotatedFrom       types.String `tfsdk:"rotated_from"`
+	RotatedTo         types.String `tfsdk:"rotated_to"`
+	RotationStatus    types.String `tfsdk:"rotation_status"`
+	SyncedAt          types.String `tfsdk:"synced_at"`
+	UpdatedAt         types.String `tfsdk:"updated_at"`
 }
 
 type AWSKeyStoreKeyDataSourceCommonTFSDK struct {
 	AWSKeyDataSourceCommonTFSDK
 	AWSParam            *AWSKeyStoreDSAwsParamTFSDK `tfsdk:"aws_param"`
-	KMS                 types.String                `tfsdk:"kms"`
+	KMSName             types.String                `tfsdk:"kms_name"`
 	KMSID               types.String                `tfsdk:"kms_id"`
 	CustomKeyStoreID    types.String                `tfsdk:"custom_key_store_id"`
 	Linked              types.Bool                  `tfsdk:"linked"`
@@ -898,7 +865,7 @@ func commonAwsParamSchemaAttributes() map[string]schema.Attribute {
 			Computed:    true,
 			Description: "AWS account ID.",
 		},
-		"aws_key_id": schema.StringAttribute{
+		"key_id": schema.StringAttribute{
 			Computed:    true,
 			Description: "AWS key ID.",
 		},
@@ -1139,7 +1106,7 @@ func rotationHistoryByokSummarySchemaAttribute() schema.Attribute {
 // rotationHistoryByokFullSchemaAttribute returns the full rotation_history schema for the
 // aws_key_material resource (EXTERNAL/BYOK keys). Extends the native full schema with
 // BYOK-specific source key fields. AWSKeyRotationParams fields are nested under aws_params
-// to mirror the API response structure. No uri or account fields are included.
+// to mirror the API response structure.
 func rotationHistoryByokFullSchemaAttribute() schema.Attribute {
 	return schema.ListNestedAttribute{
 		Computed:    true,
@@ -1254,9 +1221,141 @@ func rotationHistoryByokFullSchemaAttribute() schema.Attribute {
 	}
 }
 
+// keyStoreResourceCommonAwsParamSchemaAttributes returns the schema attributes shared by the
+// full aws_param block for both aws_xks_key and aws_cloudhsm_key resource types. The caller
+// adds any type-specific fields (xks_key_configuration for XKS; key_rotation_enabled for CloudHSM).
+func keyStoreResourceCommonAwsParamSchemaAttributes() map[string]schema.Attribute {
+	return map[string]schema.Attribute{
+		// Input/Computed fields
+		"alias": schema.SetAttribute{
+			Optional:    true,
+			Computed:    true,
+			ElementType: types.StringType,
+			Description: "(Updatable for linked keys) Alias(es) assigned to the key.",
+			Validators: []validator.Set{
+				setvalidator.ValueStringsAre(
+					stringvalidator.RegexMatches(
+						regexp.MustCompile(`^[a-zA-Z0-9/_-]+$`),
+						"must only contain alphanumeric characters, forward slashes, underscores, and dashes",
+					),
+				),
+			},
+		},
+		"description": schema.StringAttribute{
+			Optional:    true,
+			Computed:    true,
+			Description: "(Updatable for linked keys) Description of the AWS key.",
+		},
+		"tags": schema.MapAttribute{
+			Optional:    true,
+			Computed:    true,
+			ElementType: types.StringType,
+			Description: "(Updatable for linked keys) Tags assigned to the key.",
+		},
+		// Computed-only fields sourced from aws_param in the CCKM API response
+		"arn": schema.StringAttribute{
+			Computed:    true,
+			Description: "The Amazon Resource Name (ARN) of the key.",
+		},
+		"aws_account_id": schema.StringAttribute{
+			Computed:    true,
+			Description: "AWS account ID.",
+		},
+		"aws_custom_key_store_id": schema.StringAttribute{
+			Computed:    true,
+			Description: "Custom keystore ID in AWS.",
+		},
+		"customer_master_key_spec": schema.StringAttribute{
+			Computed:    true,
+			Description: "Whether the KMS key contains a symmetric key or an asymmetric key pair.",
+		},
+		"creation_date": schema.StringAttribute{
+			Computed:    true,
+			Description: "Date the key was created in AWS.",
+		},
+		"deletion_date": schema.StringAttribute{
+			Computed:    true,
+			Description: "Date the key is scheduled for deletion. Populated only when the key is pending deletion.",
+		},
+		"enabled": schema.BoolAttribute{
+			Computed:    true,
+			Description: "True if the key is enabled in AWS.",
+		},
+		"encryption_algorithms": schema.ListAttribute{
+			Computed:    true,
+			ElementType: types.StringType,
+			Description: "Encryption algorithms supported by the key. Populated for asymmetric keys.",
+		},
+		"expiration_model": schema.StringAttribute{
+			Computed:    true,
+			Description: "Expiration model for the key material.",
+		},
+		"key_id": schema.StringAttribute{
+			Computed:    true,
+			Description: "AWS key ID.",
+		},
+		"key_manager": schema.StringAttribute{
+			Computed:    true,
+			Description: "Key manager (e.g. CUSTOMER).",
+		},
+		"key_state": schema.StringAttribute{
+			Computed:    true,
+			Description: "State of the key in AWS (e.g. Enabled, Disabled, PendingDeletion).",
+		},
+		"key_usage": schema.StringAttribute{
+			Computed:    true,
+			Description: "Intended use of the key (e.g. ENCRYPT_DECRYPT).",
+		},
+		"mac_algorithms": schema.ListAttribute{
+			Computed:    true,
+			ElementType: types.StringType,
+			Description: "MAC algorithms supported by the key. Populated for HMAC keys.",
+		},
+		"origin": schema.StringAttribute{
+			Computed:    true,
+			Description: "Origin of the key material (e.g. EXTERNAL_KEY_STORE, AWS_CLOUDHSM).",
+		},
+		"policy": schema.StringAttribute{
+			Computed:    true,
+			Description: "Resulting AWS key policy. Output only.",
+		},
+	}
+}
+
+// xksKeyAwsParamSchemaAttributes returns the full aws_param schema for the aws_xks_key
+// resource. It extends keyStoreResourceCommonAwsParamSchemaAttributes with xks_key_configuration,
+// which holds the XksKeyConfiguration.Id value returned by AWS.
+func xksKeyAwsParamSchemaAttributes() map[string]schema.Attribute {
+	attrs := keyStoreResourceCommonAwsParamSchemaAttributes()
+	attrs["xks_key_configuration"] = schema.SingleNestedAttribute{
+		Computed:    true,
+		Description: "XKS key configuration assigned by AWS. Present only for keys in an external key store.",
+		Attributes: map[string]schema.Attribute{
+			"id": schema.StringAttribute{
+				Computed:    true,
+				Description: "The ID of the external key in its external key manager, used by the XKS proxy to identify the key.",
+			},
+		},
+	}
+	return attrs
+}
+
+// cloudHSMKeyAwsParamSchemaAttributes returns the full aws_param schema for the aws_cloudhsm_key
+// resource. It extends keyStoreResourceCommonAwsParamSchemaAttributes with key_rotation_enabled.
+// CloudHSM keys support AWS automatic key rotation; XKS keys do not.
+func cloudHSMKeyAwsParamSchemaAttributes() map[string]schema.Attribute {
+	attrs := keyStoreResourceCommonAwsParamSchemaAttributes()
+	attrs["key_rotation_enabled"] = schema.BoolAttribute{
+		Computed:    true,
+		Description: "True if AWS automatic key rotation is enabled for this CloudHSM key.",
+	}
+	return attrs
+}
+
 // keyStoreAwsParamSchemaAttributes returns the schema attributes for the aws_param block
 // shared by both the aws_xks_key and aws_cloudhsm_key resources. Alias, description, and
 // tags are Optional/Computed inputs; policy is Computed-only (the resolved AWS key policy).
+// Retained for use by datasource helpers that have not yet been migrated.
 func keyStoreAwsParamSchemaAttributes() map[string]schema.Attribute {
 	return map[string]schema.Attribute{
 		"alias": schema.SetAttribute{

@@ -3,6 +3,7 @@ package cckm
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 
 	"github.com/ThalesGroup/terraform-provider-ciphertrust/internal/provider/cckm/utils"
 	"github.com/ThalesGroup/terraform-provider-ciphertrust/internal/provider/common"
@@ -101,6 +102,7 @@ func updateKeyPolicy(ctx context.Context, id string, client *common.Client, plan
 			return
 		}
 		planInput.KeyID = gjson.Get(response, "id").String()
+		tflog.Info(ctx, fmt.Sprintf("[aws_policy.go -> updateKeyPolicy] key policy updated successfully. key_id: %s", keyID))
 		tflog.Debug(ctx, "[aws_policy.go -> updateKeyPolicy][response:"+redactAWSResponse(response))
 	}
 }

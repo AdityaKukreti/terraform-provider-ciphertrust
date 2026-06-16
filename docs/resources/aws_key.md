@@ -162,12 +162,12 @@ Read-Only:
 
 - `arn` (String) The Amazon Resource Name (ARN) of the key.
 - `aws_account_id` (String) AWS account ID.
-- `aws_key_id` (String) AWS key ID.
 - `current_key_material_id` (String) AWS key material ID that is currently active for this key. Populated for EXTERNAL-origin keys.
 - `deletion_date` (String) Date the key is scheduled for deletion. Populated only when the key is pending deletion.
 - `enabled` (Boolean) True if the key is enabled in AWS.
 - `encryption_algorithms` (List of String) Encryption algorithms supported by the key. Populated for asymmetric keys.
 - `expiration_model` (String) Expiration model for EXTERNAL-origin keys.
+- `key_id` (String) AWS key ID.
 - `key_manager` (String) Key manager (e.g. CUSTOMER).
 - `key_rotation_enabled` (Boolean) True if AWS automatic key rotation is enabled.
 - `key_state` (String) State of the key in AWS (e.g. Enabled, Disabled, PendingDeletion).

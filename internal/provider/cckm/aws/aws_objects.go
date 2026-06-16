@@ -16,46 +16,6 @@ import (
 )
 
 // ---------------------------------------------------------------------------
-// XKS / CloudHSM key store aws_param
-// ---------------------------------------------------------------------------
-
-// keyStoreAwsParamAttrTypes defines the Framework attribute types for
-// AWSKeyStoreAwsParamTFSDK. Used when constructing or extracting a types.Object
-// for the aws_param nested block of aws_xks_key and aws_cloudhsm_key.
-var keyStoreAwsParamAttrTypes = map[string]attr.Type{
-	"alias":       types.SetType{ElemType: types.StringType},
-	"description": types.StringType,
-	"policy":      types.StringType,
-	"tags":        types.MapType{ElemType: types.StringType},
-}
-
-// extractAWSKeyStoreAwsParam extracts an AWSKeyStoreAwsParamTFSDK from a
-// types.Object. Returns a zero-value struct (with null fields) if the object
-// is null or unknown.
-func extractAWSKeyStoreAwsParam(ctx context.Context, obj types.Object, diags *diag.Diagnostics) AWSKeyStoreAwsParamTFSDK {
-	var p AWSKeyStoreAwsParamTFSDK
-	if obj.IsNull() || obj.IsUnknown() {
-		return p
-	}
-	d := obj.As(ctx, &p, basetypes.ObjectAsOptions{UnhandledNullAsEmpty: true, UnhandledUnknownAsEmpty: true})
-	if d.HasError() {
-		diags.Append(d...)
-	}
-	return p
-}
-
-// packAWSKeyStoreAwsParam packs an AWSKeyStoreAwsParamTFSDK into a types.Object.
-// On error, appends to diags and returns a null object.
-func packAWSKeyStoreAwsParam(ctx context.Context, p AWSKeyStoreAwsParamTFSDK, diags *diag.Diagnostics) types.Object {
-	obj, d := types.ObjectValueFrom(ctx, keyStoreAwsParamAttrTypes, p)
-	if d.HasError() {
-		diags.Append(d...)
-		return types.ObjectNull(keyStoreAwsParamAttrTypes)
-	}
-	return obj
-}
-
-// ---------------------------------------------------------------------------
 // Native (AWS_KMS) and BYOK (EXTERNAL) key aws_param - shared base type map
 // ---------------------------------------------------------------------------
 
@@ -66,7 +26,7 @@ var commonAwsParamAttrTypes = map[string]attr.Type{
 	"alias":                              types.SetType{ElemType: types.StringType},
 	"arn":                                types.StringType,
 	"aws_account_id":                     types.StringType,
-	"aws_key_id":                         types.StringType,
+	"key_id":                             types.StringType,
 	"bypass_policy_lockout_safety_check": types.BoolType,
 	"current_key_material_id":            types.StringType,
 	"customer_master_key_spec":           types.StringType,
@@ -171,6 +131,111 @@ func byokAwsParamToObject(ctx context.Context, p *AWSByokAwsParamTFSDK, diags *d
 		return types.ObjectNull(byokAwsParamAttrTypes)
 	}
 	obj, d := types.ObjectValueFrom(ctx, byokAwsParamAttrTypes, p)
+	diags.Append(d...)
+	return obj
+}
+
+// ---------------------------------------------------------------------------
+// XKS key aws_param
+// ---------------------------------------------------------------------------
+
+// keyStoreCommonAwsParamAttrTypes is the attr.Type map for the fields shared by
+// the aws_param block of both aws_xks_key and aws_cloudhsm_key resources.
+var keyStoreCommonAwsParamAttrTypes = map[string]attr.Type{
+	"alias":                    types.SetType{ElemType: types.StringType},
+	"arn":                      types.StringType,
+	"aws_account_id":           types.StringType,
+	"aws_custom_key_store_id":  types.StringType,
+	"customer_master_key_spec": types.StringType,
+	"creation_date":            types.StringType,
+	"deletion_date":            types.StringType,
+	"description":              types.StringType,
+	"enabled":                  types.BoolType,
+	"encryption_algorithms":    types.ListType{ElemType: types.StringType},
+	"expiration_model":         types.StringType,
+	"key_id":                   types.StringType,
+	"key_manager":              types.StringType,
+	"key_state":                types.StringType,
+	"key_usage":                types.StringType,
+	"mac_algorithms":           types.ListType{ElemType: types.StringType},
+	"origin":                   types.StringType,
+	"policy":                   types.StringType,
+	"tags":                     types.MapType{ElemType: types.StringType},
+}
+
+// xksKeyConfigAttrTypes is the attr.Type map for the xks_key_configuration nested object.
+// It mirrors XksKeyConfigurationTFSDK.
+var xksKeyConfigAttrTypes = map[string]attr.Type{
+	"id": types.StringType,
+}
+
+// xksKeyAwsParamAttrTypes is the attr.Type map for the aws_param block of the
+// aws_xks_key resource. Extends keyStoreCommonAwsParamAttrTypes with xks_key_configuration
+// as a nested object (ObjectType).
+var xksKeyAwsParamAttrTypes = func() map[string]attr.Type {
+	m := make(map[string]attr.Type, len(keyStoreCommonAwsParamAttrTypes)+1)
+	for k, v := range keyStoreCommonAwsParamAttrTypes {
+		m[k] = v
+	}
+	m["xks_key_configuration"] = types.ObjectType{AttrTypes: xksKeyConfigAttrTypes}
+	return m
+}()
+
+// extractXKSKeyAwsParam decodes a types.Object into *AWSXKSKeyAwsParamTFSDK.
+// Returns nil when the object is null or unknown.
+func extractXKSKeyAwsParam(ctx context.Context, obj types.Object, diags *diag.Diagnostics) *AWSXKSKeyAwsParamTFSDK {
+	if obj.IsNull() || obj.IsUnknown() {
+		return nil
+	}
+	var p AWSXKSKeyAwsParamTFSDK
+	diags.Append(obj.As(ctx, &p, basetypes.ObjectAsOptions{UnhandledNullAsEmpty: true, UnhandledUnknownAsEmpty: true})...)
+	return &p
+}
+
+// packXKSKeyAwsParam converts *AWSXKSKeyAwsParamTFSDK to a types.Object for state storage.
+// Returns a typed null object when p is nil.
+func packXKSKeyAwsParam(ctx context.Context, p *AWSXKSKeyAwsParamTFSDK, diags *diag.Diagnostics) types.Object {
+	if p == nil {
+		return types.ObjectNull(xksKeyAwsParamAttrTypes)
+	}
+	obj, d := types.ObjectValueFrom(ctx, xksKeyAwsParamAttrTypes, p)
+	diags.Append(d...)
+	return obj
+}
+
+// ---------------------------------------------------------------------------
+// CloudHSM key aws_param
+// ---------------------------------------------------------------------------
+
+// cloudHSMKeyAwsParamAttrTypes is the attr.Type map for the aws_param block of the
+// aws_cloudhsm_key resource. Extends keyStoreCommonAwsParamAttrTypes with key_rotation_enabled.
+var cloudHSMKeyAwsParamAttrTypes = func() map[string]attr.Type {
+	m := make(map[string]attr.Type, len(keyStoreCommonAwsParamAttrTypes)+1)
+	for k, v := range keyStoreCommonAwsParamAttrTypes {
+		m[k] = v
+	}
+	m["key_rotation_enabled"] = types.BoolType
+	return m
+}()
+
+// extractCloudHSMKeyAwsParam decodes a types.Object into *AWSCloudHSMKeyAwsParamTFSDK.
+// Returns nil when the object is null or unknown.
+func extractCloudHSMKeyAwsParam(ctx context.Context, obj types.Object, diags *diag.Diagnostics) *AWSCloudHSMKeyAwsParamTFSDK {
+	if obj.IsNull() || obj.IsUnknown() {
+		return nil
+	}
+	var p AWSCloudHSMKeyAwsParamTFSDK
+	diags.Append(obj.As(ctx, &p, basetypes.ObjectAsOptions{UnhandledNullAsEmpty: true, UnhandledUnknownAsEmpty: true})...)
+	return &p
+}
+
+// packCloudHSMKeyAwsParam converts *AWSCloudHSMKeyAwsParamTFSDK to a types.Object for state storage.
+// Returns a typed null object when p is nil.
+func packCloudHSMKeyAwsParam(ctx context.Context, p *AWSCloudHSMKeyAwsParamTFSDK, diags *diag.Diagnostics) types.Object {
+	if p == nil {
+		return types.ObjectNull(cloudHSMKeyAwsParamAttrTypes)
+	}
+	obj, d := types.ObjectValueFrom(ctx, cloudHSMKeyAwsParamAttrTypes, p)
 	diags.Append(d...)
 	return obj
 }

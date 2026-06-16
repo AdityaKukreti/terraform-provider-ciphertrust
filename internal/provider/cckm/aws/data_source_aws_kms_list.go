@@ -187,7 +187,7 @@ func (d *dataSourceAWSKms) Read(ctx context.Context, req datasource.ReadRequest,
 	}
 	jsonStr, err := d.client.ListWithFilters(ctx, id, common.URL_AWS+"/kms/", filters)
 	if err != nil {
-		tflog.Debug(ctx, common.ERR_METHOD_END+err.Error()+" [data_source_aws_kms.go -> Read]["+id+"]")
+		tflog.Error(ctx, common.ERR_METHOD_END+err.Error()+" [data_source_aws_kms.go -> Read]["+id+"]")
 		resp.Diagnostics.AddError(
 			"Unable to read AWS KMS from CipherTrust Manager",
 			err.Error(),
@@ -197,7 +197,7 @@ func (d *dataSourceAWSKms) Read(ctx context.Context, req datasource.ReadRequest,
 	var kmsList DataSourceKmsListJSON
 	err = json.Unmarshal([]byte(jsonStr), &kmsList)
 	if err != nil {
-		tflog.Debug(ctx, common.ERR_METHOD_END+err.Error()+" [data_source_aws_kms.go -> Read]["+id+"]")
+		tflog.Error(ctx, common.ERR_METHOD_END+err.Error()+" [data_source_aws_kms.go -> Read]["+id+"]")
 		resp.Diagnostics.AddError(
 			"Unable to read AWS KMS from CipherTrust Manager",
 			err.Error(),

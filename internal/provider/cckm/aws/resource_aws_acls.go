@@ -306,7 +306,7 @@ func (r *resourceCCKMAWSAcl) Update(ctx context.Context, req resource.UpdateRequ
 	var planActions []string
 	resp.Diagnostics.Append(plan.Actions.ElementsAs(ctx, &planActions, false)...)
 	if resp.Diagnostics.HasError() {
-		tflog.Debug(ctx, fmt.Sprintf("Error converting ACL actions: %v", resp.Diagnostics.Errors()))
+		tflog.Error(ctx, fmt.Sprintf("Error converting ACL actions: %v", resp.Diagnostics.Errors()))
 		return
 	}
 

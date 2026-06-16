@@ -59,7 +59,7 @@ func cleanupCckmOCIVaults() {
 // OCI CCKM resource type: native key + key version, BYOK key + BYOK key version,
 // and vault ACL. A RefreshState step confirms there is no post-apply plan drift.
 func TestCckmOCIMinimalConfig(t *testing.T) {
-	t.Skip("skipped")
+
 	connectionResource := initCckmOCITest(t)
 
 	keyConfig := `

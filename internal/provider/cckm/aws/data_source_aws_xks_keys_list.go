@@ -125,58 +125,62 @@ func (d *dataSourceAWSXKSKey) setXKSKeyState(ctx context.Context, response strin
 	plan.SourceKeyTier = types.StringValue(gjson.Get(response, "key_source").String())
 }
 
-// setCustomKeyStoreKeyCommonState populates the common key store key fields shared by the XKS and CloudHSM key data sources.
+// setCustomKeyStoreKeyCommonState populates the common key store key fields shared by the XKS
+// and CloudHSM key data sources. Fields sourced from aws_param are stored exclusively inside
+// the aws_param nested block via setKeyStoreDSAwsParam; they are not set at the outer level.
 func setCustomKeyStoreKeyCommonState(ctx context.Context, response string, plan *AWSKeyStoreKeyDataSourceCommonTFSDK, diags *diag.Diagnostics) {
 	setCommonKeyDataSourceState(ctx, response, &plan.AWSKeyDataSourceCommonTFSDK, diags)
 	plan.Blocked = types.BoolValue(gjson.Get(response, "blocked").Bool())
-	plan.AWSCustomKeyStoreID = types.StringValue(gjson.Get(response, "aws_params.CustomKeyStoreId").String())
-	plan.KMS = types.StringValue(gjson.Get(response, "kms").String())
+	plan.AWSCustomKeyStoreID = types.StringValue(gjson.Get(response, "aws_param.CustomKeyStoreId").String())
+	plan.KMSName = types.StringValue(gjson.Get(response, "kms").String())
 	plan.KMSID = types.StringValue(gjson.Get(response, "kms_id").String())
 	plan.CustomKeyStoreID = types.StringValue(gjson.Get(response, "custom_key_store_id").String())
 	plan.Linked = types.BoolValue(gjson.Get(response, "linked_state").Bool())
 	plan.Region = types.StringValue(gjson.Get(response, "region").String())
 	plan.ID = types.StringValue(gjson.Get(response, "id").String())
-	if plan.Linked.ValueBool() {
-		plan.Description = types.StringValue(gjson.Get(response, "aws_param.Description").String())
-		setAliases(response, &plan.Alias, diags)
-		setKeyTags(ctx, response, &plan.Tags, diags)
-	} else {
-		var emptyAliases []attr.Value
-		var d diag.Diagnostics
-		plan.Alias, d = types.SetValue(types.StringType, emptyAliases)
-		if d.HasError() {
-			diags.Append(d...)
-		}
-		tags := make(map[string]string)
-		plan.Tags, d = types.MapValueFrom(ctx, types.StringType, tags)
-		if d.HasError() {
-			diags.Append(d...)
-		}
-	}
 	plan.AWSParam = setKeyStoreDSAwsParam(ctx, response, plan.Linked.ValueBool(), diags)
 }
 
-// setKeyStoreDSAwsParam builds the computed-only AWSKeyStoreDSAwsParamTFSDK block
-// from an API response JSON string. Alias and tags are only populated for linked keys.
+// setKeyStoreDSAwsParam builds the computed-only AWSKeyStoreDSAwsParamTFSDK block from an
+// API response JSON string. Alias, description, and tags are only populated for linked keys.
+// All other aws_param computed fields are populated regardless of linked state.
 func setKeyStoreDSAwsParam(ctx context.Context, response string, linked bool, diags *diag.Diagnostics) *AWSKeyStoreDSAwsParamTFSDK {
 	p := &AWSKeyStoreDSAwsParamTFSDK{}
 	if linked {
 		setAliases(response, &p.Alias, diags)
 		setKeyTags(ctx, response, &p.Tags, diags)
 	} else {
-		var emptyAliases []attr.Value
 		var d diag.Diagnostics
-		p.Alias, d = types.SetValue(types.StringType, emptyAliases)
+		p.Alias, d = types.SetValue(types.StringType, []attr.Value{})
 		if d.HasError() {
 			diags.Append(d...)
 		}
-		tags := make(map[string]string)
-		p.Tags, d = types.MapValueFrom(ctx, types.StringType, tags)
+		p.Tags, d = types.MapValueFrom(ctx, types.StringType, map[string]string{})
 		if d.HasError() {
 			diags.Append(d...)
 		}
 	}
 	p.Description = types.StringValue(gjson.Get(response, "aws_param.Description").String())
+	// Computed fields from aws_param populated for all keys.
+	p.Arn = types.StringValue(gjson.Get(response, "aws_param.Arn").String())
+	p.AWSAccountID = types.StringValue(gjson.Get(response, "aws_param.AWSAccountId").String())
+	p.AWSCustomKeyStoreID = types.StringValue(gjson.Get(response, "aws_param.CustomKeyStoreId").String())
+	p.CustomerMasterKeySpec = types.StringValue(gjson.Get(response, "aws_param.CustomerMasterKeySpec").String())
+	p.CreationDate = types.StringValue(gjson.Get(response, "aws_param.CreationDate").String())
+	p.DeletionDate = types.StringValue(gjson.Get(response, "deletion_date").String())
+	p.Enabled = types.BoolValue(gjson.Get(response, "aws_param.Enabled").Bool())
+	p.EncryptionAlgorithms = utils.StringSliceJSONToListValue(gjson.Get(response, "aws_param.EncryptionAlgorithms").Array(), diags)
+	p.ExpirationModel = types.StringValue(gjson.Get(response, "aws_param.ExpirationModel").String())
+	p.KeyID = types.StringValue(gjson.Get(response, "aws_param.KeyID").String())
+	p.KeyManager = types.StringValue(gjson.Get(response, "aws_param.KeyManager").String())
+	// key_rotation_enabled is set for CloudHSM keys; XKS keys will return false/zero.
+	p.KeyRotationEnabled = types.BoolValue(gjson.Get(response, "aws_param.KeyRotationEnabled").Bool())
+	p.KeyState = types.StringValue(gjson.Get(response, "aws_param.KeyState").String())
+	p.KeyUsage = types.StringValue(gjson.Get(response, "aws_param.KeyUsage").String())
+	p.MacAlgorithms = utils.StringSliceJSONToListValue(gjson.Get(response, "aws_param.MacAlgorithmSpec").Array(), diags)
+	p.Origin = types.StringValue(gjson.Get(response, "aws_param.Origin").String())
 	p.Policy = types.StringValue(gjson.Get(response, "aws_param.Policy").String())
+	// xks_key_configuration is set for XKS keys; CloudHSM keys will have an empty JSON string.
+	p.XksKeyConfiguration = types.StringValue(gjson.Get(response, "aws_param.XksKeyConfiguration").Raw)
 	return p
 }

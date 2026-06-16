@@ -99,6 +99,7 @@ func TestCckmAWSDataSourceXksKey(t *testing.T) {
 					resource.TestCheckResourceAttrPair(keyResource, "blocked", dsByName, "keys.0.blocked"),
 					resource.TestCheckResourceAttrPair(keyResource, "linked", dsByName, "keys.0.linked"),
 					resource.TestCheckResourceAttrPair(keyResource, "kms_id", dsByName, "keys.0.kms_id"),
+
 					resource.TestCheckResourceAttr(dsByName, "keys.0.labels.%", "0"),
 					// aws_param block - alias and tags are empty for unlinked keys
 					resource.TestCheckResourceAttr(dsByName, "keys.0.aws_param.alias.#", "0"),

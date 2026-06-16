@@ -3,6 +3,7 @@ package cckm
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 
 	"github.com/ThalesGroup/terraform-provider-ciphertrust/internal/provider/cckm/utils"
 	"github.com/ThalesGroup/terraform-provider-ciphertrust/internal/provider/common"
@@ -62,6 +63,7 @@ func updateTags(ctx context.Context, id string, client *common.Client, planTags 
 			diags.AddError(details, "")
 			return
 		}
+		tflog.Info(ctx, fmt.Sprintf("[aws_tags.go -> updateTags] tags removed successfully. key_id: %s", keyID))
 		tflog.Debug(ctx, "[aws_tags.go -> updateTags][response:"+redactAWSResponse(response))
 	}
 	for planKey, planValue := range planTags {
@@ -97,6 +99,7 @@ func updateTags(ctx context.Context, id string, client *common.Client, planTags 
 			diags.AddError(details, "")
 			return
 		}
+		tflog.Info(ctx, fmt.Sprintf("[aws_tags.go -> updateTags] tags added successfully. key_id: %s", keyID))
 		tflog.Debug(ctx, "[aws_tags.go -> updateTags][response:"+redactAWSResponse(response))
 	}
 }
@@ -179,6 +182,8 @@ func removeKeyPolicyTemplateTag(ctx context.Context, id string, client *common.C
 			details := utils.ApiError(msg, map[string]interface{}{"error": err.Error(), "key_id": keyID})
 			tflog.Warn(ctx, details)
 			diags.AddWarning(details, "")
+		} else {
+			tflog.Info(ctx, fmt.Sprintf("[aws_tags.go -> removeKeyPolicyTemplateTag] policy template tag removed successfully. key_id: %s", keyID))
 		}
 	}
 }

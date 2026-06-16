@@ -82,7 +82,7 @@ func getAwsKey(ctx context.Context, id string, client *common.Client, kmsID stri
 // AWS key ID (the short ID such as "abc12345-..." or an MR key ID starting with "mrk-").
 //
 // For a standard key the filter "keyid" is sufficient to uniquely identify it.
-// For a multi-region key (aws_key_id starts with "mrk-") the same "keyid" filter is used but
+// For a multi-region key (an aws key_id starts with "mrk-") the same "keyid" filter is used but
 // the additional filters "multi_region=true" and "multi_region_key_type=PRIMARY" are added so
 // that only the primary key record is returned (each replica shares the same mrk- key ID prefix).
 //
@@ -101,7 +101,7 @@ func findCMKeyIDByAWSKeyID(ctx context.Context, id string, client *common.Client
 	listJSON, err := client.ListWithFilters(ctx, id, common.URL_AWS_KEY, filters)
 	if err != nil {
 		msg := "Error looking up AWS key in CipherTrust Manager by AWS key ID."
-		details := utils.ApiError(msg, map[string]interface{}{"error": err.Error(), "aws_key_id": awsKeyID})
+		details := utils.ApiError(msg, map[string]interface{}{"error": err.Error(), "key_id": awsKeyID})
 		tflog.Error(ctx, details)
 		diags.AddError(details, "")
 		return ""
@@ -110,14 +110,14 @@ func findCMKeyIDByAWSKeyID(ctx context.Context, id string, client *common.Client
 	total := gjson.Get(listJSON, "total").Int()
 	if total == 0 {
 		msg := "AWS key not found in CipherTrust Manager. Ensure the key has been registered in CM before managing its key material."
-		details := utils.ApiError(msg, map[string]interface{}{"aws_key_id": awsKeyID})
+		details := utils.ApiError(msg, map[string]interface{}{"key_id": awsKeyID})
 		tflog.Error(ctx, details)
 		diags.AddError(details, "")
 		return ""
 	}
 	if total > 1 {
 		msg := "Multiple AWS keys found in CipherTrust Manager with the same AWS key ID."
-		details := utils.ApiError(msg, map[string]interface{}{"aws_key_id": awsKeyID, "count": total})
+		details := utils.ApiError(msg, map[string]interface{}{"key_id": awsKeyID, "count": total})
 		tflog.Error(ctx, details)
 		diags.AddError(details, "")
 		return ""
@@ -126,7 +126,7 @@ func findCMKeyIDByAWSKeyID(ctx context.Context, id string, client *common.Client
 	cmKeyID := gjson.Get(listJSON, "resources.0.id").String()
 	if cmKeyID == "" {
 		msg := "CipherTrust Manager key ID was empty in list response."
-		details := utils.ApiError(msg, map[string]interface{}{"aws_key_id": awsKeyID})
+		details := utils.ApiError(msg, map[string]interface{}{"key_id": awsKeyID})
 		tflog.Error(ctx, details)
 		diags.AddError(details, "")
 		return ""
@@ -147,7 +147,7 @@ func findKeyCMIDByRegion(ctx context.Context, id string, client *common.Client, 
 	listJSON, err := client.ListWithFilters(ctx, id, common.URL_AWS_KEY, filters)
 	if err != nil {
 		msg := "Error looking up key in CipherTrust Manager by region."
-		details := utils.ApiError(msg, map[string]interface{}{"error": err.Error(), "aws_key_id": awsMrkKeyID, "region": region})
+		details := utils.ApiError(msg, map[string]interface{}{"error": err.Error(), "key_id": awsMrkKeyID, "region": region})
 		tflog.Error(ctx, details)
 		diags.AddError(details, "")
 		return ""
@@ -155,7 +155,7 @@ func findKeyCMIDByRegion(ctx context.Context, id string, client *common.Client, 
 	total := gjson.Get(listJSON, "total").Int()
 	if total == 0 {
 		msg := "Key not found by region in CipherTrust Manager."
-		details := utils.ApiError(msg, map[string]interface{}{"aws_key_id": awsMrkKeyID, "region": region})
+		details := utils.ApiError(msg, map[string]interface{}{"key_id": awsMrkKeyID, "region": region})
 		tflog.Error(ctx, details)
 		diags.AddError(details, "")
 		return ""
@@ -163,7 +163,7 @@ func findKeyCMIDByRegion(ctx context.Context, id string, client *common.Client, 
 	cmKeyID := gjson.Get(listJSON, "resources.0.id").String()
 	if cmKeyID == "" {
 		msg := "CipherTrust Manager key ID was empty looking up key by region."
-		details := utils.ApiError(msg, map[string]interface{}{"aws_key_id": awsMrkKeyID, "region": region})
+		details := utils.ApiError(msg, map[string]interface{}{"key_id": awsMrkKeyID, "region": region})
 		tflog.Error(ctx, details)
 		diags.AddError(details, "")
 		return ""

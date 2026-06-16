@@ -215,8 +215,6 @@ func TestCckmAWSXksUnlinkedKey(t *testing.T) {
 			{
 				Config: createConfigStr,
 				Check: resource.ComposeTestCheckFunc(
-					tellMe("Step 1 createConfigStr"),
-					resource.TestCheckResourceAttr(keyResourceMaxParams, "aws_param.alias.#", "3"),
 					// blocked, enable_key, key_state: for unlinked keys these are stored from plan but not
 					// applied to AWS - block/enable ops are gated on linked_state == true.
 					resource.TestCheckResourceAttr(keyResourceMaxParams, "blocked", "true"),
@@ -226,16 +224,17 @@ func TestCckmAWSXksUnlinkedKey(t *testing.T) {
 					resource.TestCheckResourceAttr(keyResourceMaxParams, "labels.disable_encrypt_on_auto_rotate", "false"),
 					resource.TestCheckResourceAttr(keyResourceMaxParams, "labels.disable_encrypt_for_all_accounts_on_auto_rotate", "false"),
 					resource.TestCheckResourceAttrPair(keyResourceMaxParams, "labels.job_config_id", "ciphertrust_scheduler.scheduled_rotation_job", "id"),
-					resource.TestCheckResourceAttr(keyResourceMaxParams, "key_state", "Enabled"),
+					resource.TestCheckResourceAttr(keyResourceMaxParams, "aws_param.alias.#", "3"),
+					resource.TestCheckResourceAttr(keyResourceMaxParams, "aws_param.key_state", "Enabled"),
 					resource.TestCheckResourceAttr(keyResourceMaxParams, "aws_param.description", "create description"),
 					resource.TestCheckResourceAttr(keyResourceMaxParams, "aws_param.tags.%", "1"),
 					resource.TestCheckResourceAttr(keyResourceMaxParams, "aws_param.tags.TagKey1", "TagValue1"),
 
-					resource.TestCheckResourceAttr(keyResourceMinParams, "aws_param.alias.#", "0"),
 					resource.TestCheckResourceAttr(keyResourceMinParams, "blocked", "false"),
 					resource.TestCheckResourceAttr(keyResourceMinParams, "enable_key", "true"),
 					resource.TestCheckResourceAttr(keyResourceMinParams, "labels.%", "0"),
-					resource.TestCheckResourceAttr(keyResourceMinParams, "key_state", "Enabled"),
+					resource.TestCheckResourceAttr(keyResourceMinParams, "aws_param.alias.#", "0"),
+					resource.TestCheckResourceAttr(keyResourceMinParams, "aws_param.key_state", "Enabled"),
 					resource.TestCheckResourceAttr(keyResourceMinParams, "aws_param.description", ""),
 					resource.TestCheckResourceAttr(keyResourceMinParams, "aws_param.tags.%", "0"),
 				),
@@ -255,22 +254,21 @@ func TestCckmAWSXksUnlinkedKey(t *testing.T) {
 			{
 				Config: updateConfigStr,
 				Check: resource.ComposeTestCheckFunc(
-					tellMe("Step 4 updateConfigStr"),
-					resource.TestCheckResourceAttr(keyResourceMaxParams, "aws_param.alias.#", "1"),
 					resource.TestCheckResourceAttr(keyResourceMaxParams, "blocked", "false"),
 					resource.TestCheckResourceAttr(keyResourceMaxParams, "enable_key", "true"),
 					resource.TestCheckResourceAttr(keyResourceMaxParams, "labels.%", "0"),
-					resource.TestCheckResourceAttr(keyResourceMaxParams, "key_state", "Enabled"),
+					resource.TestCheckResourceAttr(keyResourceMaxParams, "aws_param.alias.#", "1"),
+					resource.TestCheckResourceAttr(keyResourceMaxParams, "aws_param.key_state", "Enabled"),
 					resource.TestCheckResourceAttr(keyResourceMaxParams, "aws_param.description", "update description"),
 					resource.TestCheckResourceAttr(keyResourceMaxParams, "aws_param.tags.%", "2"),
 					resource.TestCheckResourceAttr(keyResourceMaxParams, "aws_param.tags.TagKey1", "TagValue1"),
 					resource.TestCheckResourceAttr(keyResourceMaxParams, "aws_param.tags.TagKey2", "TagValue2"),
 
-					resource.TestCheckResourceAttr(keyResourceMinParams, "aws_param.alias.#", "1"),
 					resource.TestCheckResourceAttr(keyResourceMinParams, "blocked", "true"),
 					resource.TestCheckResourceAttr(keyResourceMinParams, "enable_key", "false"),
 					resource.TestCheckResourceAttr(keyResourceMinParams, "labels.%", "0"),
-					resource.TestCheckResourceAttr(keyResourceMinParams, "key_state", "Enabled"),
+					resource.TestCheckResourceAttr(keyResourceMinParams, "aws_param.alias.#", "1"),
+					resource.TestCheckResourceAttr(keyResourceMinParams, "aws_param.key_state", "Enabled"),
 					resource.TestCheckResourceAttr(keyResourceMinParams, "aws_param.description", "update description"),
 					resource.TestCheckResourceAttr(keyResourceMinParams, "aws_param.tags.%", "2"),
 					resource.TestCheckResourceAttr(keyResourceMinParams, "aws_param.tags.TagKey1", "TagValue1"),
@@ -296,8 +294,6 @@ func TestCckmAWSXksUnlinkedKey(t *testing.T) {
 			{
 				Config: createConfigStr,
 				Check: resource.ComposeTestCheckFunc(
-					tellMe("Step later createConfigStr again"),
-					resource.TestCheckResourceAttr(keyResourceMaxParams, "aws_param.alias.#", "3"),
 					// blocked, enable_key, key_state: for unlinked keys these are stored from plan but not
 					// applied to AWS - block/enable ops are gated on linked_state == true.
 					resource.TestCheckResourceAttr(keyResourceMaxParams, "blocked", "true"),
@@ -307,16 +303,17 @@ func TestCckmAWSXksUnlinkedKey(t *testing.T) {
 					resource.TestCheckResourceAttr(keyResourceMaxParams, "labels.disable_encrypt_on_auto_rotate", "false"),
 					resource.TestCheckResourceAttr(keyResourceMaxParams, "labels.disable_encrypt_for_all_accounts_on_auto_rotate", "false"),
 					resource.TestCheckResourceAttrPair(keyResourceMaxParams, "labels.job_config_id", "ciphertrust_scheduler.scheduled_rotation_job", "id"),
-					resource.TestCheckResourceAttr(keyResourceMaxParams, "key_state", "Enabled"),
+					resource.TestCheckResourceAttr(keyResourceMaxParams, "aws_param.alias.#", "3"),
+					resource.TestCheckResourceAttr(keyResourceMaxParams, "aws_param.key_state", "Enabled"),
 					resource.TestCheckResourceAttr(keyResourceMaxParams, "aws_param.description", "create description"),
 					resource.TestCheckResourceAttr(keyResourceMaxParams, "aws_param.tags.%", "1"),
 					resource.TestCheckResourceAttr(keyResourceMaxParams, "aws_param.tags.TagKey1", "TagValue1"),
 
-					resource.TestCheckResourceAttr(keyResourceMinParams, "aws_param.alias.#", "0"),
 					resource.TestCheckResourceAttr(keyResourceMinParams, "blocked", "false"),
 					resource.TestCheckResourceAttr(keyResourceMinParams, "enable_key", "true"),
 					resource.TestCheckResourceAttr(keyResourceMinParams, "labels.%", "0"),
-					resource.TestCheckResourceAttr(keyResourceMinParams, "key_state", "Enabled"),
+					resource.TestCheckResourceAttr(keyResourceMinParams, "aws_param.alias.#", "0"),
+					resource.TestCheckResourceAttr(keyResourceMinParams, "aws_param.key_state", "Enabled"),
 					resource.TestCheckResourceAttr(keyResourceMinParams, "aws_param.description", ""),
 					resource.TestCheckResourceAttr(keyResourceMinParams, "aws_param.tags.%", "0"),
 				),

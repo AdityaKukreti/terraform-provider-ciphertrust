@@ -254,8 +254,7 @@ func (r *resourceAWSKeyRotation) Create(ctx context.Context, req resource.Create
 		return
 	}
 	prevRotationCount := gjson.Get(rotListJSON, "total").Int()
-	tflog.Debug(ctx, fmt.Sprintf(
-		"[resource_aws_key_rotation.go -> Create] pre-rotation snapshot: key_id=%s prevMaterialID=%q prevRotationCount=%d",
+	tflog.Debug(ctx, fmt.Sprintf("[resource_aws_key_rotation.go -> Create] pre-rotation snapshot: key_id=%s prevMaterialID=%q prevRotationCount=%d",
 		keyID, prevMaterialID, prevRotationCount,
 	))
 
@@ -407,16 +406,14 @@ func waitForKeyUpdatedAt(
 		time.Sleep(time.Duration(pollInterval) * time.Second)
 		keyJSON, err := client.GetById(ctx, id, keyID, common.URL_AWS_KEY)
 		if err != nil {
-			tflog.Warn(ctx, fmt.Sprintf(
-				"[resource_aws_key_rotation.go -> waitForKeyUpdatedAt] poll %d/%d: error fetching key: %s",
+			tflog.Warn(ctx, fmt.Sprintf("[resource_aws_key_rotation.go -> waitForKeyUpdatedAt] poll %d/%d: error fetching key: %s",
 				i+1, maxPolls, err.Error(),
 			))
 			continue
 		}
 		currentUpdatedAt := gjson.Get(keyJSON, "updatedAt").String()
 		if currentUpdatedAt != "" && currentUpdatedAt != prevUpdatedAt {
-			tflog.Debug(ctx, fmt.Sprintf(
-				"[resource_aws_key_rotation.go -> waitForKeyUpdatedAt] refresh detected: updated_at changed from %q to %q",
+			tflog.Debug(ctx, fmt.Sprintf("[resource_aws_key_rotation.go -> waitForKeyUpdatedAt] refresh detected: updated_at changed from %q to %q",
 				prevUpdatedAt, currentUpdatedAt,
 			))
 			return
@@ -451,7 +448,6 @@ func waitForNativeRotation(
 		pollInterval = shortAwsKeyOpSleep
 	)
 
-	tStart := time.Now()
 	rotListFilters := url.Values{"limit": []string{"-1"}}
 
 	for i := 0; i < maxPolls; i++ {
@@ -476,8 +472,7 @@ func waitForNativeRotation(
 			currentRotationCount = gjson.Get(rotListJSON, "total").Int()
 		}
 
-		tflog.Debug(ctx, fmt.Sprintf(
-			"[resource_aws_key_rotation.go -> waitForNativeRotation] poll %d/%d - rotationCount: prev=%d current=%d, currentMaterialID: prev=%q current=%q",
+		tflog.Debug(ctx, fmt.Sprintf("[resource_aws_key_rotation.go -> waitForNativeRotation] poll %d/%d - rotationCount: prev=%d current=%d, currentMaterialID: prev=%q current=%q",
 			i+1, maxPolls, prevRotationCount, currentRotationCount, prevMaterialID, currentMaterialID,
 		))
 
@@ -494,16 +489,6 @@ func waitForNativeRotation(
 			return true
 		}
 
-		// Refresh auth token if needed before the next iteration.
-		if time.Since(tStart).Seconds() > refreshTokenSeconds {
-			if err := client.RefreshToken(ctx, id); err != nil {
-				msg := "Error refreshing authentication token while polling for rotation completion."
-				details := utils.ApiError(msg, map[string]interface{}{"error": err.Error(), "key_id": keyID})
-				tflog.Warn(ctx, details)
-				diags.AddWarning(details, "")
-			}
-			tStart = time.Now()
-		}
 	}
 
 	// Timeout reached. rotate-material was already called so state is NOT saved.

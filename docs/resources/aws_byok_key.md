@@ -196,12 +196,12 @@ Read-Only:
 
 - `arn` (String) The Amazon Resource Name (ARN) of the key.
 - `aws_account_id` (String) AWS account ID.
-- `aws_key_id` (String) AWS key ID.
 - `current_key_material_id` (String) AWS key material ID that is currently active for this key. Populated for EXTERNAL-origin keys.
 - `deletion_date` (String) Date the key is scheduled for deletion. Populated only when the key is pending deletion.
 - `enabled` (Boolean) True if the key is enabled in AWS.
 - `encryption_algorithms` (List of String) Encryption algorithms supported by the key. Populated for asymmetric keys.
 - `expiration_model` (String) Expiration model for EXTERNAL-origin keys.
+- `key_id` (String) AWS key ID.
 - `key_manager` (String) Key manager (e.g. CUSTOMER).
 - `key_rotation_enabled` (Boolean) True if AWS automatic key rotation is enabled.
 - `key_state` (String) State of the key in AWS (e.g. Enabled, Disabled, PendingDeletion).
@@ -293,35 +293,140 @@ Read-Only:
 - `source_key_identifier` (String) CipherTrust Manager key ID of the source key used for this material.
 - `source_key_tier` (String) Tier of the source key (e.g. local).
 
-### import_material - update behaviour
-
-On update, each `import_material` entry whose `source_key_identifier` is not
-already recorded in the key's rotation history is treated as a new rotation
-request. The provider calls the rotate-material API and waits for the rotation
-to reach a terminal status before continuing.
-
-**Only one new `import_material` entry may be added per apply.** If more than
-one entry is new (not yet in rotation history), the apply will fail with an
-error. Add entries one at a time across separate applies.
-
-Removing an `import_material` entry is a no-op - key material is never deleted
-by this provider.
-
 ### Updates
 
-Attributes not marked as `(Updatable)` cannot be modified after resource
-creation. To change these attributes, the resource must be recreated.
+Attributes not marked as `(Updatable)` cannot be modified after resource creation. To change these attributes, the resource must be recreated.
 
 ## Import
 
-`ciphertrust_aws_byok_key` resources can be imported using the CipherTrust
-Manager key ID:
+A BYOK key can be imported using its CipherTrust Manager key ID. The key ID
+is returned in the API response body as the `id` field and is also visible in
+the CCKM interface.
 
-```
-terraform import ciphertrust_aws_byok_key.example <key-id>
+### Important: Behaviour after import
+
+After import, Terraform will attempt to make the key match your resource configuration.
+
+If updatable attributes are missing or incorrect they may be updated or removed during `terraform apply`.
+
+In particular, for list and map attributes such as `alias` and `tags`, omitting
+them from the resource configuration may remove existing values.
+
+To avoid unintended changes to an existing key, do one of the following:
+
+**Option 1 - Configure the resource block to match the key's current state** before
+running `terraform apply`. Set `aws_param` (including `alias`, `description`,
+`tags`, and `valid_to`), `enable_rotation`, `enable_key`, and
+`schedule_for_deletion_days` to their current values so that Terraform detects
+no diff.
+
+**Option 2 - Use `lifecycle { ignore_changes }` to suppress diffs** on attributes
+you are not yet ready for Terraform to manage:
+
+```terraform
+lifecycle {
+  ignore_changes = [
+    aws_param,
+    enable_key,
+    enable_rotation,
+    schedule_for_deletion_days,
+  ]
+}
 ```
 
-After import the `import_material` set in state will be empty. Run
-`terraform apply` once after import to reconcile the plan; the provider will
-compare the plan entries against live rotation history and will not trigger
-any new rotations for entries that already appear in history.
+The recommended approach (temporary use of `ignore_changes`):
+
+1. Add the `lifecycle { ignore_changes }` block to the resource
+2. Run `terraform apply` (or use `terraform import` for Terraform versions earlier than v1.5.0)
+3. Run `terraform state show ciphertrust_aws_byok_key.example` to inspect the imported values
+4. Update your configuration to match the imported state
+5. Remove `ignore_changes` so Terraform manages the attributes going forward
+
+**`enable_rotation`** - not returned by the API; imported state shows an empty block.
+If the key is scheduled for rotation, include the `enable_rotation` block with the
+correct scheduler details so that Terraform takes ownership of the rotation schedule.
+Omitting it is safe - the key remains scheduled for rotation but Terraform will not
+manage it. Removing a previously configured `enable_rotation` block during `terraform apply`
+unschedules the key for rotation.
+
+**One-time creation attributes** (`source_key_identifier`, `source_key_tier`, `replicate_key`) -
+these are write-only at creation time and are not returned by the API. Simply omit them from
+the resource block after import - the operations have already completed and Terraform will
+detect no diff.
+
+You can import a resource into Terraform in two ways.
+
+### 1. Import using an import block and terraform apply
+
+Only available for Terraform v1.5.0 and later.
+
+When Terraform processes the `import` block it:
+
+1. Reads the key from the API using the provided ID and stores the current values as state
+2. Compares that state to your resource block configuration
+3. Applies any differences as updates to the key (immediately during the same apply)
+
+All three steps happen within a single `terraform apply` run.
+
+**Step 1 - Import with `ignore_changes`** (safe starting point):
+
+```terraform
+import {
+  to = ciphertrust_aws_byok_key.example
+  id = "abc12345-1234-1234-1234-123456789012"
+}
+
+resource "ciphertrust_aws_byok_key" "example" {
+  kms_id = "<kms-resource-id>"
+  region = "<aws-region>"          # e.g. "us-east-1"
+  lifecycle {
+    ignore_changes = [
+      aws_param,
+      enable_key,
+      enable_rotation,
+      schedule_for_deletion_days,
+    ]
+  }
+}
+```
+
+**Step 2 - Final config after inspecting state** (remove `ignore_changes` once values
+are correct):
+
+```terraform
+resource "ciphertrust_aws_byok_key" "example" {
+  kms_id                     = "<kms-resource-id>"
+  region                     = "<aws-region>"
+  enable_key                 = true
+  schedule_for_deletion_days = 7
+  aws_param = {
+    alias       = ["alias/my-byok-key"]
+    description = "<description>"
+    tags        = { Environment = "prod" }
+    valid_to    = "2030-01-01T00:00:00Z"
+  }
+  enable_rotation = {
+    disable_encrypt = false
+    job_config_id   = "<scheduler-resource-id>"
+    key_source      = "ciphertrust"
+  }
+}
+```
+
+The example above shows all updatable attributes. Include only the attributes that
+apply to your key - for example, omit `aws_param.tags` if the key has no tags, or
+omit `enable_rotation` if the key is not scheduled for rotation.
+
+### 2. Import using the terraform import command
+
+When `terraform import` is run it:
+
+1. Reads the key from the API using the provided ID and stores the current values as state
+2. Writes the imported state to the state file - no plan or apply is performed
+
+Before running `terraform apply`, apply Option 1 or Option 2 above to avoid unintended
+changes. Run `terraform plan` first to review exactly what would be applied.
+
+```shell
+terraform import ciphertrust_aws_byok_key.example abc12345-1234-1234-1234-123456789012
+```

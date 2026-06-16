@@ -3,6 +3,7 @@ package cckm
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"reflect"
 	"strings"
 
@@ -182,6 +183,7 @@ func enableKey(ctx context.Context, id string, client *common.Client, keyID stri
 		diags.AddError(details, "")
 		return
 	}
+	tflog.Info(ctx, fmt.Sprintf("[aws_update.go -> enableKey] key enabled successfully. key_id: %s", keyID))
 	tflog.Debug(ctx, "[aws_update.go -> enableKey][response:"+redactAWSResponse(response))
 }
 
@@ -198,6 +200,7 @@ func disableKey(ctx context.Context, id string, client *common.Client, keyID str
 		diags.AddError(details, "")
 		return
 	}
+	tflog.Info(ctx, fmt.Sprintf("[aws_update.go -> disableKey] key disabled successfully. key_id: %s", keyID))
 	tflog.Debug(ctx, "[aws_update.go -> disableKey][response:"+redactAWSResponse(response))
 }
 
@@ -237,6 +240,7 @@ func updateDescription(ctx context.Context, id string, client *common.Client, ke
 		diags.AddError(details, "")
 		return
 	}
+	tflog.Info(ctx, fmt.Sprintf("[aws_update.go -> updateDescription] key description updated successfully. key_id: %s", keyID))
 	tflog.Debug(ctx, "[aws_update.go -> updateDescription][response:"+redactAWSResponse(response))
 }
 
@@ -296,6 +300,7 @@ func enableKeyRotationJob(ctx context.Context, id string, client *common.Client,
 		diags.AddError(details, "")
 		return
 	}
+	tflog.Info(ctx, fmt.Sprintf("[aws_update.go -> enableKeyRotationJob] rotation job enabled successfully. key_id: %s", keyID))
 	tflog.Debug(ctx, "[aws_update.go -> enableKeyRotationJob][response:"+redactAWSResponse(response))
 }
 
@@ -312,5 +317,6 @@ func disableKeyRotationJob(ctx context.Context, id string, client *common.Client
 		tflog.Error(ctx, details)
 		return
 	}
+	tflog.Info(ctx, fmt.Sprintf("[aws_update.go -> disableKeyRotationJob] rotation job disabled successfully. key_id: %s", keyID))
 	tflog.Debug(ctx, "[aws_update.go -> disableKeyRotationJob][response:"+redactAWSResponse(response))
 }

@@ -97,43 +97,28 @@ resource "ciphertrust_aws_xks_key" "imported_xks_key" {
 
 ### Optional
 
-- `aws_param` (Attributes) AWS key parameters. Alias, description, and tags are updatable for linked keys; policy is output only. (see [below for nested schema](#nestedatt--aws_param))
+- `aws_param` (Attributes) AWS key parameters. Alias, description, and tags are updatable for linked keys; all other fields are computed. (see [below for nested schema](#nestedatt--aws_param))
 - `bypass_policy_lockout_safety_check` (Boolean) Whether to bypass the key policy lockout safety check.
 - `enable_key` (Boolean) (Updatable) Enable or disable the key. Default is true.
 - `enable_rotation` (Attributes) (Updatable) Register the key with a CipherTrust Manager scheduled rotation job. The 'disable_encrypt' and 'disable_encrypt_on_all_accounts' parameters are mutually exclusive. (see [below for nested schema](#nestedatt--enable_rotation))
 - `key_policy` (Attributes) (Updatable) Key policy parameters. (see [below for nested schema](#nestedatt--key_policy))
-- `origin` (String) Source of the key material for the customer managed key.  Options: AWS_KMS, EXTERNAL, EXTERNAL_KEY_STORE, AWS_CLOUDHSM. AWS_KMS will create a native AWS key and is the default for AWS native key creation. EXTERNAL will create an external AWS key and is the default for import operations. This parameter is not required for upload operations. Origin is EXTERNAL_KEY_STORE for XKS/HYOK key and AWS_CLOUDHSM for key in CloudHSM key store.
 - `schedule_for_deletion_days` (Number) (Updatable) Waiting period after the key is destroyed before the key is deleted. Only relevant when the resource is destroyed. Default is 7.
 
 ### Read-Only
 
-- `arn` (String) The Amazon Resource Name (ARN) of the key.
-- `aws_account_id` (String) AWS account ID.
-- `aws_custom_key_store_id` (String) Custom keystore ID in AWS.
-- `aws_key_id` (String) AWS key ID.
-- `aws_xks_key_id` (String) XKS key ID in AWS.
 - `blocked` (Boolean) Parameter to indicate if AWS XKS key is blocked for any data plane operation.
 - `cloud_name` (String) AWS cloud.
 - `created_at` (String) Date the key was created.
 - `custom_key_store_id` (String) Custom keystore ID in AWS.
-- `customer_master_key_spec` (String) Whether the KMS key contains a symmetric key or an asymmetric key pair. Valid values: SYMMETRIC_DEFAULT, RSA_2048, RSA_3072, RSA_4096, ECC_NIST_P256, ECC_NIST_P384, ECC_NIST_P521, ECC_SECG_P256K1, HMAC_224, HMAC_256, HMAC_384, HMAC_512
-- `deletion_date` (String) Date the key is scheduled for deletion.
-- `enabled` (Boolean) True if the key is enabled.
-- `encryption_algorithms` (List of String) Encryption algorithms of an asymmetric key.
-- `expiration_model` (String) Expiration model.
 - `external_accounts` (Set of String) Other AWS accounts that have access to this key.
 - `id` (String) XKS key ID.
 - `key_admins` (Set of String) Key administrators - users.
 - `key_admins_roles` (Set of String) Key administrators - roles.
-- `key_manager` (String) Key manager.
 - `key_material_origin` (String) Key material origin.
-- `key_rotation_enabled` (Boolean) True if rotation is enabled in AWS for this key.
 - `key_source` (String) Source of the key.
 - `key_source_container_id` (String) ID of the source container of the key.
 - `key_source_container_name` (String) Name of the source container of the key.
-- `key_state` (String) Key state.
 - `key_type` (String) Key type.
-- `key_usage` (String) Specifies the intended use of the key. RSA key options: ENCRYPT_DECRYPT, SIGN_VERIFY. Default is ENCRYPT_DECRYPT. EC key options: SIGN_VERIFY. Default is SIGN_VERIFY. Symmetric key options: ENCRYPT_DECRYPT. Default is ENCRYPT_DECRYPT.
 - `key_users` (Set of String) Key users - users.
 - `key_users_roles` (Set of String) Key users - roles.
 - `kms_id` (String) ID of the KMS.
@@ -142,8 +127,6 @@ resource "ciphertrust_aws_xks_key" "imported_xks_key" {
 - `linked` (Boolean) Parameter to indicate if AWS XKS key is linked with AWS.
 - `local_key_id` (String) CipherTrust Manager key identifier of the external key.
 - `local_key_name` (String) CipherTrust Manager key name of the external key.
-- `mac_algorithms` (List of String) MAC algorithms supported by an HMAC key.
-- `policy` (String) AWS key policy.
 - `policy_template_tag` (Map of String) AWS key tag for an associated policy template.
 - `region` (String) AWS region in which the XKS key resides.
 - `rotated_at` (String) Time when this key was rotated by a scheduled rotation job.
@@ -177,7 +160,31 @@ Optional:
 
 Read-Only:
 
+- `arn` (String) The Amazon Resource Name (ARN) of the key.
+- `aws_account_id` (String) AWS account ID.
+- `aws_custom_key_store_id` (String) Custom keystore ID in AWS.
+- `creation_date` (String) Date the key was created in AWS.
+- `customer_master_key_spec` (String) Whether the KMS key contains a symmetric key or an asymmetric key pair.
+- `deletion_date` (String) Date the key is scheduled for deletion. Populated only when the key is pending deletion.
+- `enabled` (Boolean) True if the key is enabled in AWS.
+- `encryption_algorithms` (List of String) Encryption algorithms supported by the key. Populated for asymmetric keys.
+- `expiration_model` (String) Expiration model for the key material.
+- `key_id` (String) AWS key ID.
+- `key_manager` (String) Key manager (e.g. CUSTOMER).
+- `key_state` (String) State of the key in AWS (e.g. Enabled, Disabled, PendingDeletion).
+- `key_usage` (String) Intended use of the key (e.g. ENCRYPT_DECRYPT).
+- `mac_algorithms` (List of String) MAC algorithms supported by the key. Populated for HMAC keys.
+- `origin` (String) Origin of the key material (e.g. EXTERNAL_KEY_STORE, AWS_CLOUDHSM).
 - `policy` (String) Resulting AWS key policy. Output only.
+- `xks_key_configuration` (Attributes) XKS key configuration assigned by AWS. Present only for keys in an external key store. (see [below for nested schema](#nestedatt--aws_param--xks_key_configuration))
+
+<a id="nestedatt--aws_param--xks_key_configuration"></a>
+### Nested Schema for `aws_param.xks_key_configuration`
+
+Read-Only:
+
+- `id` (String) The ID of the external key in its external key manager, used by the XKS proxy to identify the key.
+
 
 
 <a id="nestedatt--enable_rotation"></a>

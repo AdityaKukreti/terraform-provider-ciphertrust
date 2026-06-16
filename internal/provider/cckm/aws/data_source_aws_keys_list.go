@@ -122,15 +122,15 @@ func (d *dataSourceAWSKey) Read(ctx context.Context, req datasource.ReadRequest,
 }
 
 // setKeyDataSourceState populates the full Terraform data source state for an AWS key from an API response JSON string.
+// Fields sourced from aws_param (alias, tags, description, arn, key_state, etc.) are stored
+// exclusively inside the aws_param nested block via setKeyDSAwsParam; they are NOT set at the
+// outer level.
 func (d *dataSourceAWSKey) setKeyDataSourceState(ctx context.Context, response string, state *AWSKeyDataSourceTFSDK, diags *diag.Diagnostics) {
 	setCommonKeyDataSourceState(ctx, response, &state.AWSKeyDataSourceCommonTFSDK, diags)
-	setAliases(response, &state.Alias, diags)
-	setKeyTags(ctx, response, &state.Tags, diags)
 	state.AutoRotate = types.BoolValue(gjson.Get(response, "aws_param.KeyRotationEnabled").Bool())
 	state.AutoRotationPeriodInDays = types.Int64Value(gjson.Get(response, "aws_param.RotationPeriodInDays").Int())
-	state.Description = types.StringValue(gjson.Get(response, "aws_param.Description").String())
 	state.KMSID = types.StringValue(gjson.Get(response, "kms_id").String())
-	state.KMS = types.StringValue(gjson.Get(response, "kms").String())
+	state.KMSName = types.StringValue(gjson.Get(response, "kms").String())
 	state.MultiRegion = types.BoolValue(gjson.Get(response, "aws_param.MultiRegion").Bool())
 	state.MultiRegionConfiguration = setMultiRegionConfig(response, diags)
 	state.NextRotationDate = types.StringValue(gjson.Get(response, "aws_param.NextRotationDate").String())
@@ -144,7 +144,6 @@ func setKeyDSAwsParam(ctx context.Context, response string, diags *diag.Diagnost
 	setAliases(response, &p.Alias, diags)
 	p.Arn = types.StringValue(gjson.Get(response, "aws_param.Arn").String())
 	p.AWSCustomKeyStoreID = types.StringValue(gjson.Get(response, "aws_param.CustomKeyStoreId").String())
-	p.AWSKeyID = types.StringValue(gjson.Get(response, "aws_param.KeyID").String())
 	p.CreationDate = types.StringValue(gjson.Get(response, "aws_param.CreationDate").String())
 	p.CurrentKeyMaterialID = types.StringValue(gjson.Get(response, "aws_param.CurrentKeyMaterialId").String())
 	p.CustomerMasterKeySpec = types.StringValue(gjson.Get(response, "aws_param.CustomerMasterKeySpec").String())
@@ -153,6 +152,7 @@ func setKeyDSAwsParam(ctx context.Context, response string, diags *diag.Diagnost
 	p.Enabled = types.BoolValue(gjson.Get(response, "aws_param.Enabled").Bool())
 	p.EncryptionAlgorithms = utils.StringSliceJSONToListValue(gjson.Get(response, "aws_param.EncryptionAlgorithms").Array(), diags)
 	p.ExpirationModel = types.StringValue(gjson.Get(response, "aws_param.ExpirationModel").String())
+	p.KeyID = types.StringValue(gjson.Get(response, "aws_param.KeyID").String())
 	p.KeyManager = types.StringValue(gjson.Get(response, "aws_param.KeyManager").String())
 	p.KeyRotationEnabled = types.BoolValue(gjson.Get(response, "aws_param.KeyRotationEnabled").Bool())
 	p.KeyState = types.StringValue(gjson.Get(response, "aws_param.KeyState").String())
@@ -176,40 +176,24 @@ func setKeyDSAwsParam(ctx context.Context, response string, diags *diag.Diagnost
 	return p
 }
 
-// setCommonKeyDataSourceState populates the common key fields shared across AWS key data sources from an API response JSON string.
+// setCommonKeyDataSourceState populates the non-aws_param fields shared across all three
+// AWS key list datasource item types. Fields sourced from the API aws_param block are NOT set here;
+// each datasource sets them exclusively inside its own aws_param nested block.
 func setCommonKeyDataSourceState(ctx context.Context, response string, state *AWSKeyDataSourceCommonTFSDK, diags *diag.Diagnostics) {
 	state.KeyID = types.StringValue(gjson.Get(response, "id").String())
-	state.ARN = types.StringValue(gjson.Get(response, "aws_param.Arn").String())
-	state.AWSAccountID = types.StringValue(gjson.Get(response, "aws_param.AWSAccountId").String())
-	state.AWSKeyID = types.StringValue(gjson.Get(response, "aws_param.KeyID").String())
 	state.CloudName = types.StringValue(gjson.Get(response, "cloud_name").String())
 	state.CreatedAt = types.StringValue(gjson.Get(response, "createdAt").String())
-	state.CustomerMasterKeySpec = types.StringValue(gjson.Get(response, "aws_param.CustomerMasterKeySpec").String())
-	state.DeletionDate = types.StringValue(gjson.Get(response, "deletion_date").String())
-	state.Enabled = types.BoolValue(gjson.Get(response, "aws_param.Enabled").Bool())
-	state.EncryptionAlgorithms = utils.StringSliceJSONToListValue(gjson.Get(response, "aws_param.EncryptionAlgorithms").Array(), diags)
-	state.MacAlgorithms = utils.StringSliceJSONToListValue(gjson.Get(response, "aws_param.MacAlgorithmSpec").Array(), diags)
-	state.ExpirationModel = types.StringValue(gjson.Get(response, "aws_param.ExpirationModel").String())
 	state.ExternalAccounts = utils.StringSliceJSONToSetValue(gjson.Get(response, "external_accounts").Array(), diags)
 	state.KeyAdmins = utils.StringSliceJSONToSetValue(gjson.Get(response, "key_admins").Array(), diags)
 	state.KeyAdminsRoles = utils.StringSliceJSONToSetValue(gjson.Get(response, "key_admins_roles").Array(), diags)
-	state.KeyManager = types.StringValue(gjson.Get(response, "aws_param.KeyManager").String())
 	state.KeyMaterialOrigin = types.StringValue(gjson.Get(response, "key_material_origin").String())
-	state.KeyRotationEnabled = types.BoolValue(gjson.Get(response, "aws_param.KeyRotationEnabled").Bool())
 	state.KeySource = types.StringValue(gjson.Get(response, "key_source").String())
-	state.KeyState = types.StringValue(gjson.Get(response, "aws_param.KeyState").String())
 	state.KeyType = types.StringValue(gjson.Get(response, "key_type").String())
 	state.KeyUsers = utils.StringSliceJSONToSetValue(gjson.Get(response, "key_users").Array(), diags)
 	state.KeyUsersRoles = utils.StringSliceJSONToSetValue(gjson.Get(response, "key_users_roles").Array(), diags)
 	setKeyLabels(ctx, response, state.KeyID.ValueString(), &state.Labels, diags)
 	state.LocalKeyID = types.StringValue(gjson.Get(response, "local_key_id").String())
 	state.LocalKeyName = types.StringValue(gjson.Get(response, "local_key_name").String())
-	state.KeyUsage = types.StringValue(gjson.Get(response, "aws_param.KeyUsage").String())
-	state.Origin = types.StringValue(gjson.Get(response, "aws_param.Origin").String())
-	policy := gjson.Get(response, "aws_param.Policy").String()
-	if !getPoliciesAreEqual(ctx, policy, state.Policy.ValueString(), diags) {
-		state.Policy = types.StringValue(policy)
-	}
 	setPolicyTemplateTag(ctx, response, &state.PolicyTemplateTag, diags)
 	state.RotatedAt = types.StringValue(gjson.Get(response, "rotated_at").String())
 	state.RotatedFrom = types.StringValue(gjson.Get(response, "rotated_from").String())
@@ -217,5 +201,4 @@ func setCommonKeyDataSourceState(ctx context.Context, response string, state *AW
 	state.RotatedTo = types.StringValue(gjson.Get(response, "rotated_to").String())
 	state.SyncedAt = types.StringValue(gjson.Get(response, "synced_at").String())
 	state.UpdatedAt = types.StringValue(gjson.Get(response, "updatedAt").String())
-	state.ValidTo = types.StringValue(gjson.Get(response, "aws_param.ValidTo").String())
 }
