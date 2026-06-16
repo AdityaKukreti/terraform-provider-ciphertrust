@@ -31,14 +31,16 @@ resource "ciphertrust_aws_kms" "kms" {
 
 # Define a policy template using key_admins and key_users
 resource "ciphertrust_aws_policy_template" "policy_template_ex1" {
+  name       = "policy-template-1"
+  kms_id     = ciphertrust_aws_kms.kms.id
   key_admins = ["aws-iam-user", "aws-iam-role"]
   key_users  = ["aws-iam-user", "aws-iam-role"]
-  km         = kms.id
 }
 
 # Define a policy template using a policy json
 resource "ciphertrust_aws_policy_template" "policy_template_ex2" {
-  km     = kms.id
+  name   = "policy-template-2"
+  kms_id = ciphertrust_aws_kms.kms.id
   policy = <<-EOT
     {
     "Version": "2012-10-17",
@@ -58,9 +60,9 @@ resource "ciphertrust_aws_policy_template" "policy_template_ex2" {
 
 # Define an AWS key and assign the key policy template to it
 resource "ciphertrust_aws_key" "aws_key" {
-  kms    = ciphertrust_aws_kms.kms.id
+  kms_id = ciphertrust_aws_kms.kms.id
   region = ciphertrust_aws_kms.kms.regions[0]
-  policy {
+  key_policy = {
     policy_template = ciphertrust_aws_policy_template.policy_template_ex1.id
   }
 }
@@ -81,13 +83,14 @@ resource "ciphertrust_aws_key" "aws_key" {
 - `key_admins_roles` (Set of String) (Updatable) Key administrators - roles.
 - `key_users` (Set of String) (Updatable) Key users - users.
 - `key_users_roles` (Set of String) (Updatable) Key users - roles.
-- `kms` (String) Name or ID of the KMS to which the template belongs, 'account_id', 'external_accounts' or 'kms' must be provided.
+- `kms_id` (String) ID of the KMS to which the template belongs. 'account_id', 'external_accounts' or 'kms_id' must be provided.
 - `policy` (String) (Updatable) AWS key policy json. 'policy' is mutually exclusive to all other policy parameters. If no policy parameters are specified the default policy is created.
 
 ### Read-Only
 
 - `id` (String) The ID of this resource.
 - `is_verified` (Boolean) If true, the policy template has been applied.
+- `kms_name` (String) Name of the KMS to which the template belongs.
 
 ### Updates
 
@@ -115,11 +118,8 @@ will destroy the existing template and create a new one. Always inspect the
 imported state with `terraform state show ciphertrust_aws_policy_template.example`
 and confirm the name is correct before running `terraform apply`.
 
-**`kms`** - the API stores and returns the KMS name. If your resource
-configuration references the KMS by its UUID (for example
-`kms = ciphertrust_aws_kms.my_kms.id`), Terraform will see a permanent diff
-because the stored value is a name, not a UUID. Use the KMS name instead (for
-example `kms = ciphertrust_aws_kms.my_kms.name`).
+**`kms_id`** - accepts the KMS resource ID (UUID). Use
+`kms_id = ciphertrust_aws_kms.my_kms.id` to reference the KMS by its resource ID.
 
 **`policy` vs. set fields** - `policy` is mutually exclusive with
 `external_accounts`, `key_admins`, `key_admins_roles`, `key_users`, and
@@ -145,7 +145,7 @@ the template.
 To avoid unintended changes, do one of the following:
 
 **Option 1 - Configure the resource block to match the template's current
-state** before running `terraform apply`. Set `name`, `kms`, and all relevant
+state** before running `terraform apply`. Set `name`, `kms_id`, and all relevant
 policy attributes (`key_admins`, `key_users`, etc. or `policy`) to their
 current values so that Terraform detects no diff.
 
@@ -170,7 +170,7 @@ The recommended approach (temporary use of `ignore_changes`):
 1. Add the `lifecycle { ignore_changes }` block to the resource
 2. Run `terraform apply` (or use `terraform import` for Terraform versions earlier than v1.5.0)
 3. Run `terraform state show ciphertrust_aws_policy_template.example` to inspect the imported values
-4. Update your resource configuration to match the imported state, paying particular attention to `name`, `kms`, and the policy attributes
+4. Update your resource configuration to match the imported state, paying particular attention to `name`, `kms_id`, and the policy attributes
 5. Remove `ignore_changes` so Terraform manages the attributes going forward
 
 You can import a resource into Terraform in two ways.
@@ -219,7 +219,7 @@ configuration approaches:
 ```terraform
 resource "ciphertrust_aws_policy_template" "example" {
   name              = "<template-name>"
-  kms               = ciphertrust_aws_kms.my_kms.name   # use name, not id
+  kms_id            = ciphertrust_aws_kms.my_kms.id
   key_admins        = ["arn:aws:iam::<account-id>:user/<admin-user>"]
   key_admins_roles  = ["arn:aws:iam::<account-id>:role/<admin-role>"]
   key_users         = ["arn:aws:iam::<account-id>:user/<key-user>"]
@@ -234,7 +234,7 @@ resource "ciphertrust_aws_policy_template" "example" {
 ```terraform
 resource "ciphertrust_aws_policy_template" "example" {
   name      = "<template-name>"
-  kms       = ciphertrust_aws_kms.my_kms.name   # use name, not id
+  kms_id    = ciphertrust_aws_kms.my_kms.id
   auto_push = false
   policy    = jsonencode({
     Version   = "2012-10-17"
@@ -246,7 +246,7 @@ resource "ciphertrust_aws_policy_template" "example" {
 ```
 
 Include only the attributes that apply to your template - for example, omit
-`external_accounts` if the template has none, or omit `kms` if it is not
+`external_accounts` if the template has none, or omit `kms_id` if it is not
 scoped to a specific KMS.
 
 ### 2. Import using the terraform import command

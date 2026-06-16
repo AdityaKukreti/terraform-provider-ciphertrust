@@ -33,63 +33,64 @@ resource "ciphertrust_aws_kms" "kms" {
   regions        = ["us-west-1"]
 }
 
-## Define cloudHSM keystore
+# Define a CloudHSM custom keystore
 resource "ciphertrust_aws_custom_keystore" "cloudhsm_custom_keystore" {
   depends_on = [
     ciphertrust_aws_kms.kms,
   ]
-  name         = "cloudhsm-keystore-demo-1"
-  region       = "us-west-1"
-  kms          = ciphertrust_aws_kms.kms.name
+  name                        = "cloudhsm-keystore-demo-1"
+  region                      = "us-west-1"
+  kms_id                      = ciphertrust_aws_kms.kms.id
   connect_disconnect_keystore = "CONNECT_KEYSTORE"
-  aws_param {
-    custom_key_store_type       = "AWS_CLOUDHSM"
-    cloud_hsm_cluster_id        = "cluster-pxkcyeoqij"
-    key_store_password          = "kmsuser-password"
-    trust_anchor_certificate    = <<-EOT
-	                 -----BEGIN CERTIFICATE-----
-	                 MIIDhzCCAm+gAwIBAgIUHdJu4algAFs22h87meBhd9Qe4eMoDQYJKoZIhvcNAQEL
-	                 BQAwUzELMAkGA1UEBhMCVVMxCzAJBgNVBAgMAkNBMRAwDgYQVQQHDAdTYW5Kb3Nl
-	                 MQ8wDQYDVQQKDAZUaGFsZXMxFDASBgNVBAsMC0VuZ2luZWVyaW5nMB4XDTIyMDYy
-	                 MzA2NTgwOFoXDTMyMDYyMjA2NTgwOFowUzELMAkGA1UEBhMCVVMxCzAJBgNVBAgM
-	                 AkNBMRAwDgYDVQQHDAdTYW5Kb3NlMQ8wDQYDVQQKDAZUaEFsZXMxFDASBgNVBAsM
-	                 C0VtZ2lvZWVyaW5nMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAvi0o
-	                 wtYFziFkbhtH0X0+0fhvcGLJ4SYTOU50ZGa7GlfsKC4i5vGxXFEJ1QwJ+WmkyXwo
-	                 RCWaXQbFkFIxlDDIgOe64Z8FRiqdRGXPAYXvJC5pM015kOGtuMrT759Ifbux81Ng
-	                 ULlUbz7uLGxut+IbLXIG+/lkDI8OtYNLtU5hbTG/QrTieFg7ZQ/IKKbmCKB3m3cv
-	                 l0MzSMZQXMgNmsbb9SASTgSgaBdAF99sp3B78jHFDqikZHvrxjPBRqi/OsSBefmV
-	                 LymMhPBVcF9FWJgL+YpxDjKP4ieo8rqWK9xEDnu6VmVx0guQ40uM4ycaDljBueW6
-	                 J9FqXFp63FGrGKu2vwIDBQABo1MwUTAdBgMVHQ4EFgQUi/RAIOrEPaUm9T6P+Ju3
-	                 qTKpf90wHwYDVR0jBBgwFoAUi/RAIOrEPaUm9T6P+Ju3qTKpf90wDwYDVR0TAQH/
-	                 BAUwAwEB/zANBgkqhkiG9w0BAQsFAAOCAQEAfhC8EghStmPq770Edt6lfoEC6pIO
-	                 UCMoiwnX9KL7WdKPx7auyJmxj3+MbYqMSzilXPA57J1WE6BhT3JOT4nPsO/IpFv2
-	                 fbpUVW9ypwrRQE1S1v6BjvQd5J49c3ZDfH634jCwGwxcBY2gSbZorLb03aH7R2uF
-	                 31jlyotNaUd3eWjo11jwVt9ZhpcxbaiK98Q6UcUro0Ok2BaQdZZthnuMMnwK8iO2
-	                 w3XiEJU3uaUbs1jC6x2Q/RQ28cdAl1tse9/isLeH9yqIEuzFWBHEX5OmpcrW7qcv
-	                 SWLFSofuUkHD1GuN8f4ipAzQ0Fn9Y2C463Q3DCzolhRmJrfXVgM6XLRnHg==
-	                 -----END CERTIFICATE-----
-	               EOT
+  aws_param = {
+    custom_key_store_type    = "AWS_CLOUDHSM"
+    cloud_hsm_cluster_id     = "cluster-pxkcyeoqij"
+    key_store_password       = "kmsuser-password"
+    trust_anchor_certificate = <<-EOT
+                 -----BEGIN CERTIFICATE-----
+                 MIIDhzCCAm+gAwIBAgIUHdJu4algAFs22h87meBhd9Qe4eMoDQYJKoZIhvcNAQEL
+                 BQAwUzELMAkGA1UEBhMCVVMxCzAJBgNVBAgMAkNBMRAwDgYQVQQHDAdTYW5Kb3Nl
+                 MQ8wDQYDVQQKDAZUaGFsZXMxFDASBgNVBAsMC0VuZ2luZWVyaW5nMB4XDTIyMDYy
+                 MzA2NTgwOFoXDTMyMDYyMjA2NTgwOFowUzELMAkGA1UEBhMCVVMxCzAJBgNVBAgM
+                 AkNBMRAwDgYDVQQHDAdTYW5Kb3NlMQ8wDQYDVQQKDAZUaEFsZXMxFDASBgNVBAsM
+                 C0VtZ2lvZWVyaW5nMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAvi0o
+                 wtYFziFkbhtH0X0+0fhvcGLJ4SYTOU50ZGa7GlfsKC4i5vGxXFEJ1QwJ+WmkyXwo
+                 RCWaXQbFkFIxlDDIgOe64Z8FRiqdRGXPAYXvJC5pM015kOGtuMrT759Ifbux81Ng
+                 ULlUbz7uLGxut+IbLXIG+/lkDI8OtYNLtU5hbTG/QrTieFg7ZQ/IKKbmCKB3m3cv
+                 l0MzSMZQXMgNmsbb9SASTgSgaBdAF99sp3B78jHFDqikZHvrxjPBRqi/OsSBefmV
+                 LymMhPBVcF9FWJgL+YpxDjKP4ieo8rqWK9xEDnu6VmVx0guQ40uM4ycaDljBueW6
+                 J9FqXFp63FGrGKu2vwIDBQABo1MwUTAdBgMVHQ4EFgQUi/RAIOrEPaUm9T6P+Ju3
+                 qTKpf90wHwYDVR0jBBgwFoAUi/RAIOrEPaUm9T6P+Ju3qTKpf90wDwYDVR0TAQH/
+                 BAUwAwEB/zANBgkqhkiG9w0BAQsFAAOCAQEAfhC8EghStmPq770Edt6lfoEC6pIO
+                 UCMoiwnX9KL7WdKPx7auyJmxj3+MbYqMSzilXPA57J1WE6BhT3JOT4nPsO/IpFv2
+                 fbpUVW9ypwrRQE1S1v6BjvQd5J49c3ZDfH634jCwGwxcBY2gSbZorLb03aH7R2uF
+                 31jlyotNaUd3eWjo11jwVt9ZhpcxbaiK98Q6UcUro0Ok2BaQdZZthnuMMnwK8iO2
+                 w3XiEJU3uaUbs1jC6x2Q/RQ28cdAl1tse9/isLeH9yqIEuzFWBHEX5OmpcrW7qcv
+                 SWLFSofuUkHD1GuN8f4ipAzQ0Fn9Y2C463Q3DCzolhRmJrfXVgM6XLRnHg==
+                 -----END CERTIFICATE-----
+               EOT
   }
 }
-
 
 # Define a policy template using key users and roles
 resource "ciphertrust_aws_policy_template" "template_with_users_and_roles" {
   name             = "template-with-users-and-roles-test"
-  kms              = ciphertrust_aws_kms.kms.id
+  kms_id           = ciphertrust_aws_kms.kms.id
   key_admins       = ["key-admins"]
   key_admins_roles = ["key-admins-roles"]
   key_users        = ["key-users"]
   key_users_roles  = ["key-users-roles"]
 }
 
-# Define a cloudhsm key in cloudhsm keystore
+# Define a CloudHSM key in the CloudHSM keystore
 resource "ciphertrust_aws_cloudhsm_key" "cloudhsm_key_1" {
   custom_key_store_id = ciphertrust_aws_custom_keystore.cloudhsm_custom_keystore.id
-  description = "desc for cloudhsm_key_1"
-  enable_key = false
-  alias = ["a5_cloudhsm_key_1"]
-  key_policy {
+  enable_key          = false
+  aws_param = {
+    alias       = ["a5_cloudhsm_key_1"]
+    description = "desc for cloudhsm_key_1"
+  }
+  key_policy = {
     policy_template = ciphertrust_aws_policy_template.template_with_users_and_roles.id
   }
 }
@@ -103,15 +104,13 @@ resource "ciphertrust_aws_cloudhsm_key" "cloudhsm_key_1" {
 
 ### Optional
 
-- `alias` (Set of String) (Updatable) Input parameter. Alias assigned to the CloudHSM key.
+- `aws_param` (Attributes) AWS key parameters. Alias, description, and tags are updatable for linked keys; policy is output only. (see [below for nested schema](#nestedatt--aws_param))
 - `bypass_policy_lockout_safety_check` (Boolean) Whether to bypass the key policy lockout safety check.
-- `description` (String) (Updatable) Description of the AWS key. Descriptions can be updated but not removed.
 - `enable_key` (Boolean) (Updatable) Enable or disable the key. Default is true.
-- `enable_rotation` (Block List) (Updatable) Enable the key for scheduled rotation job. Parameters 'disable_encrypt' and 'disable_encrypt_on_all_accounts' are mutually exclusive (see [below for nested schema](#nestedblock--enable_rotation))
-- `key_policy` (Block List) (Updatable) Key policy parameters. (see [below for nested schema](#nestedblock--key_policy))
+- `enable_rotation` (Attributes) (Updatable) Register the key with a CipherTrust Manager scheduled rotation job. The 'disable_encrypt' and 'disable_encrypt_on_all_accounts' parameters are mutually exclusive. (see [below for nested schema](#nestedatt--enable_rotation))
+- `key_policy` (Attributes) (Updatable) Key policy parameters. (see [below for nested schema](#nestedatt--key_policy))
 - `origin` (String) Source of the key material for the customer managed key.  Options: AWS_KMS, EXTERNAL, EXTERNAL_KEY_STORE, AWS_CLOUDHSM. AWS_KMS will create a native AWS key and is the default for AWS native key creation. EXTERNAL will create an external AWS key and is the default for import operations. This parameter is not required for upload operations. Origin is EXTERNAL_KEY_STORE for XKS/HYOK key and AWS_CLOUDHSM for key in CloudHSM key store.
 - `schedule_for_deletion_days` (Number) (Updatable) Waiting period after the key is destroyed before the key is deleted. Only relevant when the resource is destroyed. Default is 7.
-- `tags` (Map of String) (Updatable) A list of tags assigned to the CloudHSM key.
 
 ### Read-Only
 
@@ -125,13 +124,12 @@ resource "ciphertrust_aws_cloudhsm_key" "cloudhsm_key_1" {
 - `customer_master_key_spec` (String) Whether the KMS key contains a symmetric key or an asymmetric key pair. Valid values: SYMMETRIC_DEFAULT, RSA_2048, RSA_3072, RSA_4096, ECC_NIST_P256, ECC_NIST_P384, ECC_NIST_P521, ECC_SECG_P256K1, HMAC_224, HMAC_256, HMAC_384, HMAC_512
 - `deletion_date` (String) Date the key is scheduled for deletion.
 - `enabled` (Boolean) True if the key is enabled.
-- `encryption_algorithms` (List of String) Encryption algorithms of an asymmetric key
+- `encryption_algorithms` (List of String) Encryption algorithms of an asymmetric key.
 - `expiration_model` (String) Expiration model.
 - `external_accounts` (Set of String) Other AWS accounts that have access to this key.
 - `id` (String) CipherTrust Manager key ID. The legacy format '<aws-region>\<key-id>' is also accepted for backwards compatibility when migrating from beta provider versions.
 - `key_admins` (Set of String) Key administrators - users.
 - `key_admins_roles` (Set of String) Key administrators - roles.
-- `key_id` (String) CipherTrust Manager key ID.
 - `key_manager` (String) Key manager.
 - `key_material_origin` (String) Key material origin.
 - `key_rotation_enabled` (Boolean) True if rotation is enabled in AWS for this key.
@@ -143,12 +141,13 @@ resource "ciphertrust_aws_cloudhsm_key" "cloudhsm_key_1" {
 - `key_usage` (String) Specifies the intended use of the key. RSA key options: ENCRYPT_DECRYPT, SIGN_VERIFY. Default is ENCRYPT_DECRYPT. EC key options: SIGN_VERIFY. Default is SIGN_VERIFY. Symmetric key options: ENCRYPT_DECRYPT. Default is ENCRYPT_DECRYPT.
 - `key_users` (Set of String) Key users - users.
 - `key_users_roles` (Set of String) Key users - roles.
-- `kms` (String) Name or of the KMS.
 - `kms_id` (String) ID of the KMS
+- `kms_name` (String) Name or of the KMS.
 - `labels` (Map of String) A list of key:value pairs associated with the key.
 - `linked` (Boolean) Parameter to indicate if AWS CloudHSM key is linked with AWS.
 - `local_key_id` (String) CipherTrust Manager key identifier of the external key.
 - `local_key_name` (String) CipherTrust Manager key name of the external key.
+- `mac_algorithms` (List of String) MAC algorithms supported by an HMAC key.
 - `policy` (String) AWS key policy.
 - `policy_template_tag` (Map of String) AWS key tag for an associated policy template.
 - `region` (String) AWS region in which the CloudHSM key resides.
@@ -160,21 +159,35 @@ resource "ciphertrust_aws_cloudhsm_key" "cloudhsm_key_1" {
 - `updated_at` (String) Date the key was last updated.
 - `valid_to` (String) Date of key material expiry.
 
-<a id="nestedblock--enable_rotation"></a>
+<a id="nestedatt--aws_param"></a>
+### Nested Schema for `aws_param`
+
+Optional:
+
+- `alias` (Set of String) (Updatable for linked keys) Alias(es) assigned to the key.
+- `description` (String) (Updatable for linked keys) Description of the AWS key.
+- `tags` (Map of String) (Updatable for linked keys) Tags assigned to the key.
+
+Read-Only:
+
+- `policy` (String) Resulting AWS key policy. Output only.
+
+
+<a id="nestedatt--enable_rotation"></a>
 ### Nested Schema for `enable_rotation`
 
 Required:
 
-- `job_config_id` (String) ID of the scheduler configuration job that will schedule the key rotation.
-- `key_source` (String) Key source from where the key will be uploaded. Currently, the only option is 'local'.
+- `job_config_id` (String) ID of the scheduler configuration job.
+- `key_source` (String) Key source for rotation. Options: 'ciphertrust', 'local'.
 
 Optional:
 
-- `disable_encrypt` (Boolean) Disable encryption on the old key.
-- `disable_encrypt_on_all_accounts` (Boolean) Disable encryption permissions on the old key for all the accounts
+- `disable_encrypt` (Boolean) Disable encryption on the old key after rotation.
+- `disable_encrypt_on_all_accounts` (Boolean) Disable encryption on the old key for all accounts after rotation.
 
 
-<a id="nestedblock--key_policy"></a>
+<a id="nestedatt--key_policy"></a>
 ### Nested Schema for `key_policy`
 
 Optional:
@@ -185,7 +198,7 @@ Optional:
 - `key_users` (Set of String) Key users - users.
 - `key_users_roles` (Set of String) Key users - roles.
 - `policy` (String) AWS key policy json.
-- `policy_template` (String) CipherTrust Manager policy template ID
+- `policy_template` (String) CipherTrust Manager policy template ID.
 
 ### Updates
 
@@ -213,9 +226,9 @@ For unlinked keys, Terraform will accept the plan but no changes will be made to
 To avoid unintended changes to an existing key, do one of the following:
 
 **Option 1 - Configure the resource block to match the key's current state** before
-running `terraform apply`. Set `alias`, `tags`, `description`, `key_policy`,
-`enable_rotation`, and `enable_key` to their current values so that Terraform detects
-no diff.
+running `terraform apply`. Set `aws_param` (including `alias`, `description`, and `tags`),
+`key_policy`, `enable_rotation`, and `enable_key` to their current values so that
+Terraform detects no diff.
 
 **Option 2 - Use `lifecycle { ignore_changes }` to suppress diffs** on attributes
 you are not yet ready for Terraform to manage:
@@ -223,12 +236,11 @@ you are not yet ready for Terraform to manage:
 ```terraform
 lifecycle {
   ignore_changes = [
-    alias,
-    description,
+    aws_param,
+    aws_param.tags,
     enable_key,
     enable_rotation,
     key_policy,
-    tags,
   ]
 }
 ```
@@ -274,12 +286,11 @@ resource "ciphertrust_aws_cloudhsm_key" "example" {
   custom_key_store_id = "<custom-keystore-resource-id>"
   lifecycle {
     ignore_changes = [
-      alias,
-      description,
+      aws_param,
+      aws_param.tags,
       enable_key,
       enable_rotation,
       key_policy,
-      tags,
     ]
   }
 }
@@ -291,14 +302,16 @@ are correct):
 ```terraform
 resource "ciphertrust_aws_cloudhsm_key" "example" {
   custom_key_store_id = "<custom-keystore-resource-id>"
-  description         = "<description>"
-  alias               = ["alias/my-key"]
-  tags                = { Environment = "prod" }
   enable_key          = true
-  key_policy {
+  aws_param = {
+    alias       = ["alias/my-key"]
+    description = "<description>"
+    tags        = { Environment = "prod" }
+  }
+  key_policy = {
     # set values from terraform state show output
   }
-  enable_rotation {
+  enable_rotation = {
     disable_encrypt = false
     job_config_id   = "<scheduler-resource-id>"
     key_source      = "local"
@@ -307,7 +320,7 @@ resource "ciphertrust_aws_cloudhsm_key" "example" {
 ```
 
 The example above shows all updateable attributes. Include only the attributes that
-apply to your key - for example, omit `tags` if the key has no tags.
+apply to your key - for example, omit `aws_param.tags` if the key has no tags.
 
 ### 2. Import using the terraform import command
 

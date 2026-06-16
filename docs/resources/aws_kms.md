@@ -2,12 +2,12 @@
 page_title: "Resource ciphertrust_aws_kms - terraform-provider-ciphertrust"
 subcategory: ""
 description: |-
-    Use this resource to create and manage KMS keys for AWS accounts in CipherTrust Manager.
+    Use this resource to create and manage KMS keys for AWS accounts in CipherTrust Manager. If the KMS is not found during refresh it is removed from state automatically.
 ---
 
 # Resource "ciphertrust_aws_kms" (terraform-provider-ciphertrust)
 
-Use this resource to create and manage KMS keys for AWS accounts in CipherTrust Manager.
+Use this resource to create and manage KMS keys for AWS accounts in CipherTrust Manager. If the KMS is not found during refresh it is removed from state automatically.
 
 ## Example Usage
 
@@ -19,7 +19,7 @@ resource "ciphertrust_aws_connection" "aws_connection" {
 
 # Define a kms resource without using the ciphertrust_aws_account_details data-source and assign it to the connection
 resource "ciphertrust_aws_kms" "kms" {
-  account_id     = ["aws-account-id"]
+  account_id     = "aws-account-id"
   aws_connection = ciphertrust_aws_connection.aws_connection.id
   name           = "kms-name"
   regions        = ["aws-region", "aws-region"]
@@ -30,7 +30,7 @@ data "ciphertrust_aws_account_details" "account_details" {
   aws_connection = ciphertrust_aws_connection.aws_connection.id
 }
 
-resource "ciphertrust_aws_kms" "kms" {
+resource "ciphertrust_aws_kms" "kms_with_details" {
   account_id     = data.ciphertrust_aws_account_details.account_details.account_id
   aws_connection = ciphertrust_aws_connection.aws_connection.id
   name           = "kms-name"
@@ -40,7 +40,7 @@ resource "ciphertrust_aws_kms" "kms" {
 
 # Define an AWS key
 resource "ciphertrust_aws_key" "aws_key" {
-  kms    = ciphertrust_aws_kms.kms.id
+  kms_id = ciphertrust_aws_kms.kms.id
   region = ciphertrust_aws_kms.kms.regions[0]
 }
 ```

@@ -46,48 +46,48 @@ resource "ciphertrust_aws_kms" "kms" {
 # Define an AES CipherTrust key for creating EXTERNAL_KEY_STORE with CM as key source
 # key should be unexportable, undeletable, symmetric AES 256 key
 resource "ciphertrust_cm_key" "cm_aes_key" {
-  name                         = "aes-key-name"
-  algorithm                    = "AES"
-  usage_mask                   = 60
-  unexportable                 = true
-  undeletable                  = true
+  name         = "aes-key-name"
+  algorithm    = "AES"
+  usage_mask   = 60
+  unexportable = true
+  undeletable  = true
   # Setting remove_from_state_on_destroy to true will allow the key to be deleted from terraform state on destroy however, it will remain in CipherTrust Manager.
   remove_from_state_on_destroy = true
 }
 
 # Define unlinked external custom keystore with CipherTrust Manager as key source and PUBLIC_ENDPOINT proxy connectivity
-resource "ciphertrust_aws_custom_keystore" "external_custom_keystor" {
+resource "ciphertrust_aws_custom_keystore" "external_custom_keystore" {
   name                        = "keystore-name"
   region                      = ciphertrust_aws_kms.kms.regions[0]
-  kms                         = ciphertrust_aws_kms.kms.name
+  kms_id                      = ciphertrust_aws_kms.kms.id
   linked_state                = false
   connect_disconnect_keystore = "CONNECT_KEYSTORE"
-  local_hosted_params {
+  local_hosted_params = {
     blocked             = false
     health_check_key_id = ciphertrust_cm_key.cm_aes_key.id
     max_credentials     = 8
     source_key_tier     = "local"
   }
-  aws_param {
+  aws_param = {
     xks_proxy_uri_endpoint = "https://demo-xksproxy.thalescpl.io"
     xks_proxy_connectivity = "PUBLIC_ENDPOINT"
     custom_key_store_type  = "EXTERNAL_KEY_STORE"
   }
 }
 
-# Define an unlinked cloudhsm custom keystore
+# Define an unlinked CloudHSM custom keystore
 resource "ciphertrust_aws_custom_keystore" "cloudhsm_keystore" {
   connect_disconnect_keystore = "CONNECT_KEYSTORE"
   name                        = "keystore-name"
   region                      = ciphertrust_aws_kms.kms.regions[0]
-  kms                         = ciphertrust_aws_kms.kms.name
+  kms_id                      = ciphertrust_aws_kms.kms.id
   linked_state                = false
   enable_success_audit_event  = true
-  local_hosted_params {
+  local_hosted_params = {
     blocked         = false
     max_credentials = 8
   }
-  aws_param {
+  aws_param = {
     cloud_hsm_cluster_id     = "cluster-qxq7s6inshi"
     custom_key_store_type    = "AWS_CLOUDHSM"
     key_store_password       = "kmsuser-password"
@@ -119,13 +119,13 @@ resource "ciphertrust_aws_custom_keystore" "cloudhsm_keystore" {
 
 # An example resource for importing an existing external custom key store
 resource "ciphertrust_aws_custom_keystore" "imported_external_custom_keystore" {
-  aws_param {
+  aws_param = {
     custom_key_store_type  = "EXTERNAL_KEY_STORE"
     xks_proxy_connectivity = "PUBLIC_ENDPOINT"
     xks_proxy_uri_endpoint = "https://demo-xksproxy.thalescpl.io"
   }
-  kms = "e5a912a6-53b3-436d-a9d9-1fb3a3c86f36"
-  local_hosted_params {
+  kms_id = "e5a912a6-53b3-436d-a9d9-1fb3a3c86f36"
+  local_hosted_params = {
     health_check_key_id = "b9698199e923444d88a5436064dcde9134c5b0de06bf4975989430a2fab3ce60"
     max_credentials     = 8
   }
@@ -138,18 +138,18 @@ resource "ciphertrust_aws_custom_keystore" "imported_external_custom_keystore" {
 
 ### Required
 
-- `kms` (String) Name or ID of the AWS Account container in which to create the key store.
+- `kms_id` (String) ID of the AWS KMS account container in which to create the key store.
 - `name` (String) (Updatable) Unique name for the custom key store.
 - `region` (String) Name of the available AWS regions.
 
 ### Optional
 
-- `aws_param` (Block List) Parameters related to AWS interaction with a custom key store. (see [below for nested schema](#nestedblock--aws_param))
+- `aws_param` (Attributes) Parameters related to AWS interaction with a custom key store. (see [below for nested schema](#nestedatt--aws_param))
 - `connect_disconnect_keystore` (String) (Updatable) Indicates whether to connect or disconnect the custom key store.
-- `enable_credential_rotation` (Block List) (Updatable) Enable the custom key store for scheduled credential rotation job. (see [below for nested schema](#nestedblock--enable_credential_rotation))
+- `enable_credential_rotation` (Attributes) (Updatable) Enable the custom key store for scheduled credential rotation job. (see [below for nested schema](#nestedatt--enable_credential_rotation))
 - `enable_success_audit_event` (Boolean) (Updatable) Enable or disable audit recording of successful operations within an external key store. Default value is false. Recommended value is false as enabling it can affect performance.
 - `linked_state` (Boolean) (Updatable) Indicates whether the custom key store is linked with AWS. Applicable to a custom key store of type EXTERNAL_KEY_STORE. Default value is false. When false, creating a custom key store in the CCKM does not trigger the AWS KMS to create a new key store. Once linked, it's not possible to unlink a key store. Also, the new custom key store will not synchronize with any key stores within the AWS KMS until the new key store is linked.
-- `local_hosted_params` (Block List) Parameters related to AWS interaction with a custom key store. (see [below for nested schema](#nestedblock--local_hosted_params))
+- `local_hosted_params` (Attributes) Parameters related to local hosting of a custom key store. (see [below for nested schema](#nestedatt--local_hosted_params))
 - `timeouts` (Block, Optional) (see [below for nested schema](#nestedblock--timeouts))
 
 ### Read-Only
@@ -157,24 +157,24 @@ resource "ciphertrust_aws_custom_keystore" "imported_external_custom_keystore" {
 - `access_key_id` (String)
 - `cloud_name` (String)
 - `created_at` (String)
-- `credential_version` (String)
+- `credential_count` (Number) Number of credentials currently associated with the key store.
+- `credential_version` (Number) Version number of the current credentials.
 - `id` (String) The ID of this resource.
-- `kms_id` (String)
+- `kms_name` (String) Name of the AWS KMS account container associated with this key store.
 - `labels` (Map of String) A list of key:value pairs associated with the key.
+- `oldest_credentials_id` (String) ID of the oldest credentials associated with the key store.
 - `secret_access_key` (String)
 - `type` (String)
 - `updated_at` (String)
+- `version_count` (Number) Number of credential versions available.
 
-<a id="nestedblock--aws_param"></a>
+<a id="nestedatt--aws_param"></a>
 ### Nested Schema for `aws_param`
-
-Required:
-
-- `custom_key_store_type` (String) Specifies the type of custom key store. For a custom key store backed by an AWS CloudHSM cluster, the key store type is AWS_CLOUDHSM. For a custom key store backed by an HSM or key manager outside of AWS, the key store type is EXTERNAL_KEY_STORE.
 
 Optional:
 
 - `cloud_hsm_cluster_id` (String) (Updatable) ID of a CloudHSM cluster for a custom key store. Enter cluster ID of an active CloudHSM cluster that is not already associated with a custom key store. **Required** field for a custom key store of type AWS_CLOUDHSM.
+- `custom_key_store_type` (String) Specifies the type of custom key store. For a custom key store backed by an AWS CloudHSM cluster, the key store type is AWS_CLOUDHSM. For a custom key store backed by an HSM or key manager outside of AWS, the key store type is EXTERNAL_KEY_STORE.
 - `key_store_password` (String) (Updatable) The password of the kmsuser crypto user (CU) account configured in the specified CloudHSM cluster. This parameter does not change the password in the CloudHSM cluster. User needs to configure the credentials on the CloudHSM cluster separately. **Required** field for custom key store of type AWS_CLOUDHSM.
 - `trust_anchor_certificate` (String) The contents of a CA certificate or a self-signed certificate file created during the initialization of a CloudHSM cluster. **Required** field for a custom key store of type AWS_CLOUDHSM
 - `xks_proxy_connectivity` (String) (Updatable) Indicates how AWS KMS communicates with the Ciphertrust Manager. **Required** field for a custom key store of type EXTERNAL_KEY_STORE. Default value is PUBLIC_ENDPOINT.
@@ -183,13 +183,17 @@ Optional:
 
 Read-Only:
 
+- `arn` (String) Amazon Resource Name (ARN) of the custom key store.
+- `aws_account_id` (String) AWS account ID that owns this key store.
+- `connection_error_details` (String) Details about the last connection error, if any.
 - `connection_state` (String)
 - `custom_key_store_id` (String)
 - `custom_key_store_name` (String)
+- `number_of_hsms_in_cloudhsm_cluster` (Number) Number of HSMs in the CloudHSM cluster.
 - `xks_proxy_uri_path` (String)
 
 
-<a id="nestedblock--enable_credential_rotation"></a>
+<a id="nestedatt--enable_credential_rotation"></a>
 ### Nested Schema for `enable_credential_rotation`
 
 Required:
@@ -197,7 +201,7 @@ Required:
 - `job_config_id` (String) (Updatable) ID of the scheduler configuration job that will schedule the AWS XKS credential rotation.
 
 
-<a id="nestedblock--local_hosted_params"></a>
+<a id="nestedatt--local_hosted_params"></a>
 ### Nested Schema for `local_hosted_params`
 
 Optional:
@@ -205,13 +209,13 @@ Optional:
 - `blocked` (Boolean) (Updatable) This field indicates whether the custom key store is in a blocked or unblocked state. Default value is false, which indicates the key store is in an unblocked state. Applicable to a custom key store of type EXTERNAL_KEY_STORE.
 - `health_check_key_id` (String) (Updatable) ID of an existing LUNA key (if source key tier is 'hsm-luna') or CipherTrust Manager key (if source key tier is 'local') to use for health check of the custom key store. Crypto operation would be performed using this key before creating a custom key store. **Required** field for custom key store of type EXTERNAL_KEY_STORE.
 - `max_credentials` (Number) Max number of credentials that can be associated with custom key store (min value 2. max value 20). **Required** field for a custom key store of type EXTERNAL_KEY_STORE.
-- `mtls_enabled` (Boolean) (Updatable) Set it to true to enable tls client-side certificate verification  -  where CipherTrust manager authenticates the AWS KMS client. +Default value is false.
 - `partition_id` (String) ID of Luna HSM partition. **Required** field, if custom key store is of type EXTERNAL_KEY_STORE and source key tier is 'hsm-luna'.
 - `source_key_tier` (String) Source for cryptographic keys in this key store. The only supported value is 'local' (CipherTrust Manager).
 
 Read-Only:
 
 - `health_check_ciphertext` (String)
+- `health_check_uri_path` (String) URI path used by AWS KMS to perform health checks on this custom key store.
 - `linked_state` (Boolean)
 - `partition_label` (String)
 - `source_container_id` (String)
@@ -322,8 +326,8 @@ import {
 resource "ciphertrust_aws_custom_keystore" "example" {
   name   = "<keystore-name>"
   region = "<aws-region>"        # e.g. "us-east-1"
-  kms    = "<kms-resource-id>"
-  aws_param {
+  kms_id = "<kms-resource-id>"
+  aws_param = {
     custom_key_store_type = "AWS_CLOUDHSM"
   }
   lifecycle {
@@ -351,8 +355,8 @@ import {
 resource "ciphertrust_aws_custom_keystore" "example" {
   name   = "<keystore-name>"
   region = "<aws-region>"        # e.g. "us-east-1"
-  kms    = "<kms-resource-id>"
-  aws_param {
+  kms_id = "<kms-resource-id>"
+  aws_param = {
     custom_key_store_type = "EXTERNAL_KEY_STORE"
   }
   lifecycle {
@@ -378,21 +382,21 @@ are correct):
 resource "ciphertrust_aws_custom_keystore" "example" {
   name                        = "<keystore-name>"
   region                      = "<aws-region>"
-  kms                         = "<kms-resource-id>"
+  kms_id                      = "<kms-resource-id>"
   enable_success_audit_event  = false
   connect_disconnect_keystore = "CONNECT_KEYSTORE"
-  aws_param {
-    custom_key_store_type  = "AWS_CLOUDHSM"
-    cloud_hsm_cluster_id   = "<cloudhsm-cluster-id>"
+  aws_param = {
+    custom_key_store_type = "AWS_CLOUDHSM"
+    cloud_hsm_cluster_id  = "<cloudhsm-cluster-id>"
     # key_store_password is write-only - omit after import to avoid permanent plan diff
     # key_store_password = "<password>"
   }
-  local_hosted_params {
-    blocked            = false
+  local_hosted_params = {
+    blocked             = false
     health_check_key_id = "<key-id>"
-    mtls_enabled       = false
+    mtls_enabled        = false
   }
-  enable_credential_rotation {
+  enable_credential_rotation = {
     job_config_id = "<scheduler-resource-id>"
   }
 }
@@ -404,23 +408,23 @@ resource "ciphertrust_aws_custom_keystore" "example" {
 resource "ciphertrust_aws_custom_keystore" "example" {
   name                        = "<keystore-name>"
   region                      = "<aws-region>"
-  kms                         = "<kms-resource-id>"
+  kms_id                      = "<kms-resource-id>"
   enable_success_audit_event  = false
   linked_state                = true
   connect_disconnect_keystore = "CONNECT_KEYSTORE"
-  aws_param {
-    custom_key_store_type              = "EXTERNAL_KEY_STORE"
-    xks_proxy_connectivity             = "PUBLIC_ENDPOINT"
-    xks_proxy_uri_endpoint             = "https://<xks-proxy-host>"
+  aws_param = {
+    custom_key_store_type               = "EXTERNAL_KEY_STORE"
+    xks_proxy_connectivity              = "PUBLIC_ENDPOINT"
+    xks_proxy_uri_endpoint              = "https://<xks-proxy-host>"
     xks_proxy_vpc_endpoint_service_name = "<vpc-endpoint-service-name>"
   }
-  local_hosted_params {
+  local_hosted_params = {
     blocked             = false
     health_check_key_id = "<key-id>"
     mtls_enabled        = false
     source_key_tier     = "local"
   }
-  enable_credential_rotation {
+  enable_credential_rotation = {
     job_config_id = "<scheduler-resource-id>"
   }
 }

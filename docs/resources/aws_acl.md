@@ -14,14 +14,14 @@ Use this resource to create and manage AWS KMS access control lists (ACLs) in Ci
 ```terraform
 # Define an ACL for a CipherTrust Manager user
 resource "ciphertrust_aws_acl" "user_acl" {
-  kms     = "ciphertrust-kms-id"
+  kms_id  = "ciphertrust-kms-id"
   user_id = "ciphertrust-user-id"
   actions = ["keycreate", "keyupdate", "keydelete"]
 }
 
 # Define an ACL for a CipherTrust Manager group
 resource "ciphertrust_aws_acl" "group_acl" {
-  kms     = "ciphertrust-kms-id"
+  kms_id  = "ciphertrust-kms-id"
   group   = "ciphertrust-group-name"
   actions = ["keycreate", "keyupdate", "keydelete"]
 }
@@ -87,7 +87,7 @@ It's not necessary to add any view permissions as they will be automatically add
 To remove a user or group from the KMS ACL entirely, delete the resource.
 
 For backwards compatibility the deprecated 'view' permission will be automatically converted to 'viewnative' and 'viewbyok' permissions.
-- `kms_id` (String) The CipherTrust Manager AWS KMS resource ID in which to set the ACL
+- `kms_id` (String) The CipherTrust Manager AWS KMS ID in which to set the ACL
 
 ### Optional
 
@@ -96,7 +96,7 @@ For backwards compatibility the deprecated 'view' permission will be automatical
 
 ### Read-Only
 
-- `id` (String) The CipherTrust Manager KMS resource ID concatenated with either the user ID or the group name separated by two semi-colons.
+- `id` (String) The CipherTrust Manager KMS ID concatenated with either the user ID or the group name separated by two semi-colons.
 - `kms_actions` (Set of String) Actions saved in the KMS for this user or group including automatically added view ACL's.
 
 ### Updates
@@ -153,7 +153,7 @@ import {
 }
 
 resource "ciphertrust_aws_acl" "example" {
-  kms     = "<kms-resource-id>"
+  kms_id  = "<kms-resource-id>"
   user_id = "<user-id>"
   actions = []
   lifecycle {
@@ -170,7 +170,7 @@ actions are correct):
 
 ```terraform
 resource "ciphertrust_aws_acl" "example" {
-  kms     = "<kms-resource-id>"
+  kms_id  = "<kms-resource-id>"
   user_id = "<user-id>"
   actions = ["keycreate"]
 }
