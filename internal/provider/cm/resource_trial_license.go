@@ -18,8 +18,9 @@ import (
 )
 
 var (
-	_ resource.Resource              = &resourceCMTrialLicense{}
-	_ resource.ResourceWithConfigure = &resourceCMTrialLicense{}
+	_ resource.Resource                   = &resourceCMTrialLicense{}
+	_ resource.ResourceWithConfigure      = &resourceCMTrialLicense{}
+	_ resource.ResourceWithValidateConfig = &resourceCMTrialLicense{}
 )
 
 func NewResourceCMTrialLicense() resource.Resource {
@@ -34,9 +35,14 @@ func (r *resourceCMTrialLicense) Metadata(_ context.Context, req resource.Metada
 	resp.TypeName = req.ProviderTypeName + "_trial_license"
 }
 
+func (r *resourceCMTrialLicense) ValidateConfig(ctx context.Context, _ resource.ValidateConfigRequest, resp *resource.ValidateConfigResponse) {
+	common.ValidateCMOnly(ctx, r.client, "ciphertrust_trial_license", resp)
+}
+
 // Schema defines the schema for the resource.
 func (r *resourceCMTrialLicense) Schema(_ context.Context, _ resource.SchemaRequest, resp *resource.SchemaResponse) {
 	resp.Schema = schema.Schema{
+		Description: "Activates a CipherTrust Manager trial license. **Only available on CipherTrust Manager — not supported on CDSPaaS.**",
 		Attributes: map[string]schema.Attribute{
 			"id": schema.StringAttribute{
 				Description: "ID of the trial license",

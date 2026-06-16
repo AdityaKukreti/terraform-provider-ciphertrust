@@ -4,8 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 
 	"github.com/google/uuid"
+	"github.com/tidwall/gjson"
 
 	common "github.com/ThalesGroup/terraform-provider-ciphertrust/internal/provider/common"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
@@ -43,20 +45,23 @@ func (r *resourceCMGroup) Schema(_ context.Context, _ resource.SchemaRequest, re
 					stringplanmodifier.UseStateForUnknown(),
 				},
 			},
-			"app_metadata": schema.MapNestedAttribute{
+			"app_metadata": schema.StringAttribute{
 				Optional: true,
 			},
-			"client_metadata": schema.MapNestedAttribute{
+			"client_metadata": schema.StringAttribute{
 				Optional: true,
 			},
 			"description": schema.StringAttribute{
 				Optional: true,
 			},
-			"user_metadata": schema.MapNestedAttribute{
+			"user_metadata": schema.StringAttribute{
 				Optional: true,
 			},
 			"id": schema.StringAttribute{
 				Computed: true,
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.UseStateForUnknown(),
+				},
 			},
 		},
 	}
@@ -65,9 +70,8 @@ func (r *resourceCMGroup) Schema(_ context.Context, _ resource.SchemaRequest, re
 // Create creates the resource and sets the initial Terraform state.
 func (r *resourceCMGroup) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
 	id := uuid.New().String()
-	tflog.Trace(ctx, common.MSG_METHOD_START+"[resource_cm_user.go -> Create]["+id+"]")
+	tflog.Trace(ctx, common.MSG_METHOD_START+"[resource_cm_group.go -> Create]["+id+"]")
 
-	// Retrieve values from plan
 	var plan CMGroupTFSDK
 	var payload CMGroupJSON
 
@@ -84,23 +88,26 @@ func (r *resourceCMGroup) Create(ctx context.Context, req resource.CreateRequest
 		payload.Description = plan.Description.ValueString()
 	}
 
-	appMetadataPayload := make(map[string]interface{})
-	for k, v := range plan.AppMetadata.Elements() {
-		appMetadataPayload[k] = v.(types.String).ValueString()
+	if !plan.AppMetadata.IsNull() && !plan.AppMetadata.IsUnknown() && plan.AppMetadata.ValueString() != "" {
+		var meta map[string]interface{}
+		if json.Unmarshal([]byte(plan.AppMetadata.ValueString()), &meta) == nil {
+			payload.AppMetadata = meta
+		}
 	}
-	payload.AppMetadata = appMetadataPayload
 
-	clientMetadataPayload := make(map[string]interface{})
-	for k, v := range plan.ClientMetadata.Elements() {
-		clientMetadataPayload[k] = v.(types.String).ValueString()
+	if !plan.ClientMetadata.IsNull() && !plan.ClientMetadata.IsUnknown() && plan.ClientMetadata.ValueString() != "" {
+		var meta map[string]interface{}
+		if json.Unmarshal([]byte(plan.ClientMetadata.ValueString()), &meta) == nil {
+			payload.ClientMetadata = meta
+		}
 	}
-	payload.ClientMetadata = clientMetadataPayload
 
-	userMetadataPayload := make(map[string]interface{})
-	for k, v := range plan.UserMetadata.Elements() {
-		userMetadataPayload[k] = v.(types.String).ValueString()
+	if !plan.UserMetadata.IsNull() && !plan.UserMetadata.IsUnknown() && plan.UserMetadata.ValueString() != "" {
+		var meta map[string]interface{}
+		if json.Unmarshal([]byte(plan.UserMetadata.ValueString()), &meta) == nil {
+			payload.UserMetadata = meta
+		}
 	}
-	payload.UserMetadata = userMetadataPayload
 
 	payloadJSON, err := json.Marshal(payload)
 	if err != nil {
@@ -116,16 +123,16 @@ func (r *resourceCMGroup) Create(ctx context.Context, req resource.CreateRequest
 	if err != nil {
 		tflog.Debug(ctx, common.ERR_METHOD_END+err.Error()+" [resource_cm_group.go -> Create]["+id+"]")
 		resp.Diagnostics.AddError(
-			"Error creating group on CipherTrust Manager: ",
+			"Error Creating CipherTrust Group",
 			"Could not create group, unexpected error: "+err.Error(),
 		)
 		return
 	}
 	plan.ID = plan.Name
 
-	tflog.Debug(ctx, "[resource_cm_user.go -> Create Output]["+response+"]")
+	tflog.Debug(ctx, "[resource_cm_group.go -> Create Output]["+response+"]")
 
-	tflog.Trace(ctx, common.MSG_METHOD_END+"[resource_cm_user.go -> Create]["+id+"]")
+	tflog.Trace(ctx, common.MSG_METHOD_END+"[resource_cm_group.go -> Create]["+id+"]")
 	diags = resp.State.Set(ctx, plan)
 	resp.Diagnostics.Append(diags...)
 	if resp.Diagnostics.HasError() {
@@ -135,6 +142,65 @@ func (r *resourceCMGroup) Create(ctx context.Context, req resource.CreateRequest
 
 // Read refreshes the Terraform state with the latest data.
 func (r *resourceCMGroup) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
+	id := uuid.New().String()
+	tflog.Debug(ctx, common.MSG_METHOD_START+"[resource_cm_group.go -> Read]["+id+"]")
+	defer tflog.Debug(ctx, common.MSG_METHOD_END+"[resource_cm_group.go -> Read]["+id+"]")
+
+	var state CMGroupTFSDK
+	resp.Diagnostics.Append(req.State.Get(ctx, &state)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	resourceID := state.ID.ValueString()
+
+	response, err := r.client.GetById(ctx, id, resourceID, common.URL_GROUP)
+	if err != nil {
+		if strings.Contains(err.Error(), notFoundError) {
+			tflog.Warn(ctx, "CipherTrust Group not found, removing from state [resource_cm_group.go -> Read]["+resourceID+"]")
+			resp.Diagnostics.AddWarning(
+				"CipherTrust Group Not Found",
+				"Group "+resourceID+" was not found on CipherTrust Manager and will be removed from state. "+err.Error(),
+			)
+			resp.State.RemoveResource(ctx)
+			return
+		}
+		tflog.Debug(ctx, common.ERR_METHOD_END+err.Error()+" [resource_cm_group.go -> Read]["+resourceID+"]")
+		resp.Diagnostics.AddError(
+			"Error Reading CipherTrust Group",
+			"Could not read group "+resourceID+": "+err.Error(),
+		)
+		return
+	}
+
+	state.Name = types.StringValue(gjson.Get(response, "name").String())
+	state.ID = state.Name
+
+	if v := gjson.Get(response, "description"); v.Exists() && v.String() != "" {
+		state.Description = types.StringValue(v.String())
+	} else {
+		state.Description = types.StringNull()
+	}
+
+	if v := gjson.Get(response, "app_metadata"); v.Exists() && v.Type != gjson.Null && v.Raw != "{}" {
+		state.AppMetadata = types.StringValue(v.Raw)
+	} else {
+		state.AppMetadata = types.StringNull()
+	}
+
+	if v := gjson.Get(response, "client_metadata"); v.Exists() && v.Type != gjson.Null && v.Raw != "{}" {
+		state.ClientMetadata = types.StringValue(v.Raw)
+	} else {
+		state.ClientMetadata = types.StringNull()
+	}
+
+	if v := gjson.Get(response, "user_metadata"); v.Exists() && v.Type != gjson.Null && v.Raw != "{}" {
+		state.UserMetadata = types.StringValue(v.Raw)
+	} else {
+		state.UserMetadata = types.StringNull()
+	}
+
+	resp.Diagnostics.Append(resp.State.Set(ctx, state)...)
 }
 
 // Update updates the resource and sets the updated Terraform state on success.
@@ -156,29 +222,32 @@ func (r *resourceCMGroup) Update(ctx context.Context, req resource.UpdateRequest
 		payload.Description = plan.Description.ValueString()
 	}
 
-	appMetadataPayload := make(map[string]interface{})
-	for k, v := range plan.AppMetadata.Elements() {
-		appMetadataPayload[k] = v.(types.String).ValueString()
+	if !plan.AppMetadata.IsNull() && !plan.AppMetadata.IsUnknown() && plan.AppMetadata.ValueString() != "" {
+		var meta map[string]interface{}
+		if json.Unmarshal([]byte(plan.AppMetadata.ValueString()), &meta) == nil {
+			payload.AppMetadata = meta
+		}
 	}
-	payload.AppMetadata = appMetadataPayload
 
-	clientMetadataPayload := make(map[string]interface{})
-	for k, v := range plan.ClientMetadata.Elements() {
-		clientMetadataPayload[k] = v.(types.String).ValueString()
+	if !plan.ClientMetadata.IsNull() && !plan.ClientMetadata.IsUnknown() && plan.ClientMetadata.ValueString() != "" {
+		var meta map[string]interface{}
+		if json.Unmarshal([]byte(plan.ClientMetadata.ValueString()), &meta) == nil {
+			payload.ClientMetadata = meta
+		}
 	}
-	payload.ClientMetadata = clientMetadataPayload
 
-	userMetadataPayload := make(map[string]interface{})
-	for k, v := range plan.UserMetadata.Elements() {
-		userMetadataPayload[k] = v.(types.String).ValueString()
+	if !plan.UserMetadata.IsNull() && !plan.UserMetadata.IsUnknown() && plan.UserMetadata.ValueString() != "" {
+		var meta map[string]interface{}
+		if json.Unmarshal([]byte(plan.UserMetadata.ValueString()), &meta) == nil {
+			payload.UserMetadata = meta
+		}
 	}
-	payload.UserMetadata = userMetadataPayload
 
 	payloadJSON, err := json.Marshal(payload)
 	if err != nil {
-		tflog.Debug(ctx, common.ERR_METHOD_END+err.Error()+" [resource_cm_group.go -> Create]["+id+"]")
+		tflog.Debug(ctx, common.ERR_METHOD_END+err.Error()+" [resource_cm_group.go -> Update]["+id+"]")
 		resp.Diagnostics.AddError(
-			"Invalid data input: Group Creation",
+			"Invalid data input: Group Update",
 			err.Error(),
 		)
 		return
@@ -186,9 +255,9 @@ func (r *resourceCMGroup) Update(ctx context.Context, req resource.UpdateRequest
 
 	response, err := r.client.UpdateData(ctx, plan.Name.ValueString(), common.URL_GROUP, payloadJSON, "name")
 	if err != nil {
-		tflog.Debug(ctx, common.ERR_METHOD_END+err.Error()+" [resource_cm_user.go -> Update]["+plan.Name.ValueString()+"]")
+		tflog.Debug(ctx, common.ERR_METHOD_END+err.Error()+" [resource_cm_group.go -> Update]["+plan.Name.ValueString()+"]")
 		resp.Diagnostics.AddError(
-			"Error updating group on CipherTrust Manager: ",
+			"Error Updating CipherTrust Group",
 			"Could not update group, unexpected error: "+err.Error(),
 		)
 		return
@@ -200,7 +269,6 @@ func (r *resourceCMGroup) Update(ctx context.Context, req resource.UpdateRequest
 	if resp.Diagnostics.HasError() {
 		return
 	}
-
 }
 
 // Delete deletes the resource and removes the Terraform state on success.
@@ -212,11 +280,13 @@ func (r *resourceCMGroup) Delete(ctx context.Context, req resource.DeleteRequest
 		return
 	}
 
-	// Delete existing order
 	url := fmt.Sprintf("%s/%s/%s", r.client.CipherTrustURL, common.URL_GROUP, state.Name.ValueString())
 	output, err := r.client.DeleteByID(ctx, "DELETE", state.Name.ValueString(), url, nil)
 	tflog.Trace(ctx, common.MSG_METHOD_END+"[resource_cm_group.go -> Delete]["+state.Name.ValueString()+"]["+output+"]")
 	if err != nil {
+		if strings.Contains(err.Error(), notFoundError) {
+			return
+		}
 		resp.Diagnostics.AddError(
 			"Error Deleting CipherTrust Group",
 			"Could not delete group, unexpected error: "+err.Error(),

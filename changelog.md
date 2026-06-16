@@ -1,5 +1,29 @@
 # 1.0.1
 
+## Provider Configuration
+    Added `tenant` (env: CIPHERTRUST_TENANT) for CDSPaaS authentication.
+    When set, the provider sends auth_domain_path on sign-in and rejects
+    CipherTrust-Manager-only resources at plan time:
+
+      ciphertrust_cluster
+      ciphertrust_cm_prometheus
+      ciphertrust_domain
+      ciphertrust_hsm_root_of_trust_setup
+      ciphertrust_interface
+      ciphertrust_license
+      ciphertrust_ntp
+      ciphertrust_password_policy
+      ciphertrust_policies
+      ciphertrust_policy_attachments
+      ciphertrust_property
+      ciphertrust_proxy
+      ciphertrust_scp_connection
+      ciphertrust_syslog
+      ciphertrust_trial_license
+
+    ciphertrust_cm_ssh_key is bootstrap-only and is implicitly unavailable
+    on CDSPaaS (which does not expose bootstrap mode).
+
 ## New Resources
     ciphertrust_aws_acl
     ciphertrust_aws_key_import_material

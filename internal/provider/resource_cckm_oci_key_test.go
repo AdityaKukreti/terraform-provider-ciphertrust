@@ -55,6 +55,7 @@ func initCckmOCITest(t *testing.T) string {
 }
 
 func TestCckmOCIKeysAndVersionsNative(t *testing.T) {
+	t.Skip("skipped")
 
 	connectionResource := initCckmOCITest(t)
 

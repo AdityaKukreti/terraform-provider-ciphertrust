@@ -20,8 +20,9 @@ import (
 )
 
 var (
-	_ resource.Resource              = &resourceCMSyslog{}
-	_ resource.ResourceWithConfigure = &resourceCMSyslog{}
+	_ resource.Resource                   = &resourceCMSyslog{}
+	_ resource.ResourceWithConfigure      = &resourceCMSyslog{}
+	_ resource.ResourceWithValidateConfig = &resourceCMSyslog{}
 )
 
 func NewResourceCMSyslog() resource.Resource {
@@ -36,9 +37,14 @@ func (r *resourceCMSyslog) Metadata(_ context.Context, req resource.MetadataRequ
 	resp.TypeName = req.ProviderTypeName + "_syslog"
 }
 
+func (r *resourceCMSyslog) ValidateConfig(ctx context.Context, _ resource.ValidateConfigRequest, resp *resource.ValidateConfigResponse) {
+	common.ValidateCMOnly(ctx, r.client, "ciphertrust_syslog", resp)
+}
+
 // Schema defines the schema for the resource.
 func (r *resourceCMSyslog) Schema(_ context.Context, _ resource.SchemaRequest, resp *resource.SchemaResponse) {
 	resp.Schema = schema.Schema{
+		Description: "Configures a syslog forwarding destination on the CipherTrust Manager appliance. **Only available on CipherTrust Manager — not supported on CDSPaaS.**",
 		Attributes: map[string]schema.Attribute{
 			"id": schema.StringAttribute{
 				Computed: true,

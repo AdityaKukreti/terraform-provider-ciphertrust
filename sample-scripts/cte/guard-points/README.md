@@ -51,13 +51,17 @@ resource "ciphertrust_cte_client" "cte_client" {
 }
 
 resource "ciphertrust_cte_client_guardpoint" "dir_auto_gp" {
-    guard_paths = ["/opt/path1"]
-    guard_point_params = {
+  client_id = ciphertrust_cte_client.cte_client.id
+
+  guard_points = {
+    "/test/gp1" = {
+      guard_point_params = {
         guard_point_type = "directory_auto"
-        guard_enabled = true
-        policy_id     = ciphertrust_cte_policy.standard_policy.name
+        policy_id        = ciphertrust_cte_policy.standard_policy.id
+        # guard_enabled  = false 
+      }
     }
-    client_id     = ciphertrust_cte_client.cte_client.id
+  }
 }
 ```
 

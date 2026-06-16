@@ -36,6 +36,13 @@ resource "ciphertrust_cte_policy" "cte_policy" {
 resource "ciphertrust_cte_policy" "cte_policy" {
   name = "TestPolicy"
   policy_type = "Standard"
+  security_rules = [
+    {
+      effect="permit"
+	  action="read"
+      partial_match=false
+    },
+  ]
   description="updated via TF"
 }
 `,

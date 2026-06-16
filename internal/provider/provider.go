@@ -59,6 +59,7 @@ type ciphertrustProviderModel struct {
 	Domain               types.String `tfsdk:"domain"`
 	Bootstrap            types.String `tfsdk:"bootstrap"`
 	AuthDomain           types.String `tfsdk:"auth_domain"`
+	Tenant               types.String `tfsdk:"tenant"`
 	InsecureSkipVerify   types.Bool   `tfsdk:"no_ssl_verify"`
 	RestOperationTimeout types.Int64  `tfsdk:"rest_api_timeout"`
 	Address              types.String `tfsdk:"address"`
@@ -110,6 +111,12 @@ func (p *ciphertrustProvider) Schema(_ context.Context, _ provider.SchemaRequest
 				Optional:    true,
 				Description: "CipherTrust domain to log in to. " + fmt.Sprintf(providerDescNoDefaultWithEnvVar+". Default is the empty string (root domain).", "domain", "CM_DOMAIN"),
 			},
+			"tenant": schema.StringAttribute{
+				Optional: true,
+				Description: "CDSPaaS tenant name (e.g. \"acme\") or tenant path (e.g. \"acme/eng/team\"). " +
+					"Setting this opts the provider into the CDSPaaS authentication path; leave unset for on-prem CipherTrust Manager. " +
+					fmt.Sprintf(providerDescNoDefaultWithEnvVar, "tenant", "CIPHERTRUST_TENANT"),
+			},
 			"no_ssl_verify": &schema.BoolAttribute{
 				Optional:    true,
 				Description: "Set as false to verify the server's certificate chain and host name. " + fmt.Sprintf(providerDescWithDefault, "no_ssl_verify", "true"),
@@ -147,6 +154,7 @@ func (p *ciphertrustProvider) Configure(ctx context.Context, req provider.Config
 	var domain string
 	var bootstrap string
 	var auth_domain string
+	var tenant string
 	var no_ssl_verify bool
 	var rest_api_timeout int64
 	var aws_operation_timeout = int64(defaultAwsOperationTimeout)
@@ -195,6 +203,8 @@ func (p *ciphertrustProvider) Configure(ctx context.Context, req provider.Config
 			domain = value
 		case "auth_domain":
 			auth_domain = value
+		case "tenant":
+			tenant = value
 		case "no_ssl_verify":
 			no_ssl_verify, _ = strconv.ParseBool(value)
 		case "rest_api_timeout":
@@ -232,6 +242,10 @@ func (p *ciphertrustProvider) Configure(ctx context.Context, req provider.Config
 	authDomainEnvVal, authDomainEnvExists := os.LookupEnv("CIPHERTRUST_AUTH_DOMAIN")
 	if authDomainEnvExists {
 		auth_domain = authDomainEnvVal
+	}
+	tenantEnvVal, tenantEnvExists := os.LookupEnv("CIPHERTRUST_TENANT")
+	if tenantEnvExists {
+		tenant = tenantEnvVal
 	}
 	noSSLVerifyEnvVal, noSSLVerifyEnvExists := os.LookupEnv("NO_SSL_VERIFY")
 	if noSSLVerifyEnvExists {
@@ -271,6 +285,10 @@ func (p *ciphertrustProvider) Configure(ctx context.Context, req provider.Config
 		auth_domain = config.AuthDomain.ValueString()
 	}
 
+	if !config.Tenant.IsNull() {
+		tenant = config.Tenant.ValueString()
+	}
+
 	if !config.InsecureSkipVerify.IsNull() {
 		no_ssl_verify = config.InsecureSkipVerify.ValueBool()
 	}
@@ -289,6 +307,18 @@ func (p *ciphertrustProvider) Configure(ctx context.Context, req provider.Config
 
 	if !config.ReplicationDelayMS.IsNull() {
 		oci_operation_timeout = config.ReplicationDelayMS.ValueInt64()
+	}
+
+	// auth_domain_path (sent when tenant is set) supersedes auth_domain server-side.
+	// Warn the user so they don't think their auth_domain value is being honoured.
+	if tenant != "" && auth_domain != "" {
+		resp.Diagnostics.AddAttributeWarning(
+			path.Root("auth_domain"),
+			"auth_domain is ignored when tenant is set",
+			"Both \"tenant\" and \"auth_domain\" are configured. The CDSPaaS "+
+				"authentication path uses auth_domain_path (derived from tenant), "+
+				"which supersedes auth_domain. Remove auth_domain to silence this warning.",
+		)
 	}
 
 	// If any of the expected configurations are missing, return
@@ -355,7 +385,7 @@ func (p *ciphertrustProvider) Configure(ctx context.Context, req provider.Config
 
 	if bootstrap == "no" {
 		// Create a new CipherTrust client using the configuration values
-		client, err := common.NewClient(ctx, id, &address, &auth_domain, &domain, &username, &password, no_ssl_verify, rest_api_timeout)
+		client, err := common.NewClient(ctx, id, &address, &auth_domain, &domain, &username, &password, &tenant, no_ssl_verify, rest_api_timeout)
 		if err != nil {
 			resp.Diagnostics.AddError(
 				"Unable to Create CipherTrust API Client",
@@ -454,7 +484,6 @@ func (p *ciphertrustProvider) Resources(ctx context.Context) []func() resource.R
 		cte.NewResourceCTEPolicy,
 		cte.NewResourceCTEClient,
 		cte.NewResourceCTEPolicyDataTXRule,
-		cte.NewResourceCTEPolicyIDTKeyRule,
 		cte.NewResourceCTEPolicyKeyRule,
 		cte.NewResourceCTEPolicyLDTKeyRule,
 		cte.NewResourceCTEPolicySecurityRule,

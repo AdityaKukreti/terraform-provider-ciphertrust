@@ -168,8 +168,7 @@ resource "ciphertrust_cte_policy_key_rule" "key_rule" {
 resource "ciphertrust_cte_policy_ldtkey_rule" "ldt_key_rule" {
   policy_id = ciphertrust_cte_policy.ldt_policy.id
 
-  rule = [
-    {
+  rule = {
       is_exclusion_rule = false
       resource_set_id    = "cm-test"
       current_key = {
@@ -178,27 +177,8 @@ resource "ciphertrust_cte_policy_ldtkey_rule" "ldt_key_rule" {
       transformation_key = {
         key_id = "ldt_key2"
       }
-    },
-    {
-      is_exclusion_rule = true,
-      resource_set_id = "test-resource-set"
-      current_key = {
-        key_id = "clear_key"
-      }
     }
-  ]
 
-}
-
-# Add IDT key rule
-resource "ciphertrust_cte_policy_idt_key_rule" "idt_key_rule" {
-  policy_id = ciphertrust_cte_policy.idt_policy.id
-
-  rule =  {
-      id = ciphertrust_cte_policy.idt_policy.idt_key_rules[0].id
-      transformation_key = "idt_key2"
-      current_key = "clear_key"
-      }
 }
 
 # Add datax key rule

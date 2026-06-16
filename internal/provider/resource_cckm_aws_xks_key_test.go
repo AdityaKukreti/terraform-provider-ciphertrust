@@ -106,7 +106,7 @@ func TestCckmAWSXksUnlinkedKey(t *testing.T) {
 		  start_date = "2025-03-07T14:24:00Z"
 		}`
 	enableRotationConfigStr := fmt.Sprintf(enableRotationConfig, enableRotationName)
-	enableRotationConfigStr = applyCTAAS(enableRotationConfigStr)
+	enableRotationConfigStr = applyCDSPAAS(enableRotationConfigStr)
 
 	createXksKeyConfig := `
 		resource "ciphertrust_aws_xks_key" "unlinked_cm_source_min_params" {

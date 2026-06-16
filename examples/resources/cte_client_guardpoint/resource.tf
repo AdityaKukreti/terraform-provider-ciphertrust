@@ -30,21 +30,25 @@ provider "ciphertrust" {
 
 # Add a resource of type CTE guardpoint to guard paths /test1 and /test2
 resource "ciphertrust_cte_client_guardpoint" "dir_auto_gp" {
-  # List of GP paths
-  guard_paths = ["/test1", "/test2"]
-
   # IP Address/hostname/ID of client.
-  client_id = "243b14ec-2251-449d-9ada-6fb1f8e6a414"
+  client_id = ciphertrust_cte_client.cte_client.id
 
-  guard_point_params = {
-    # Type of the GuardPoint. The valid values are “directory_auto”, “directory_manual”, “rawdevice_manual”, “rawdevice_auto”, “cloudstorage_auto”, “cloudstorage_manual”, or "ransomware_protection".
-    guard_point_type = "directory_auto"
+  guard_points = {
+    
+    # guard_path and its params are sent as a map
+    "/test/gp1" = {
+      guard_point_params = {
 
-    # Guard Enabled
-    guard_enabled = true
+        # Type of the GuardPoint. The valid values are “directory_auto”, “directory_manual”, “rawdevice_manual”, “rawdevice_auto”, “cloudstorage_auto”, “cloudstorage_manual”, or "ransomware_protection".
+        guard_point_type = "directory_auto"
 
-    # ID of the policy applied with this GuardPoint.
-    policy_id = "00000000-0000-0000-0000-000000000000"
+        # ID of the policy applied with this GuardPoint.
+        policy_id        = ciphertrust_cte_policy.standard_policy.id
+
+        # This field are ignored during intitial apply but can be updated, its default values are set (guard_enabled=true)
+        # guard_enabled  = false 
+      }
+    }
   }
 }
 

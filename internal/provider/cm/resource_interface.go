@@ -21,8 +21,9 @@ import (
 )
 
 var (
-	_ resource.Resource              = &resourceCMInterface{}
-	_ resource.ResourceWithConfigure = &resourceCMInterface{}
+	_ resource.Resource                   = &resourceCMInterface{}
+	_ resource.ResourceWithConfigure      = &resourceCMInterface{}
+	_ resource.ResourceWithValidateConfig = &resourceCMInterface{}
 )
 
 func NewResourceCMInterface() resource.Resource {
@@ -37,9 +38,14 @@ func (r *resourceCMInterface) Metadata(_ context.Context, req resource.MetadataR
 	resp.TypeName = req.ProviderTypeName + "_interface"
 }
 
+func (r *resourceCMInterface) ValidateConfig(ctx context.Context, _ resource.ValidateConfigRequest, resp *resource.ValidateConfigResponse) {
+	common.ValidateCMOnly(ctx, r.client, "ciphertrust_interface", resp)
+}
+
 // Schema defines the schema for the resource.
 func (r *resourceCMInterface) Schema(_ context.Context, _ resource.SchemaRequest, resp *resource.SchemaResponse) {
 	resp.Schema = schema.Schema{
+		Description: "Manages a service endpoint interface (NAE, KMIP, or SNMP) on the CipherTrust Manager appliance, controlling the port, TLS settings, authentication mode, and network binding. **Only available on CipherTrust Manager — not supported on CDSPaaS.**",
 		Attributes: map[string]schema.Attribute{
 			"id": schema.StringAttribute{
 				Computed: true,

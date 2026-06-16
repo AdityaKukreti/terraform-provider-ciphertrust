@@ -33,7 +33,7 @@ resource "ciphertrust_cte_policy_key_rule" "keyrule" {
 }
 `,
 				Check: resource.ComposeAggregateTestCheckFunc(
-					resource.TestCheckResourceAttrSet("ciphertrust_cte_policy_key_rule.keyrule", "rule_id"),
+					resource.TestCheckResourceAttrSet("ciphertrust_cte_policy_key_rule.keyrule", "rule.id"),
 				),
 			},
 			// Delete testing automatically occurs in TestCase

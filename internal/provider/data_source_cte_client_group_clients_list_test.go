@@ -32,6 +32,7 @@ func TestCiphertrustCTEClientGroupClientsDataSource(t *testing.T) {
 			name         = "%s"
 			description  = "Created for CTE client group clients data source test"
 			cluster_type = "NON-CLUSTER"
+			communication_enabled    = true
 			profile_id   = ciphertrust_cte_profile.profile.name
 		}
 	`, profileName, clientName, clientGroupName)
@@ -55,9 +56,10 @@ func TestCiphertrustCTEClientGroupClientsDataSource(t *testing.T) {
 			name               = "%s"
 			description        = "Created for CTE client group clients data source test"
 			cluster_type       = "NON-CLUSTER"
+			communication_enabled    = true
 			profile_id         = ciphertrust_cte_profile.profile.name
 			op_type            = "add-client"
-			client_list        = [ciphertrust_cte_client.client.id]
+			client_list        = [ciphertrust_cte_client.client.name]
 			inherit_attributes = true
 		}
 
@@ -86,9 +88,10 @@ func TestCiphertrustCTEClientGroupClientsDataSource(t *testing.T) {
 			name               = "%s"
 			description        = "Created for CTE client group clients data source test"
 			cluster_type       = "NON-CLUSTER"
+			communication_enabled    = true
 			profile_id         = ciphertrust_cte_profile.profile.name
 			op_type            = "remove-client"
-			client_list        = [ciphertrust_cte_client.client.id]
+			client_list        = []
 		}
 	`, profileName, clientName, clientGroupName)
 

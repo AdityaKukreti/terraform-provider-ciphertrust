@@ -25,9 +25,14 @@ type Client struct {
 	CipherTrustURL   string
 	HTTPClient       *http.Client
 	Token            string
+	CMRefreshToken   string // refresh token returned by CipherTrust Manager
 	AuthData         AuthStruct
 	CCKMConfig       CCKMProviderConfig
 	ReplicationDelay int64
+	// IsCDSPaaS is true when the provider is configured against a CDSPaaS
+	// tenant (i.e. AuthData.AuthDomainPath is set). Resources that manage
+	// CipherTrust Manager infrastructure use this to refuse plan-time.
+	IsCDSPaaS bool
 }
 
 // Bootstrap Client for CipherTrust Manager
@@ -40,15 +45,20 @@ type CMClientBootstrap struct {
 
 // AuthStruct
 type AuthStruct struct {
-	Username   string `json:"username"`
-	Password   string `json:"password"`
-	AuthDomain string `json:"auth_domain"`
-	Domain     string `json:"domain"`
+	Username          string `json:"username"`
+	Password          string `json:"password"`
+	AuthDomain        string `json:"auth_domain,omitempty"`
+	AuthDomainPath    string `json:"auth_domain_path,omitempty"`
+	Domain            string `json:"domain"`
+	GrantType         string `json:"grant_type,omitempty"`
+	RefreshToken      string `json:"refresh_token,omitempty"`
+	RenewRefreshToken bool   `json:"renew_refresh_token,omitempty"`
 }
 
 // AuthResponse
 type AuthResponse struct {
-	Token string `json:"jwt"`
+	Token        string `json:"jwt"`
+	RefreshToken string `json:"refresh_token"`
 }
 
 // Create new client for CM with auth details
@@ -77,20 +87,30 @@ func NewCMClientBoot(ctx context.Context, uuid string, address *string, insecure
 }
 
 // Create New Client for CipherTrust Manager
-func NewClient(ctx context.Context, uuid string, address, auth_domain, domain, username, password *string, insecureSkipVerify bool, timeout int64) (*Client, error) {
+//
+// tenant, when non-nil and non-empty, opts the provider into the CDSPaaS
+// authentication path: it is sent as auth_domain_path on the auth-token request
+// (which supersedes auth_domain server-side) and Client.IsCDSPaaS is set to true.
+func NewClient(ctx context.Context, uuid string, address, auth_domain, domain, username, password, tenant *string, insecureSkipVerify bool, timeout int64) (*Client, error) {
 	tflog.Trace(ctx, MSG_METHOD_START+"[client.go -> NewClient]["+uuid+"]")
 	tr := &http.Transport{
 		TLSClientConfig: &tls.Config{InsecureSkipVerify: insecureSkipVerify},
 	}
 
+	// Create the token refresh transport (client back-reference set below).
+	refreshTransport := &TokenRefreshTransport{Base: tr}
+
 	c := Client{
 		HTTPClient: &http.Client{
 			Timeout:   time.Duration(timeout) * time.Second,
-			Transport: tr,
+			Transport: refreshTransport,
 		},
 		// Default URL
 		CipherTrustURL: CipherTrustURL,
 	}
+
+	// Wire back-reference so the transport can access/update c.Token etc.
+	refreshTransport.client = &c
 
 	if address != nil {
 		c.CipherTrustURL = strings.TrimRight(*address, "/")
@@ -108,6 +128,15 @@ func NewClient(ctx context.Context, uuid string, address, auth_domain, domain, u
 		Domain:     *domain,
 	}
 
+	if tenant != nil && *tenant != "" {
+		path := *tenant
+		if !strings.HasPrefix(path, "/") {
+			path = "/" + path
+		}
+		c.AuthData.AuthDomainPath = path
+		c.IsCDSPaaS = true
+	}
+
 	ar, err := c.SignIn(ctx, uuid)
 	if err != nil {
 		tflog.Debug(ctx, ERR_METHOD_END+err.Error()+" [client.go -> NewClient]["+uuid+"]")
@@ -115,6 +144,7 @@ func NewClient(ctx context.Context, uuid string, address, auth_domain, domain, u
 	}
 
 	c.Token = ar.Token
+	c.CMRefreshToken = ar.RefreshToken
 
 	tflog.Trace(ctx, MSG_METHOD_END+" [client.go -> NewClient]["+uuid+"]")
 	return &c, nil
@@ -129,8 +159,8 @@ func (c *Client) doRequest(ctx context.Context, uuid string, req *http.Request, 
 	}
 
 	var bearer = "Bearer " + token
-	req.Header.Add("Authorization", bearer)
-	req.Header.Add("Content-Type", "application/json")
+	req.Header.Set("Authorization", bearer)
+	req.Header.Set("Content-Type", "application/json")
 
 	res, err := c.HTTPClient.Do(req)
 	if err != nil {

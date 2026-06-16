@@ -11,6 +11,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringdefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-log/tflog"
@@ -41,31 +42,36 @@ func (r *resourceCTEPolicyKeyRule) Schema(_ context.Context, _ resource.SchemaRe
 				Required:    true,
 				Description: "ID of the parent policy in which Key Rule need to be added",
 			},
-			"rule_id": schema.StringAttribute{
-				Computed:    true,
-				Description: "ID of the Key Rule created in the parent policy",
-				PlanModifiers: []planmodifier.String{
-					stringplanmodifier.UseStateForUnknown(),
-				},
-			},
-			"order_number": schema.Int64Attribute{
-				Optional:    true,
-				Description: "Precedence order of the rule in the parent policy.",
-			},
 			"rule": schema.SingleNestedAttribute{
 				Optional:    true,
 				Description: "Key rule to be updated in the parent policy.",
 				Attributes: map[string]schema.Attribute{
+					"id": schema.StringAttribute{
+						Computed:    true,
+						Description: "Identifier of the key rule.",
+						PlanModifiers: []planmodifier.String{
+							stringplanmodifier.UseStateForUnknown(),
+						},
+					},
+					"order_number": schema.Int64Attribute{
+						Optional:    true,
+						Computed:    true,
+						Description: "Precedence order of the rule in the parent policy.",
+					},
 					"key_id": schema.StringAttribute{
 						Optional:    true,
 						Description: "Identifier of the key to link with the rule. Supported fields are name, id, slug, alias, uri, uuid, muid, and key_id. Note: For decryption, where a clear key is to be supplied, use the string \"clear_key\" only. Do not specify any other identifier.",
 					},
 					"key_type": schema.StringAttribute{
 						Optional:    true,
+						Computed:    true,
+						Default:     stringdefault.StaticString(""),
 						Description: "Specify the type of the key. Must be one of name, id, slug, alias, uri, uuid, muid or key_id. If not specified, the type of the key is inferred.",
 					},
 					"resource_set_id": schema.StringAttribute{
 						Optional:    true,
+						Computed:    true,
+						Default:     stringdefault.StaticString(""),
 						Description: "ID of the resource set to link with the rule. Supported for Standard, LDT and IDT policies.",
 					},
 				},
@@ -109,12 +115,12 @@ func (r *resourceCTEPolicyKeyRule) Create(ctx context.Context, req resource.Crea
 		return
 	}
 
-	response, err := r.client.PostData(
+	response, err := r.client.PostDataV2(
 		ctx,
 		id,
 		common.URL_CTE_POLICY+"/"+plan.CTEClientPolicyID.ValueString()+"/keyrules",
 		payloadJSON,
-		"id")
+	)
 	if err != nil {
 		tflog.Debug(ctx, common.ERR_METHOD_END+err.Error()+" [resource_cte_policy_keyrules.go -> Create]["+id+"]")
 		resp.Diagnostics.AddError(
@@ -124,7 +130,14 @@ func (r *resourceCTEPolicyKeyRule) Create(ctx context.Context, req resource.Crea
 		return
 	}
 
-	plan.KeyRuleID = types.StringValue(response)
+	var newRule KeyRuleJSON
+	if err := json.Unmarshal([]byte(response), &newRule); err != nil {
+		resp.Diagnostics.AddError("Error parsing updated security rule response", err.Error())
+		return
+	}
+
+	plan.KeyRule.ID = types.StringValue(newRule.ID)
+	plan.KeyRule.OrderNumber = types.Int64Value(*newRule.OrderNumber)
 
 	tflog.Trace(ctx, common.MSG_METHOD_END+"[resource_cte_policy_keyrules.go -> Create]["+id+"]")
 	diags = resp.State.Set(ctx, plan)
@@ -136,6 +149,7 @@ func (r *resourceCTEPolicyKeyRule) Create(ctx context.Context, req resource.Crea
 
 // Read refreshes the Terraform state with the latest data.
 func (r *resourceCTEPolicyKeyRule) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
+
 	var state CTEPolicyAddKeyRuleTFSDK
 
 	id := uuid.New().String()
@@ -145,27 +159,46 @@ func (r *resourceCTEPolicyKeyRule) Read(ctx context.Context, req resource.ReadRe
 	if resp.Diagnostics.HasError() {
 		return
 	}
-	_, err := r.client.GetById(ctx, id, state.KeyRuleID.ValueString(), common.URL_CTE_POLICY+"/"+state.CTEClientPolicyID.ValueString()+"/keyrules")
-	if err != nil {
+
+	response, err := r.client.GetById(
+		ctx,
+		id,
+		state.KeyRule.ID.ValueString(),
+		common.URL_CTE_POLICY+"/"+state.CTEClientPolicyID.ValueString()+"/keyrules",
+	)
+
+	if response == "" {
+		resp.State.RemoveResource(ctx)
+		return
+	}
+
+	var apiResp KeyRuleJSON
+	if err = json.Unmarshal([]byte(response), &apiResp); err != nil {
 		tflog.Debug(ctx, common.ERR_METHOD_END+err.Error()+" [resource_cte_policy_keyrules.go -> Read]["+id+"]")
 		resp.Diagnostics.AddError(
-			"Error reading Key Rule on CipherTrust Manager: ",
-			"Could not read Key Rule id : ,"+state.KeyRuleID.ValueString()+err.Error(),
+			"Error parsing CTE Policy Key Rule response",
+			err.Error(),
 		)
 		return
 	}
 
-	tflog.Trace(ctx, common.MSG_METHOD_END+"[resource_cte_policy_keyrules.go -> Read]["+id+"]")
-	resp.Diagnostics.Append(diags...)
-	if resp.Diagnostics.HasError() {
-		return
+	// Refresh all mutable rule fields
+	state.KeyRule = KeyRuleTFSDK{
+		ID:            types.StringValue(apiResp.ID),
+		OrderNumber:   types.Int64Value(*apiResp.OrderNumber),
+		KeyID:         types.StringValue(apiResp.KeyID),
+		KeyType:       types.StringValue(apiResp.KeyType),
+		ResourceSetID: types.StringValue(apiResp.ResourceSetID),
 	}
+	tflog.Trace(ctx, common.MSG_METHOD_END+"[resource_cte_policy_keyrules.go -> Read]["+id+"]")
+	diags = resp.State.Set(ctx, state)
+	resp.Diagnostics.Append(diags...)
 }
 
 // Update updates the resource and sets the updated Terraform state on success.
 func (r *resourceCTEPolicyKeyRule) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
 	var plan CTEPolicyAddKeyRuleTFSDK
-	var payload KeyRuleUpdateJSON
+	var payload KeyRuleJSON
 
 	diags := req.Plan.Get(ctx, &plan)
 	resp.Diagnostics.Append(diags...)
@@ -182,13 +215,13 @@ func (r *resourceCTEPolicyKeyRule) Update(ctx context.Context, req resource.Upda
 	if plan.KeyRule.ResourceSetID.ValueString() != "" && plan.KeyRule.ResourceSetID.ValueString() != types.StringNull().ValueString() {
 		payload.ResourceSetID = string(plan.KeyRule.ResourceSetID.ValueString())
 	}
-	if plan.OrderNumber.ValueInt64() != types.Int64Null().ValueInt64() {
-		payload.OrderNumber = int64(plan.OrderNumber.ValueInt64())
+	if !plan.KeyRule.OrderNumber.IsNull() && !plan.KeyRule.OrderNumber.IsUnknown() {
+		OrderNumber := plan.KeyRule.OrderNumber.ValueInt64()
+		payload.OrderNumber = &OrderNumber
 	}
-
 	payloadJSON, err := json.Marshal(payload)
 	if err != nil {
-		tflog.Debug(ctx, common.ERR_METHOD_END+err.Error()+" [resource_cte_policy_keyrules.go -> Update]["+plan.KeyRuleID.ValueString()+"]")
+		tflog.Debug(ctx, common.ERR_METHOD_END+err.Error()+" [resource_cte_policy_keyrules.go -> Update]["+plan.KeyRule.ID.ValueString()+"]")
 		resp.Diagnostics.AddError(
 			"Invalid data input: CTE Policy Key Rule Update",
 			err.Error(),
@@ -196,21 +229,27 @@ func (r *resourceCTEPolicyKeyRule) Update(ctx context.Context, req resource.Upda
 		return
 	}
 
-	response, err := r.client.UpdateData(
+	response, err := r.client.UpdateDataV2(
 		ctx,
-		plan.KeyRuleID.ValueString(),
+		plan.KeyRule.ID.ValueString(),
 		common.URL_CTE_POLICY+"/"+plan.CTEClientPolicyID.ValueString()+"/keyrules",
 		payloadJSON,
-		"id")
+	)
 	if err != nil {
-		tflog.Debug(ctx, common.ERR_METHOD_END+err.Error()+" [resource_cte_policy_keyrules.go -> Update]["+plan.KeyRuleID.ValueString()+"]")
+		tflog.Debug(ctx, common.ERR_METHOD_END+err.Error()+" [resource_cte_policy_keyrules.go -> Update]["+plan.KeyRule.ID.ValueString()+"]")
 		resp.Diagnostics.AddError(
 			"Error updating CTE Policy Key Rule on CipherTrust Manager: ",
 			"Could not update CTE Policy Key Rule, unexpected error: "+err.Error(),
 		)
 		return
 	}
-	plan.KeyRuleID = types.StringValue(response)
+	var updatedRule KeyRuleJSON
+	if err := json.Unmarshal([]byte(response), &updatedRule); err != nil {
+		resp.Diagnostics.AddError("Error parsing updated security rule response", err.Error())
+		return
+	}
+	plan.KeyRule.ID = types.StringValue(updatedRule.ID)
+	plan.KeyRule.OrderNumber = types.Int64Value(*updatedRule.OrderNumber)
 	diags = resp.State.Set(ctx, plan)
 	resp.Diagnostics.Append(diags...)
 	if resp.Diagnostics.HasError() {
@@ -233,9 +272,9 @@ func (r *resourceCTEPolicyKeyRule) Delete(ctx context.Context, req resource.Dele
 	// 	ctx,
 	// 	state.KeyRuleID.ValueString(),
 	// 	common.URL_CTE_POLICY+"/"+state.CTEClientPolicyID.ValueString()+"/keyrules")
-	url := fmt.Sprintf("%s/%s/%s/%s/%s", r.client.CipherTrustURL, common.URL_CTE_POLICY, state.CTEClientPolicyID.ValueString(), "keyrules", state.KeyRuleID.ValueString())
+	url := fmt.Sprintf("%s/%s/%s/%s/%s", r.client.CipherTrustURL, common.URL_CTE_POLICY, state.CTEClientPolicyID.ValueString(), "keyrules", state.KeyRule.ID.ValueString())
 	output, err := r.client.DeleteByID(ctx, "DELETE", state.CTEClientPolicyID.ValueString(), url, nil)
-	tflog.Trace(ctx, common.MSG_METHOD_END+"[resource_cte_policy_keyrules.go -> Delete]["+state.KeyRuleID.ValueString()+"]["+output+"]")
+	tflog.Trace(ctx, common.MSG_METHOD_END+"[resource_cte_policy_keyrules.go -> Delete]["+state.KeyRule.ID.ValueString()+"]["+output+"]")
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Error Deleting CTE Policy",

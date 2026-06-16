@@ -51,10 +51,10 @@ func TestCiphertrustCTEPolicyDataTxRulesDataSource(t *testing.T) {
 			{
 				Config: providerConfig + testConfig,
 				Check: resource.ComposeTestCheckFunc(
-					resource.TestCheckResourceAttrSet(ruleResourceName, "rule_id"),
+					resource.TestCheckResourceAttrSet(ruleResourceName, "rule.id"),
 
 					resource.TestCheckResourceAttr(datasourceName, "rules.#", "1"),
-					resource.TestCheckResourceAttrPair(datasourceName, "rules.0.id", ruleResourceName, "rule_id"),
+					resource.TestCheckResourceAttrPair(datasourceName, "rules.0.id", ruleResourceName, "rule.id"),
 					resource.TestCheckResourceAttr(datasourceName, "rules.0.key_id", "clear_key"),
 					resource.TestCheckResourceAttrPair(datasourceName, "rules.0.policy_id", "ciphertrust_cte_policy.test_policy", "id"),
 				),
