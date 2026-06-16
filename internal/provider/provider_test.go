@@ -250,11 +250,11 @@ func testAccListResources() resource.TestCheckFunc {
 // false when any required variable is missing or the client cannot be created.
 // The caller is responsible for logging any skip/error message.
 //
-// When CDSPAAS=true the auth_domain is read from CIPHERTRUST_AUTH_DOMAIN and
-// domain is left empty (CTaaS does not use the domain field). Otherwise both
-// domain is left empty (CDSPaaS does not use the domain field). Otherwise both
-// domain and auth_domain are read from CIPHERTRUST_DOMAIN and
-// CIPHERTRUST_AUTH_DOMAIN respectively.
+// When CDSPAAS=true the auth_domain is read from CIPHERTRUST_AUTH_DOMAIN,
+// domain is left empty, and tenant is read from CIPHERTRUST_TENANT (used as
+// auth_domain_path on the auth-token request). Otherwise both domain and
+// auth_domain are read from CIPHERTRUST_DOMAIN and CIPHERTRUST_AUTH_DOMAIN
+// respectively, and tenant is not used.
 func createCMClient() (*common.Client, bool) {
 	address := os.Getenv("CIPHERTRUST_ADDRESS")
 	username := os.Getenv("CIPHERTRUST_USERNAME")
@@ -265,12 +265,29 @@ func createCMClient() (*common.Client, bool) {
 	}
 	var domain string
 	authDomain := os.Getenv("CIPHERTRUST_AUTH_DOMAIN")
-	if os.Getenv("CDSPAAS") != "true" {
+	var tenant *string
+	if os.Getenv("CDSPAAS") == "true" {
+		t := os.Getenv("CIPHERTRUST_TENANT")
+		tenant = &t
+	} else {
 		domain = os.Getenv("CIPHERTRUST_DOMAIN")
 	}
-	client, err := common.NewClient(context.Background(), uuid.NewString(), &address, &authDomain, &domain, &username, &password, nil, true, 180)
+	client, err := common.NewClient(context.Background(), uuid.NewString(), &address, &authDomain, &domain, &username, &password, tenant, true, 180)
 	if err != nil {
-		fmt.Printf("createCMClient: failed to create client: %s\n", err.Error())
+		tenantVal := ""
+		if tenant != nil {
+			tenantVal = *tenant
+		}
+		fmt.Printf("createCMClient: failed to create client: \n"+
+			"Error: %s\n"+
+			"CIPHERTRUST_ADDRESS:     %s\n"+
+			"CIPHERTRUST_USERNAME:    %s\n"+
+			"CIPHERTRUST_AUTH_DOMAIN: %s\n"+
+			"CIPHERTRUST_DOMAIN:      %s\n"+
+			"CIPHERTRUST_TENANT:      %s\n"+
+			"CDSPAAS:                 %s\n",
+			err.Error(), address, username, authDomain, domain,
+			tenantVal, os.Getenv("CDSPAAS"))
 		return nil, false
 	}
 	return client, true
