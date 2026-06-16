@@ -361,6 +361,16 @@ func (r *resourceCTEClient) Update(ctx context.Context, req resource.UpdateReque
 	if resp.Diagnostics.HasError() {
 		return
 	}
+
+	//handle immutable fields
+	if state.Name.ValueString() != plan.Name.ValueString() {
+		resp.Diagnostics.AddError("Cannot change client name once client is created", "client name is an immutable field")
+		return
+	}
+	if state.ClientType.ValueString() != plan.ClientType.ValueString() {
+		resp.Diagnostics.AddError("Cannot change client_type once client is created", "client_type is an immutable field")
+		return
+	}
 	if state.ClientType.ValueString() != "CTE-U" {
 		if !plan.ClientLocked.IsNull() && !plan.ClientLocked.IsUnknown() {
 			v := plan.ClientLocked.ValueBool()

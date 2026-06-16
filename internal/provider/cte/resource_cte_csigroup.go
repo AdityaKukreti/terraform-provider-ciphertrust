@@ -333,6 +333,19 @@ func (r *resourceCTECSIGroup) Update(ctx context.Context, req resource.UpdateReq
 	if resp.Diagnostics.HasError() {
 		return
 	}
+	//immutable field handling
+	if plan.Name.ValueString() != state.Name.ValueString() {
+		resp.Diagnostics.AddError("Cannot change CSI group name once it is created", "Name is an immutable field")
+		return
+	}
+	if plan.Namespace.ValueString() != state.Namespace.ValueString() {
+		resp.Diagnostics.AddError("Cannot change CSI group namespace once it is created", "Namespace is an immutable field")
+		return
+	}
+	if plan.StorageClass.ValueString() != state.StorageClass.ValueString() {
+		resp.Diagnostics.AddError("Cannot change CSI group storage class once it is created", "Storage class is an immutable field")
+		return
+	}
 	if plan.OpType.ValueString() != "" {
 		if plan.OpType.ValueString() == "update" {
 			if !reflect.DeepEqual(plan.GuardPolicies, state.GuardPolicies) {

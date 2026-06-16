@@ -242,6 +242,15 @@ func (r *resourceCTESignatureSet) Update(ctx context.Context, req resource.Updat
 	if resp.Diagnostics.HasError() {
 		return
 	}
+	//immutable fields handling
+	if plan.Name.ValueString() != state.Name.ValueString() {
+		resp.Diagnostics.AddError("Cannot change signature set name once it is created", "Name is an immutable field")
+		return
+	}
+	if plan.Type.ValueString() != state.Type.ValueString() {
+		resp.Diagnostics.AddError("Cannot change signature set type", "Type is an immutable field")
+		return
+	}
 
 	if plan.Description.ValueString() != "" && plan.Description.ValueString() != types.StringNull().ValueString() {
 		payload.Description = common.TrimString(plan.Description.String())

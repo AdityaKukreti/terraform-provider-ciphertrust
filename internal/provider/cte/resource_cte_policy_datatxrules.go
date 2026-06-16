@@ -205,6 +205,12 @@ func (r *resourceCTEPolicyDataTXRule) Update(ctx context.Context, req resource.U
 		return
 	}
 
+	//immutable field handling
+	if plan.CTEClientPolicyID.ValueString() != state.CTEClientPolicyID.ValueString() {
+		resp.Diagnostics.AddError("Cannot change policy ID associated with policy rule", "Policy ID is an immutable field")
+		return
+	}
+
 	if plan.DataTXRule.KeyID.ValueString() != "" && plan.DataTXRule.KeyID.ValueString() != types.StringNull().ValueString() {
 		payload.KeyID = string(plan.DataTXRule.KeyID.ValueString())
 	}

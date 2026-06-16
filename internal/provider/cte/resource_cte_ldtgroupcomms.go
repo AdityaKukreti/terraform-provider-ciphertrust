@@ -214,6 +214,12 @@ func (r *resourceLDTGroupCommSvc) Update(ctx context.Context, req resource.Updat
 		return
 	}
 
+	//immutable field handling
+	if plan.Name.ValueString() != state.Name.ValueString() {
+		resp.Diagnostics.AddError("Cannot change name once the LDT comm group is created", "Name is an immutable field")
+		return
+	}
+
 	LdtGroupUpdate(r, ctx, &plan, &state, &resp.Diagnostics)
 	if resp.Diagnostics.HasError() {
 		return

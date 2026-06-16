@@ -863,6 +863,16 @@ func (r *resourceCTEPolicy) Update(ctx context.Context, req resource.UpdateReque
 		return
 	}
 
+	//immutable field handling
+	if plan.Name.ValueString() != state.Name.ValueString() {
+		resp.Diagnostics.AddError("Cannot change name of the policy once it is created", "Name is an immutable field")
+		return
+	}
+	if plan.PolicyType.ValueString() != state.PolicyType.ValueString() {
+		resp.Diagnostics.AddError("Cannot change type of the policy once it is created", "Policy Type is an immutable field")
+		return
+	}
+
 	// Add Description to the payload if set
 	if plan.Description.ValueString() != "" && plan.Description.ValueString() != types.StringNull().ValueString() {
 		payload.Description = common.TrimString(plan.Description.String())

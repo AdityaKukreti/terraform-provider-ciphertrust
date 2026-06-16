@@ -373,6 +373,11 @@ func (r *resourceCTEClientGP) Update(ctx context.Context, req resource.UpdateReq
 		return
 	}
 
+	//immutable field handling for client id
+	if state.CTEClientID.ValueString() != plan.CTEClientID.ValueString() {
+		resp.Diagnostics.AddError("Cannot change client_id", "client_id is an immutable field")
+		return
+	}
 	clientID := plan.CTEClientID.ValueString()
 
 	// ---------------------------------------------------------------
@@ -525,7 +530,42 @@ func (r *resourceCTEClientGP) Update(ctx context.Context, req resource.UpdateReq
 			stateEntry := state.GuardPoints[guardPath]
 			gpID = stateEntry.ID.ValueString()
 
+			// ---------------------------------------------------------------
+			// IMMUTABLE FIELD CHECK — policy_id and guard_point_type cannot change
+			// ---------------------------------------------------------------
+
+			statePolicyID := stateEntry.GuardPointParams.PolicyID.ValueString()
+			planPolicyID := planEntry.GuardPointParams.PolicyID.ValueString()
+			if statePolicyID != planPolicyID {
+				resp.Diagnostics.AddError(
+					"Cannot change policy_id for an existing GuardPoint",
+					fmt.Sprintf(
+						"guard_path %q has policy_id %q in state but %q in plan. "+
+							"policy_id is immutable once a GuardPoint is created. "+
+							"To change it, remove this guard_path and re-add it with the new policy_id.",
+						guardPath, statePolicyID, planPolicyID,
+					),
+				)
+				return
+			}
+
+			stateGPType := stateEntry.GuardPointParams.GPType.ValueString()
+			planGPType := planEntry.GuardPointParams.GPType.ValueString()
+			if stateGPType != planGPType {
+				resp.Diagnostics.AddError(
+					"Cannot change guard_point_type for an existing GuardPoint",
+					fmt.Sprintf(
+						"guard_path %q has guard_point_type %q in state but %q in plan. "+
+							"guard_point_type is immutable once a GuardPoint is created. "+
+							"To change it, remove this guard_path and re-add it with the new guard_point_type.",
+						guardPath, stateGPType, planGPType,
+					),
+				)
+				return
+			}
+
 			var payload UpdateCTEGuardPointJSON
+
 			if !planEntry.GuardPointParams.IsGuardEnabled.IsNull() {
 				v := planEntry.GuardPointParams.IsGuardEnabled.ValueBool()
 				payload.IsGuardEnabled = &v
