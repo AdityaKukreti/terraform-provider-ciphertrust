@@ -74,9 +74,9 @@ linked.
 To avoid unintended changes to an existing key, do one of the following:
 
 **Option 1 - Configure the resource block to match the key's current state**
-before running `terraform apply`. Set `alias`, `tags`, `description`,
-`key_policy`, `enable_rotation`, `enable_key`, and `local_hosted_params` to
-their current values so that Terraform detects no diff.
+before running `terraform apply`. Set `aws_param` (including `alias`,
+`description`, and `tags`), `key_policy`, `enable_rotation`, `enable_key`, and
+`local_hosted_params` to their current values so that Terraform detects no diff.
 
 **Option 2 - Use `lifecycle { ignore_changes }` to suppress diffs** on
 attributes you are not yet ready for Terraform to manage:
@@ -84,13 +84,13 @@ attributes you are not yet ready for Terraform to manage:
 ```terraform
 lifecycle {
   ignore_changes = [
-    alias,
-    description,
+    aws_param,
+    aws_param.description,
+    aws_param.tags,
     enable_key,
     enable_rotation,
     key_policy,
     local_hosted_params,
-    tags,
   ]
 }
 ```
@@ -126,22 +126,22 @@ import {
 }
 
 resource "ciphertrust_aws_xks_key" "example" {
-  local_hosted_params {
-    blocked            = false
+  local_hosted_params = {
+    blocked             = false
     custom_key_store_id = "<custom-keystore-resource-id>"
-    linked             = true
-    source_key_id      = "<cm-source-key-id>"
-    source_key_tier    = "local"
+    linked              = true
+    source_key_id       = "<cm-source-key-id>"
+    source_key_tier     = "local"
   }
   lifecycle {
     ignore_changes = [
-      alias,
-      description,
+      aws_param,
+      aws_param.description,
+      aws_param.tags,
       enable_key,
       enable_rotation,
       key_policy,
       local_hosted_params,
-      tags,
     ]
   }
 }
@@ -152,21 +152,23 @@ values are correct):
 
 ```terraform
 resource "ciphertrust_aws_xks_key" "example" {
-  description = "<description>"
-  alias       = ["alias/my-xks-key"]
-  tags        = { Environment = "prod" }
-  enable_key  = true
-  local_hosted_params {
-    blocked            = false
-    custom_key_store_id = "<custom-keystore-resource-id>"
-    linked             = true
-    source_key_id      = "<cm-source-key-id>"
-    source_key_tier    = "local"
+  enable_key = true
+  aws_param = {
+    alias       = ["alias/my-xks-key"]
+    description = "<description>"
+    tags        = { Environment = "prod" }
   }
-  key_policy {
+  local_hosted_params = {
+    blocked             = false
+    custom_key_store_id = "<custom-keystore-resource-id>"
+    linked              = true
+    source_key_id       = "<cm-source-key-id>"
+    source_key_tier     = "local"
+  }
+  key_policy = {
     # set values from terraform state show output
   }
-  enable_rotation {
+  enable_rotation = {
     disable_encrypt = false
     job_config_id   = "<scheduler-resource-id>"
     key_source      = "local"
@@ -175,8 +177,8 @@ resource "ciphertrust_aws_xks_key" "example" {
 ```
 
 The example above shows all updateable attributes. Include only the attributes
-that apply to your key - for example, omit `tags` if the key has no tags, or
-omit `enable_rotation` if the key is not scheduled for rotation.
+that apply to your key - for example, omit `aws_param.tags` if the key has no
+tags, or omit `enable_rotation` if the key is not scheduled for rotation.
 
 ### 2. Import using the terraform import command
 

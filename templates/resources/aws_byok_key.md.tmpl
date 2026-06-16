@@ -1,0 +1,50 @@
+---
+page_title: "{{.Type}} {{.Name}} - {{.ProviderName}}"
+subcategory: ""
+description: |-
+  {{ .Description | plainmarkdown | trimspace | prefixlines "  " }}
+---
+
+# {{.Type}} "{{.Name}}" ({{.ProviderName}})
+
+{{ .Description | trimspace }}
+{{- if .HasExample }}
+
+## Example Usage
+
+{{ tffile .ExampleFile }}
+{{- end }}
+{{ .SchemaMarkdown | trimspace }}
+
+### import_material - update behaviour
+
+On update, each `import_material` entry whose `source_key_identifier` is not
+already recorded in the key's rotation history is treated as a new rotation
+request. The provider calls the rotate-material API and waits for the rotation
+to reach a terminal status before continuing.
+
+**Only one new `import_material` entry may be added per apply.** If more than
+one entry is new (not yet in rotation history), the apply will fail with an
+error. Add entries one at a time across separate applies.
+
+Removing an `import_material` entry is a no-op - key material is never deleted
+by this provider.
+
+### Updates
+
+Attributes not marked as `(Updatable)` cannot be modified after resource
+creation. To change these attributes, the resource must be recreated.
+
+## Import
+
+`ciphertrust_aws_byok_key` resources can be imported using the CipherTrust
+Manager key ID:
+
+```
+terraform import ciphertrust_aws_byok_key.example <key-id>
+```
+
+After import the `import_material` set in state will be empty. Run
+`terraform apply` once after import to reconcile the plan; the provider will
+compare the plan entries against live rotation history and will not trigger
+any new rotations for entries that already appear in history.

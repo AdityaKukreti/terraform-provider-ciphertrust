@@ -70,7 +70,7 @@ import {
 }
 
 resource "ciphertrust_aws_acl" "example" {
-  kms     = "<kms-resource-id>"
+  kms_id  = "<kms-resource-id>"
   user_id = "<user-id>"
   actions = []
   lifecycle {
@@ -87,7 +87,7 @@ actions are correct):
 
 ```terraform
 resource "ciphertrust_aws_acl" "example" {
-  kms     = "<kms-resource-id>"
+  kms_id  = "<kms-resource-id>"
   user_id = "<user-id>"
   actions = ["keycreate"]
 }

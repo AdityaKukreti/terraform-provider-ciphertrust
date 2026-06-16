@@ -42,9 +42,9 @@ For unlinked keys, Terraform will accept the plan but no changes will be made to
 To avoid unintended changes to an existing key, do one of the following:
 
 **Option 1 - Configure the resource block to match the key's current state** before
-running `terraform apply`. Set `alias`, `tags`, `description`, `key_policy`,
-`enable_rotation`, and `enable_key` to their current values so that Terraform detects
-no diff.
+running `terraform apply`. Set `aws_param` (including `alias`, `description`, and `tags`),
+`key_policy`, `enable_rotation`, and `enable_key` to their current values so that
+Terraform detects no diff.
 
 **Option 2 - Use `lifecycle { ignore_changes }` to suppress diffs** on attributes
 you are not yet ready for Terraform to manage:
@@ -52,12 +52,11 @@ you are not yet ready for Terraform to manage:
 ```terraform
 lifecycle {
   ignore_changes = [
-    alias,
-    description,
+    aws_param,
+    aws_param.tags,
     enable_key,
     enable_rotation,
     key_policy,
-    tags,
   ]
 }
 ```
@@ -103,12 +102,11 @@ resource "ciphertrust_aws_cloudhsm_key" "example" {
   custom_key_store_id = "<custom-keystore-resource-id>"
   lifecycle {
     ignore_changes = [
-      alias,
-      description,
+      aws_param,
+      aws_param.tags,
       enable_key,
       enable_rotation,
       key_policy,
-      tags,
     ]
   }
 }
@@ -120,14 +118,16 @@ are correct):
 ```terraform
 resource "ciphertrust_aws_cloudhsm_key" "example" {
   custom_key_store_id = "<custom-keystore-resource-id>"
-  description         = "<description>"
-  alias               = ["alias/my-key"]
-  tags                = { Environment = "prod" }
   enable_key          = true
-  key_policy {
+  aws_param = {
+    alias       = ["alias/my-key"]
+    description = "<description>"
+    tags        = { Environment = "prod" }
+  }
+  key_policy = {
     # set values from terraform state show output
   }
-  enable_rotation {
+  enable_rotation = {
     disable_encrypt = false
     job_config_id   = "<scheduler-resource-id>"
     key_source      = "local"
@@ -136,7 +136,7 @@ resource "ciphertrust_aws_cloudhsm_key" "example" {
 ```
 
 The example above shows all updateable attributes. Include only the attributes that
-apply to your key - for example, omit `tags` if the key has no tags.
+apply to your key - for example, omit `aws_param.tags` if the key has no tags.
 
 ### 2. Import using the terraform import command
 

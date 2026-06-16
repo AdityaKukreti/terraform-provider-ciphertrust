@@ -41,9 +41,10 @@ them from the resource configuration may remove existing values.
 To avoid unintended changes to an existing key, do one of the following:
 
 **Option 1 - Configure the resource block to match the key's current state** before
-running `terraform apply`. Set `alias`, `tags`, `description`, `key_policy`,
-`enable_rotation`, `enable_key`, `auto_rotate`, `auto_rotation_period_in_days`, and
-`primary_region` to their current values so that Terraform detects no diff.
+running `terraform apply`. Set `aws_param` (including `alias`, `description`,
+`auto_rotation_period_in_days`, and `tags`), `key_policy`, `enable_rotation`, `enable_key`,
+`auto_rotate`, and `primary_region` to their current values so that Terraform detects
+no diff.
 
 **Option 2 - Use `lifecycle { ignore_changes }` to suppress diffs** on attributes
 you are not yet ready for Terraform to manage:
@@ -51,15 +52,13 @@ you are not yet ready for Terraform to manage:
 ```terraform
 lifecycle {
   ignore_changes = [
-    alias,
     auto_rotate,
-    auto_rotation_period_in_days,
-    description,
+    aws_param,
+    aws_param.tags,
     enable_key,
     enable_rotation,
     key_policy,
     primary_region,
-    tags,
   ]
 }
 ```
@@ -106,19 +105,17 @@ import {
 }
 
 resource "ciphertrust_aws_key" "example" {
-  kms    = "<kms-resource-id>"
+  kms_id = "<kms-resource-id>"
   region = "<aws-region>"          # e.g. "us-east-1"
   lifecycle {
     ignore_changes = [
-      alias,
       auto_rotate,
-      auto_rotation_period_in_days,
-      description,
+      aws_param,
+      aws_param.tags,
       enable_key,
       enable_rotation,
       key_policy,
       primary_region,
-      tags,
     ]
   }
 }
@@ -129,18 +126,20 @@ are correct):
 
 ```terraform
 resource "ciphertrust_aws_key" "example" {
-  kms                          = "<kms-resource-id>"
-  region                       = "<aws-region>"
-  description                  = "<description>"
-  alias                        = ["alias/my-key"]
-  tags                         = { Environment = "prod" }
-  enable_key                   = true
-  auto_rotate                  = false
-  auto_rotation_period_in_days = 0
-  key_policy {
+  kms_id      = "<kms-resource-id>"
+  region      = "<aws-region>"
+  auto_rotate = false
+  enable_key  = true
+  aws_param = {
+    alias                        = ["alias/my-key"]
+    description                  = "<description>"
+    auto_rotation_period_in_days = 0
+    tags                         = { Environment = "prod" }
+  }
+  key_policy = {
     # set values from terraform state show output
   }
-  enable_rotation {
+  enable_rotation = {
     disable_encrypt = false
     job_config_id   = "<scheduler-resource-id>"
     key_source      = "ciphertrust"
@@ -152,7 +151,7 @@ resource "ciphertrust_aws_key" "example" {
 
 The example above shows all updateable attributes. Include only the attributes that
 apply to your key - for example, omit `auto_rotate` and `auto_rotation_period_in_days`
-if the key does not use AWS-managed rotation, or omit `tags` if the key has no tags.
+if the key does not use AWS-managed rotation, or omit `aws_param.tags` if the key has no tags.
 
 ### 2. Import using the terraform import command
 
