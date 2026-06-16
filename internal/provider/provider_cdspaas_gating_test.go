@@ -112,6 +112,9 @@ resource "ciphertrust_ntp" "x" {
 // confirming the gate fires only on CDSPaaS. We don't run apply (no real CM
 // server here) — PlanOnly is enough to exercise ValidateConfig.
 func TestPlanTimeGating_CMOnlyResourcePassesOnCM(t *testing.T) {
+	// Prevent a pipeline-set CIPHERTRUST_TENANT from enabling CDSPaaS mode;
+	// this test must exercise the CM (no-tenant) path regardless of env.
+	t.Setenv("CIPHERTRUST_TENANT", "")
 	setProviderCredEnv(t)
 	server := fakeCDSPaaSAuthServer(t)
 	defer server.Close()

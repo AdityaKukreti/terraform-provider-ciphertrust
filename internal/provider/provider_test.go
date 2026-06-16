@@ -264,10 +264,15 @@ func createCMClient() (*common.Client, bool) {
 	}
 	var domain string
 	authDomain := os.Getenv("CIPHERTRUST_AUTH_DOMAIN")
+	tenant := os.Getenv("CIPHERTRUST_TENANT")
 	if os.Getenv("CDSPAAS") != "true" {
 		domain = os.Getenv("CIPHERTRUST_DOMAIN")
 	}
-	client, err := common.NewClient(context.Background(), uuid.NewString(), &address, &authDomain, &domain, &username, &password, nil, true, 180)
+	var tenantPtr *string
+	if tenant != "" {
+		tenantPtr = &tenant
+	}
+	client, err := common.NewClient(context.Background(), uuid.NewString(), &address, &authDomain, &domain, &username, &password, tenantPtr, true, 180)
 	if err != nil {
 		fmt.Printf("createCMClient: failed to create client: %s\n", err.Error())
 		return nil, false
