@@ -70,7 +70,7 @@ func TestCckmAWSDataSourceKey(t *testing.T) {
 				),
 			},
 			{
-				Config: awsConnectionResource + createKeyConfig + fmt.Sprintf(datasourceConfig, alias),
+				Config: awsConnectionResource + fmt.Sprintf(datasourceConfig, alias),
 				Check: resource.ComposeTestCheckFunc(
 					// by_alias: verify the correct key was found
 					resource.TestCheckResourceAttr("data.ciphertrust_aws_keys_list.by_alias", "matched", "1"),
@@ -94,7 +94,7 @@ func TestCckmAWSDataSourceKey(t *testing.T) {
 					// by_ciphertrust_key_id: CM UUID filter
 					resource.TestCheckResourceAttr(dsByKeyID, "matched", "1"),
 					resource.TestCheckResourceAttrPair(keyResource, "id", dsByKeyID, "keys.0.key_id"),
-					resource.TestCheckResourceAttr(dsByKeyID, "keys.0.description", "Updated"),
+					resource.TestCheckResourceAttr(dsByKeyID, "keys.0.aws_param.description", "Updated"),
 
 					// by_key_id_and_region: aws_key_id+region filter
 					resource.TestCheckResourceAttr(dsByAwsKeyIDAndRegion, "matched", "1"),
