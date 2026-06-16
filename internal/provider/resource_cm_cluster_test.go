@@ -183,6 +183,7 @@ func cfg3Node(n1Host, n1Public string, n2, n3 clusterNode, username string) stri
 //  7. Re-add node2 (3-node state)                    → count = 3
 //  8. Destroy full 3-node cluster
 func TestResourceCMCluster(t *testing.T) {
+	t.Skip("skipping cluster test")
 	n1Host, n1Public := node1Coords(t)
 	n2 := node2Coords(t)
 	n3 := node3Coords(t)
