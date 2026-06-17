@@ -13,6 +13,7 @@ import (
 
 	common "github.com/ThalesGroup/terraform-provider-ciphertrust/internal/provider/common"
 	"github.com/hashicorp/terraform-plugin-framework/attr"
+	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
@@ -23,8 +24,9 @@ import (
 )
 
 var (
-	_ resource.Resource              = &resourceCTEProcessSet{}
-	_ resource.ResourceWithConfigure = &resourceCTEProcessSet{}
+	_ resource.Resource                = &resourceCTEProcessSet{}
+	_ resource.ResourceWithConfigure   = &resourceCTEProcessSet{}
+	_ resource.ResourceWithImportState = &resourceCTEProcessSet{}
 )
 
 func NewResourceCTEProcessSet() resource.Resource {
@@ -426,4 +428,11 @@ func setCTEProcessSetState(
 	}
 
 	state.Processes = processes
+}
+
+func (r *resourceCTEProcessSet) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
+	id := uuid.New().String()
+	tflog.Debug(ctx, common.MSG_METHOD_START+"[resource_cte_process_set.go -> ImportState]["+id+"]")
+	defer tflog.Debug(ctx, common.MSG_METHOD_END+"[resource_cte_process_set.go -> ImportState]["+id+"]")
+	resource.ImportStatePassthroughID(ctx, path.Root("id"), req, resp)
 }

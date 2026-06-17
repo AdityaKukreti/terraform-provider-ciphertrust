@@ -7,6 +7,7 @@ import (
 
 	"github.com/google/uuid"
 
+	common "github.com/ThalesGroup/terraform-provider-ciphertrust/internal/provider/common"
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/path"
@@ -17,9 +18,6 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringdefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
-
-	// "github.com/hashicorp/terraform-plugin-framework/resource/schema/stringdefault"
-	common "github.com/ThalesGroup/terraform-provider-ciphertrust/internal/provider/common"
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-log/tflog"
@@ -28,6 +26,7 @@ import (
 var (
 	_                           resource.Resource                   = &resourceCTEClient{}
 	_                           resource.ResourceWithConfigure      = &resourceCTEClient{}
+	_                           resource.ResourceWithImportState    = &resourceCTEClient{}
 	_                           resource.ResourceWithValidateConfig = &resourceCTEClient{}
 	CtePasswordGenarationMethod                                     = []string{"GENERATE", "MANUAL"}
 	CteClientType                                                   = []string{"FS", "CTE-U"}
@@ -568,6 +567,9 @@ func setCTEClientState(
 	} else {
 		state.Description = types.StringNull()
 	}
+	if state.Name.IsNull() || state.Name.ValueString() == "" {
+		state.Name = types.StringValue(apiResp.Name)
+	}
 	state.ClientLocked = types.BoolValue(apiResp.ClientLocked)
 	state.ClientType = types.StringValue(apiResp.ClientType)
 	state.CommunicationEnabled = types.BoolValue(apiResp.CommunicationEnabled)
@@ -600,4 +602,11 @@ func setCTEClientState(
 		state.Labels = labels
 	}
 
+}
+
+func (r *resourceCTEClient) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
+	id := uuid.New().String()
+	tflog.Debug(ctx, common.MSG_METHOD_START+"[resource_cte_client.go -> ImportState]["+id+"]")
+	defer tflog.Debug(ctx, common.MSG_METHOD_END+"[resource_cte_client.go -> ImportState]["+id+"]")
+	resource.ImportStatePassthroughID(ctx, path.Root("id"), req, resp)
 }

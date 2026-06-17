@@ -13,6 +13,7 @@ import (
 
 	common "github.com/ThalesGroup/terraform-provider-ciphertrust/internal/provider/common"
 	"github.com/hashicorp/terraform-plugin-framework/attr"
+	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/mapdefault"
@@ -24,8 +25,9 @@ import (
 )
 
 var (
-	_ resource.Resource              = &resourceCTESignatureSet{}
-	_ resource.ResourceWithConfigure = &resourceCTESignatureSet{}
+	_ resource.Resource                = &resourceCTESignatureSet{}
+	_ resource.ResourceWithConfigure   = &resourceCTESignatureSet{}
+	_ resource.ResourceWithImportState = &resourceCTESignatureSet{}
 )
 
 func NewResourceCTESignatureSet() resource.Resource {
@@ -412,4 +414,11 @@ func setCTESignatureSetState(
 		sources = append(sources, types.StringValue(src))
 	}
 	state.Sources = sources
+}
+
+func (r *resourceCTESignatureSet) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
+	id := uuid.New().String()
+	tflog.Debug(ctx, common.MSG_METHOD_START+"[resource_cte_signature_set.go -> ImportState]["+id+"]")
+	defer tflog.Debug(ctx, common.MSG_METHOD_END+"[resource_cte_signature_set.go -> ImportState]["+id+"]")
+	resource.ImportStatePassthroughID(ctx, path.Root("id"), req, resp)
 }

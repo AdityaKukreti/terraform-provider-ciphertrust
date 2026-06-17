@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 
 	"github.com/google/uuid"
 
@@ -18,8 +19,9 @@ import (
 )
 
 var (
-	_ resource.Resource              = &resourceCTEPolicyKeyRule{}
-	_ resource.ResourceWithConfigure = &resourceCTEPolicyKeyRule{}
+	_ resource.Resource                = &resourceCTEPolicyKeyRule{}
+	_ resource.ResourceWithConfigure   = &resourceCTEPolicyKeyRule{}
+	_ resource.ResourceWithImportState = &resourceCTEPolicyKeyRule{}
 )
 
 func NewResourceCTEPolicyKeyRule() resource.Resource {
@@ -300,4 +302,29 @@ func (d *resourceCTEPolicyKeyRule) Configure(_ context.Context, req resource.Con
 	}
 
 	d.client = client
+}
+
+func (r *resourceCTEPolicyKeyRule) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
+	// Import ID format: "policy_id:rule_id"
+	parts := strings.Split(req.ID, ":")
+	if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
+		resp.Diagnostics.AddError(
+			"Invalid import ID",
+			"Expected format: policy_id:rule_id",
+		)
+		return
+	}
+
+	policyID := parts[0]
+	ruleID := parts[1]
+
+	state := CTEPolicyAddKeyRuleTFSDK{
+		CTEClientPolicyID: types.StringValue(policyID),
+		KeyRule: KeyRuleTFSDK{
+			ID: types.StringValue(ruleID),
+		},
+	}
+
+	diags := resp.State.Set(ctx, state)
+	resp.Diagnostics.Append(diags...)
 }
