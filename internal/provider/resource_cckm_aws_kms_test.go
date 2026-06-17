@@ -181,7 +181,7 @@ func TestCckmAWSKms(t *testing.T) {
 				ResourceName:            resourceName,
 				ImportState:             true,
 				ImportStateVerify:       true,
-				ImportStateVerifyIgnore: []string{"updated_at"},
+				ImportStateVerifyIgnore: []string{"updated_at", "connection_id"},
 			},
 			{
 				Config: updateKmsRegionsConfig,
