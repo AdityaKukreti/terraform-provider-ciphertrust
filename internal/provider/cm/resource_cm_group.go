@@ -41,8 +41,9 @@ func (r *resourceCMGroup) Schema(_ context.Context, _ resource.SchemaRequest, re
 		Attributes: map[string]schema.Attribute{
 			"name": schema.StringAttribute{
 				Required: true,
+				Description: "Unique group name. Immutable after creation.",
 				PlanModifiers: []planmodifier.String{
-					stringplanmodifier.UseStateForUnknown(),
+					NameImmutableModifier{},
 				},
 			},
 			"app_metadata": schema.StringAttribute{

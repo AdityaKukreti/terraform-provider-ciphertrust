@@ -123,7 +123,8 @@ func TestCckmOCIConnection(t *testing.T) {
 			// leave the resource untouched on CM (regression test for bug fix).
 			{
 				Config:      renamedConfig,
-				ExpectError: regexp.MustCompile(`OCI Connection name cannot be changed`),
+				PlanOnly:    true,
+				ExpectError: regexp.MustCompile(`Connection name cannot be changed`),
 			},
 		},
 	})
@@ -175,7 +176,8 @@ func TestCckmOCIConnectionNameImmutable(t *testing.T) {
 			// Step 2: Attempt rename — provider must return a clear error; no state corruption.
 			{
 				Config:      renameConfig,
-				ExpectError: regexp.MustCompile(`OCI Connection name cannot be changed`),
+				PlanOnly:    true,
+				ExpectError: regexp.MustCompile(`Connection name cannot be changed`),
 			},
 			// Step 3: Re-apply original config — state must still be intact and consistent.
 			{
