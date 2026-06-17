@@ -213,6 +213,7 @@ func (r *resourceCCKMAWSKMS) Create(ctx context.Context, req resource.CreateRequ
 		resp.Diagnostics.AddError(details, "")
 		return
 	}
+	r.resolveConnectionName(ctx, id, response, &plan)
 	// Preserve the user-supplied connection_id (name or UUID); connection_name holds the API value.
 	plan.ConnectionID = types.StringValue(common.TrimString(plan.ConnectionID.String()))
 	resp.Diagnostics.Append(resp.State.Set(ctx, plan)...)
@@ -252,6 +253,7 @@ func (r *resourceCCKMAWSKMS) Read(ctx context.Context, req resource.ReadRequest,
 	if resp.Diagnostics.HasError() {
 		return
 	}
+	r.resolveConnectionName(ctx, id, response, &state)
 	// connection_id is left untouched so it always reflects the user-supplied value;
 	// any out-of-band connection change is visible via connection_name drifting.
 	if priorConnID != "" {
@@ -341,6 +343,7 @@ func (r *resourceCCKMAWSKMS) Update(ctx context.Context, req resource.UpdateRequ
 		resp.Diagnostics.AddError(details, "")
 		return
 	}
+	r.resolveConnectionName(ctx, id, response, &plan)
 	// connection_id is left untouched so it always reflects the user-supplied value;
 	// any out-of-band connection change is visible via connection_name drifting.
 	plan.ConnectionID = types.StringValue(common.TrimString(plan.ConnectionID.String()))
@@ -429,9 +432,28 @@ func (r *resourceCCKMAWSKMS) ImportState(ctx context.Context, req resource.Impor
 	resource.ImportStatePassthroughID(ctx, path.Root("id"), req, resp)
 }
 
+// resolveConnectionName looks up the human-readable name of the connection whose ID is stored
+// in the API response "connection" field and writes it into state.ConnectionName.
+// If the lookup fails (e.g. permissions, network), ConnectionName is left unchanged.
+func (r *resourceCCKMAWSKMS) resolveConnectionName(ctx context.Context, reqID string, apiResponse string, state *KMSModelTFSDK) {
+	connUUID := gjson.Get(apiResponse, "connection").String()
+	if connUUID == "" {
+		return
+	}
+	connResp, err := r.client.GetById(ctx, reqID, connUUID, common.URL_AWS_CONNECTION)
+	if err != nil {
+		return
+	}
+	name := gjson.Get(connResp, "name").String()
+	if name != "" {
+		state.ConnectionName = types.StringValue(name)
+	}
+}
+
 // setKmsState populates the Terraform state for an AWS KMS from an API response JSON string.
 // connection_id is NOT set here - it is preserved as the user-supplied value by the caller.
-// connection_name is set to the API-reported connection name.
+// connection_name is initially set to the raw connection UUID from the API; callers should
+// follow up with resolveConnectionName to replace it with the human-readable name.
 func (r *resourceCCKMAWSKMS) setKmsState(ctx context.Context, response string, state *KMSModelTFSDK, diags *diag.Diagnostics) {
 	state.Account = types.StringValue(gjson.Get(response, "account").String())
 	acls.SetAclsStateFromJSON(ctx, gjson.Get(response, "acls"), &state.Acls, diags)
