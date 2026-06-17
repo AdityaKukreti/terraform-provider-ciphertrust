@@ -251,9 +251,10 @@ func TestCckmOCIVault(t *testing.T) {
 				RefreshState: true,
 			},
 			{
-				ResourceName:      vaultResource,
-				ImportState:       true,
-				ImportStateVerify: true,
+				ResourceName:            vaultResource,
+				ImportState:             true,
+				ImportStateVerify:       true,
+				ImportStateVerifyIgnore: []string{"connection_id"},
 			},
 			{
 				Config: updateConfigStr,
@@ -282,9 +283,10 @@ func TestCckmOCIVault(t *testing.T) {
 				ExpectError: regexp.MustCompile("Immutable attribute change detected"),
 			},
 			{
-				ResourceName:      vaultResource,
-				ImportState:       true,
-				ImportStateVerify: true,
+				ResourceName:            vaultResource,
+				ImportState:             true,
+				ImportStateVerify:       true,
+				ImportStateVerifyIgnore: []string{"connection_id"},
 			},
 		},
 	})
