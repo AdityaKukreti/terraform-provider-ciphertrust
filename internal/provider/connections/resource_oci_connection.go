@@ -94,7 +94,8 @@ func (r *resourceCCKMOCIConnection) Schema(_ context.Context, _ resource.SchemaR
 			},
 			"name": schema.StringAttribute{
 				Required:    true,
-				Description: "Unique connection name",
+				Description: "Unique connection name. Immutable after creation — changing this field will produce a plan-time error.",
+				PlanModifiers: []planmodifier.String{NameImmutableModifier{}},
 			},
 			"pub_key_fingerprint": schema.StringAttribute{
 				Required:    true,
@@ -315,22 +316,6 @@ func (r *resourceCCKMOCIConnection) Update(ctx context.Context, req resource.Upd
 	var state OCIConnectionTFSDK
 	resp.Diagnostics.Append(req.State.Get(ctx, &state)...)
 	if resp.Diagnostics.HasError() {
-		return
-	}
-
-	// name is immutable at the CM API level; reject the change with a clear error
-	// rather than silently ignoring it (which would corrupt Terraform state).
-	if plan.Name.ValueString() != state.Name.ValueString() {
-		resp.Diagnostics.AddError(
-			"OCI Connection name cannot be changed",
-			fmt.Sprintf(
-				"The 'name' field is immutable after creation. "+
-					"Current name on CipherTrust Manager: %q. "+
-					"To use a different name, remove this resource from Terraform state "+
-					"(terraform state rm) and import or recreate it with the desired name.",
-				state.Name.ValueString(),
-			),
-		)
 		return
 	}
 

@@ -2,9 +2,11 @@ package provider
 
 import (
 	"fmt"
-	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
 	"os"
+	"regexp"
 	"testing"
+
+	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
 )
 
 func TestResourceGCPConnection(t *testing.T) {
@@ -54,19 +56,33 @@ func TestResourceGCPConnection(t *testing.T) {
 				),
 			},
 
-			// Step 2: Update the resource
-			{
-				Config: providerConfig + updateConfig,
-				// verifying the updated field private key id, client email, description and products
-				Check: resource.ComposeAggregateTestCheckFunc(
-					resource.TestCheckResourceAttrSet("ciphertrust_gcp_connection.gcp_connection", "private_key_id"),
-					resource.TestCheckResourceAttrSet("ciphertrust_gcp_connection.gcp_connection", "client_email"),
-					resource.TestCheckResourceAttr("ciphertrust_gcp_connection.gcp_connection", "description", "updated connection description"),
-					resource.TestCheckResourceAttr("ciphertrust_gcp_connection.gcp_connection", "products.#", "1"),
-					resource.TestCheckResourceAttr("ciphertrust_gcp_connection.gcp_connection", "products.0", "ddc"),
-				),
-			},
+		// Step 2: Update the resource
+		{
+			Config: providerConfig + updateConfig,
+			// verifying the updated field private key id, client email, description and products
+			Check: resource.ComposeAggregateTestCheckFunc(
+				resource.TestCheckResourceAttrSet("ciphertrust_gcp_connection.gcp_connection", "private_key_id"),
+				resource.TestCheckResourceAttrSet("ciphertrust_gcp_connection.gcp_connection", "client_email"),
+				resource.TestCheckResourceAttr("ciphertrust_gcp_connection.gcp_connection", "description", "updated connection description"),
+				resource.TestCheckResourceAttr("ciphertrust_gcp_connection.gcp_connection", "products.#", "1"),
+				resource.TestCheckResourceAttr("ciphertrust_gcp_connection.gcp_connection", "products.0", "ddc"),
+			),
 		},
+
+		// Step 3: Attempt to rename — must fail at plan time with a clear error.
+		{
+			Config: providerConfig + fmt.Sprintf(`
+resource "ciphertrust_gcp_connection" "gcp_connection" {
+  name     = "test-gcp-connection-renamed"
+  key_file = <<-EOT
+    %s
+  EOT
+}
+`, gcpKeyFile),
+			ExpectError: regexp.MustCompile(`Connection name cannot be changed`),
+			PlanOnly:    true,
+		},
+	},
 	})
 }
 
