@@ -630,7 +630,6 @@ func TestCckmAWSKeyMaterialRepairCombined(t *testing.T) {
 	var capturedCmKey2ID string
 
 	kmResource := "ciphertrust_aws_key_material.km"
-	keyResource := "ciphertrust_aws_byok_key.ext_key"
 
 	resource.Test(t, resource.TestCase{
 		PreCheck:                 func() { cleanupCckmAwsKMS() },

@@ -29,7 +29,7 @@ resource "ciphertrust_oci_vault" "vault" {
 
 ### Required
 
-- `connection_id` (String) (Updatable) CipherTrust Manager OCI connection ID or connection name. When importing an existing vault use the connection name.
+- `connection_id` (String) (Updatable) CipherTrust Manager OCI connection ID.
 - `region` (String) The vault's region.
 - `vault_id` (String) The vault's OCID.
 
@@ -45,6 +45,7 @@ resource "ciphertrust_oci_vault" "vault" {
 - `cloud_name` (String) CipherTrust Manager cloud name.
 - `compartment_id` (String) The compartment's OCID.
 - `compartment_name` (String) Compartment name.
+- `connection_name` (String) The connection name as returned by CipherTrust Manager. Always reflects the current server-side value; changes here indicate an out-of-band connection update.
 - `created_at` (String) Date/time the application was created
 - `defined_tags` (Attributes Set) The defined tags of the vault. (see [below for nested schema](#nestedatt--defined_tags))
 - `freeform_tags` (Map of String) The freeform tags of the vault.

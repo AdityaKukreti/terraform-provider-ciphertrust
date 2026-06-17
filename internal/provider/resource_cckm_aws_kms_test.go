@@ -112,11 +112,11 @@ func TestCckmAWSKms(t *testing.T) {
 			name = "%s"
 		}
 		data "ciphertrust_aws_account_details" "account_details" {
-			aws_connection = ciphertrust_aws_connection.aws_connection.id
+			connection_id = ciphertrust_aws_connection.aws_connection.id
 		}
 		resource "ciphertrust_aws_kms" "kms" {
 			account_id     = data.ciphertrust_aws_account_details.account_details.account_id
-			aws_connection = ciphertrust_aws_connection.aws_connection.name
+			connection_id  = ciphertrust_aws_connection.aws_connection.id
 			name           = "%s"
 			regions = [
 				data.ciphertrust_aws_account_details.account_details.regions[0],
@@ -130,11 +130,11 @@ func TestCckmAWSKms(t *testing.T) {
 			name = "%s"
 		}
 		data "ciphertrust_aws_account_details" "account_details" {
-			aws_connection = ciphertrust_aws_connection.aws_connection.id
+			connection_id = ciphertrust_aws_connection.aws_connection.id
 		}
 		resource "ciphertrust_aws_kms" "kms" {
 			account_id     = data.ciphertrust_aws_account_details.account_details.account_id
-			aws_connection = ciphertrust_aws_connection.aws_connection.name
+			connection_id  = ciphertrust_aws_connection.aws_connection.id
 			name           = "%s"
 			regions        = [data.ciphertrust_aws_account_details.account_details.regions[0]]
 		}`, uid, uid)
@@ -147,11 +147,11 @@ func TestCckmAWSKms(t *testing.T) {
 			name = "%s"
 		}
 		data "ciphertrust_aws_account_details" "account_details" {
-			aws_connection = ciphertrust_aws_connection.aws_connection.id
+			connection_id = ciphertrust_aws_connection.aws_connection.id
 		}
 		resource "ciphertrust_aws_kms" "kms" {
 			account_id     = %s
-			aws_connection = ciphertrust_aws_connection.new_aws_connection.name
+			connection_id  = ciphertrust_aws_connection.new_aws_connection.id
 			name           = "%s"
 			regions        = [data.ciphertrust_aws_account_details.account_details.regions[0]]
 		}`
@@ -169,7 +169,6 @@ func TestCckmAWSKms(t *testing.T) {
 				Config: createKmsConfig,
 				Check: resource.ComposeTestCheckFunc(
 					resource.TestCheckResourceAttrSet(resourceName, "arn"),
-					resource.TestCheckResourceAttrSet(resourceName, "aws_connection"),
 					resource.TestCheckResourceAttr(resourceName, "name", uid),
 					resource.TestCheckResourceAttrSet(resourceName, "regions.#"),
 				),
@@ -193,7 +192,7 @@ func TestCckmAWSKms(t *testing.T) {
 			{
 				Config: updateKmsConnectionConfigStr,
 				Check: resource.ComposeTestCheckFunc(
-					resource.TestCheckResourceAttr(resourceName, "aws_connection", updatedConnName),
+					resource.TestCheckResourceAttr(resourceName, "connection_name", updatedConnName),
 					resource.TestCheckResourceAttr(resourceName, "regions.#", "1"),
 				),
 			},

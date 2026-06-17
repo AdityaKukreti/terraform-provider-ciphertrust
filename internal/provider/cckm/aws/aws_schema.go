@@ -577,7 +577,7 @@ type AWSKeyStoreResourceCommonTFSDK struct {
 }
 
 type AWSAccountDetailsModelTFSDK struct {
-	Connection           types.String `tfsdk:"aws_connection"`
+	ConnectionID         types.String `tfsdk:"connection_id"`
 	AssumeRoleArn        types.String `tfsdk:"assume_role_arn"`
 	AssumeRoleExternalID types.String `tfsdk:"assume_role_external_id"`
 	AccountID            types.String `tfsdk:"account_id"`
@@ -594,7 +594,8 @@ type KMSModelTFSDK struct {
 	AssumeRoleARN        types.String `tfsdk:"assume_role_arn"`
 	AssumeRoleExternalID types.String `tfsdk:"assume_role_external_id"`
 	AutoAdded            types.Bool   `tfsdk:"auto_added"`
-	Connection           types.String `tfsdk:"aws_connection"`
+	ConnectionID         types.String `tfsdk:"connection_id"`
+	ConnectionName       types.String `tfsdk:"connection_name"`
 	CreatedAt            types.String `tfsdk:"created_at"`
 	DevAccount           types.String `tfsdk:"dev_account"`
 	ID                   types.String `tfsdk:"id"`

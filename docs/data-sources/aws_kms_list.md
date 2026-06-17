@@ -59,7 +59,8 @@ Read-Only:
 - `assume_role_arn` (String) Amazon Resource Name (ARN) of the role to be assumed.
 - `assume_role_external_id` (String) External ID for the role to be assumed.
 - `auto_added` (Boolean) True if the KMS was added by a scheduler.
-- `aws_connection` (String) CipherTrust Manager ID of the connection which manages this account.
+- `connection_id` (String) CipherTrust Manager connection ID which manages this account.
+- `connection_name` (String) The connection name as returned by CipherTrust Manager.
 - `created_at` (String) Date/time the application was created
 - `dev_account` (String) The developer account which owns this resource's application.
 - `id` (String) The CipherTrust Manager ID of this KMS.

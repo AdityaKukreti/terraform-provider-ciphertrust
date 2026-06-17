@@ -52,7 +52,7 @@ resource "ciphertrust_aws_key" "aws_key" {
 ### Required
 
 - `account_id` (String) ID of the AWS account.
-- `aws_connection` (String) (Updatable) Name or ID of the connection in which the account is managed.
+- `connection_id` (String) (Updatable) CipherTrust Manager AWS connection ID.
 - `name` (String) Unique name for the KMS.
 - `regions` (List of String) (Updatable) AWS regions to be added to the KMS.
 
@@ -68,6 +68,7 @@ resource "ciphertrust_aws_key" "aws_key" {
 - `application` (String) The application this resource belongs to.
 - `arn` (String) Amazon Resource Name.
 - `auto_added` (Boolean) True if the KMS was added by a scheduler.
+- `connection_name` (String) The connection name as returned by CipherTrust Manager. Always reflects the current server-side value; changes here indicate an out-of-band connection update.
 - `created_at` (String) Date/time the application was created
 - `dev_account` (String) The developer account which owns this resource's application.
 - `id` (String) The unique identifier of the resource.
