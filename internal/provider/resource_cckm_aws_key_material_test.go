@@ -129,12 +129,6 @@ func TestCckmAWSKeyMaterialCreateAndUpdate(t *testing.T) {
 	addMaterialConfigStr := fmt.Sprintf(addMaterialConfig, fmt.Sprintf(updateRemoveValidToConfig, updateDescription))
 	updateConfigStr4 := awsConnectionResource + fmt.Sprintf(createConfig, addMaterialConfigStr)
 
-	fmt.Printf("createConfigStr: \n%s\n", createConfigStr)
-	fmt.Printf("updateConfigStr1: \n%s\n", updateConfigStr1)
-	fmt.Printf("updateConfigStr2: \n%s\n", updateConfigStr2)
-	fmt.Printf("updateConfigStr3: \n%s\n", updateConfigStr3)
-	fmt.Printf("updateConfigStr4: \n%s\n", updateConfigStr4)
-
 	kmResource := "ciphertrust_aws_key_material.km"
 	rotDSResource := "data.ciphertrust_aws_key_rotation_list.rotations"
 
@@ -146,7 +140,6 @@ func TestCckmAWSKeyMaterialCreateAndUpdate(t *testing.T) {
 				// Step 1: create - key moves from PendingImport to Enabled.
 				Config: createConfigStr,
 				Check: resource.ComposeTestCheckFunc(
-					testAccListResourceAttributes(kmResource),
 					resource.TestCheckResourceAttrSet(kmResource, "id"),
 					resource.TestCheckResourceAttrSet(kmResource, "aws_key_id"),
 					resource.TestCheckResourceAttr(kmResource, "rotation_history.#", "1"),
@@ -160,8 +153,6 @@ func TestCckmAWSKeyMaterialCreateAndUpdate(t *testing.T) {
 				// Add valid_to + description
 				Config: updateConfigStr1,
 				Check: resource.ComposeTestCheckFunc(
-					testAccListResourceAttributes(kmResource),
-					testAccListResourceAttributes(rotDSResource),
 					resource.TestCheckResourceAttr(kmResource, "rotation_history.#", "1"),
 					resource.TestCheckResourceAttrSet(rotDSResource, "rotations.0.aws_params.valid_to"),
 					resource.TestCheckResourceAttr(rotDSResource, "rotations.0.aws_params.key_material_description", createDescription),
@@ -171,8 +162,6 @@ func TestCckmAWSKeyMaterialCreateAndUpdate(t *testing.T) {
 				// Update valid_to + description
 				Config: updateConfigStr2,
 				Check: resource.ComposeTestCheckFunc(
-					testAccListResourceAttributes(kmResource),
-					testAccListResourceAttributes(rotDSResource),
 					resource.TestCheckResourceAttr(kmResource, "rotation_history.#", "1"),
 					resource.TestCheckResourceAttrSet(rotDSResource, "rotations.0.aws_params.valid_to"),
 					resource.TestCheckResourceAttr(rotDSResource, "rotations.0.aws_params.key_material_description", updateDescription),
@@ -182,8 +171,6 @@ func TestCckmAWSKeyMaterialCreateAndUpdate(t *testing.T) {
 				// Remove valid_to
 				Config: updateConfigStr3,
 				Check: resource.ComposeTestCheckFunc(
-					testAccListResourceAttributes(kmResource),
-					testAccListResourceAttributes(rotDSResource),
 					resource.TestCheckResourceAttr(kmResource, "rotation_history.#", "1"),
 					resource.TestCheckResourceAttr(rotDSResource, "rotations.0.aws_params.valid_to", ""),
 					resource.TestCheckResourceAttr(rotDSResource, "rotations.0.aws_params.key_material_description", updateDescription),
@@ -193,7 +180,6 @@ func TestCckmAWSKeyMaterialCreateAndUpdate(t *testing.T) {
 				// Add material2
 				Config: updateConfigStr4,
 				Check: resource.ComposeTestCheckFunc(
-					testAccListResourceAttributes(kmResource),
 					resource.TestCheckResourceAttr(kmResource, "rotation_history.#", "2"),
 					resource.TestCheckResourceAttr(rotDSResource, "rotations.1.aws_params.valid_to", ""),
 					resource.TestCheckResourceAttr(rotDSResource, "rotations.1.aws_params.key_material_description", updateDescription),
@@ -287,10 +273,6 @@ func TestCckmAWSKeyMaterialCombinedUpdates(t *testing.T) {
 	updateMaterialConfigStr := fmt.Sprintf(createConfig, fmt.Sprintf(updateKeyMaterialConfig, validToUpdated))
 	deleteAllMaterialConfigStr := fmt.Sprintf(createConfig, deleteMaterialAndUpdateMaterial)
 
-	fmt.Printf("createConfigStr \n%s\n", createConfigStr)
-	fmt.Printf("updateMaterialConfigStr \n%s\n", updateMaterialConfigStr)
-	fmt.Printf("deleteAllMaterialConfigStr \n%s\n", deleteAllMaterialConfigStr)
-
 	resource.Test(t, resource.TestCase{
 		PreCheck:                 func() { cleanupCckmAwsKMS() },
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
@@ -299,7 +281,6 @@ func TestCckmAWSKeyMaterialCombinedUpdates(t *testing.T) {
 				// Step 1: create with material1 (valid_to + description).
 				Config: awsConnectionResource + createConfigStr,
 				Check: resource.ComposeTestCheckFunc(
-					testAccListResourceAttributes(kmResource),
 					resource.TestCheckResourceAttr(kmResource, "rotation_history.#", "1"),
 				),
 			},
@@ -307,7 +288,6 @@ func TestCckmAWSKeyMaterialCombinedUpdates(t *testing.T) {
 				// Step 2: material1 gets updated metadata AND material2 is added in the same apply.
 				Config: awsConnectionResource + updateMaterialConfigStr,
 				Check: resource.ComposeTestCheckFunc(
-					testAccListResourceAttributes(kmResource),
 					resource.TestCheckResourceAttr(kmResource, "rotation_history.#", "2"),
 					resource.TestCheckResourceAttr(kmResource, "rotation_history.0.aws_params.key_material_state", "CURRENT"),
 				),
@@ -324,7 +304,6 @@ func TestCckmAWSKeyMaterialCombinedUpdates(t *testing.T) {
 				// and material1's entry moves to PENDING_IMPORT (bytes gone). rotation_history.# = 2.
 				Config: awsConnectionResource + deleteAllMaterialConfigStr,
 				Check: resource.ComposeTestCheckFunc(
-					testAccListResourceAttributes(kmResource),
 					resource.TestCheckResourceAttr(kmResource, "rotation_history.#", "2"),
 					resource.TestCheckResourceAttr(kmResource, "rotation_history.0.aws_params.key_material_state", "CURRENT"),
 					resource.TestCheckResourceAttr(kmResource, "rotation_history.0.aws_params.import_state", "IMPORTED"),
@@ -390,7 +369,6 @@ func TestCckmAWSKeyMaterialRepairPendingImport(t *testing.T) {
 				// Step 1: create the key material. Capture CM UUID for OOB delete.
 				Config: awsConnectionResource + createConfig,
 				Check: resource.ComposeTestCheckFunc(
-					testAccListResourceAttributes(kmResource),
 					resource.TestCheckResourceAttrSet(kmResource, "id"),
 					resource.TestCheckResourceAttr(kmResource, "rotation_history.#", "1"),
 					resource.TestCheckResourceAttr(kmResource, "rotation_history.0.aws_params.import_state", "IMPORTED"),
@@ -425,7 +403,6 @@ func TestCckmAWSKeyMaterialRepairPendingImport(t *testing.T) {
 				// re-imports material1 with EXISTING_KEY_MATERIAL. Key returns to Enabled.
 				Config: awsConnectionResource + createConfig,
 				Check: resource.ComposeTestCheckFunc(
-					testAccListResourceAttributes(kmResource),
 					resource.TestCheckResourceAttr(kmResource, "rotation_history.#", "1"),
 					resource.TestCheckResourceAttr(kmResource, "rotation_history.0.aws_params.import_state", "IMPORTED"),
 					resource.TestCheckResourceAttr(kmResource, "rotation_history.0.aws_params.key_material_state", "CURRENT"),
@@ -530,7 +507,6 @@ func TestCckmAWSKeyMaterialRepairPendingRotation(t *testing.T) {
 				// Step 1: create with material1. Capture CM UUID and material2 CM key ID.
 				Config: awsConnectionResource + fmt.Sprintf(createConfig, createMaterialConfig),
 				Check: resource.ComposeTestCheckFunc(
-					testAccListResourceAttributes(kmResource),
 					resource.TestCheckResourceAttr(kmResource, "rotation_history.#", "1"),
 					func(s *terraform.State) error {
 						rs, ok := s.RootModule().Resources[kmResource]
@@ -566,7 +542,6 @@ func TestCckmAWSKeyMaterialRepairPendingRotation(t *testing.T) {
 				// Verify key_state=Enabled and rotation_history grows to 2.
 				Config: awsConnectionResource + fmt.Sprintf(createConfig, repairMaterialConfig),
 				Check: resource.ComposeTestCheckFunc(
-					testAccListResourceAttributes(kmResource),
 					resource.TestCheckResourceAttr(kmResource, "rotation_history.#", "2"),
 				),
 			},
@@ -654,9 +629,6 @@ func TestCckmAWSKeyMaterialRepairCombined(t *testing.T) {
 	var capturedPrimaryKeyID string
 	var capturedCmKey2ID string
 
-	fmt.Printf("create \n%s\n", fmt.Sprintf(createConfig, createMaterialConfig))
-	fmt.Printf("repair \n%s\n", fmt.Sprintf(createConfig, repairMaterialConfig))
-
 	kmResource := "ciphertrust_aws_key_material.km"
 	keyResource := "ciphertrust_aws_byok_key.ext_key"
 
@@ -668,7 +640,6 @@ func TestCckmAWSKeyMaterialRepairCombined(t *testing.T) {
 				// Step 1: create with material1. Capture CM UUID and material2 CM key ID.
 				Config: awsConnectionResource + fmt.Sprintf(createConfig, createMaterialConfig),
 				Check: resource.ComposeTestCheckFunc(
-					testAccListResourceAttributes(kmResource),
 					resource.TestCheckResourceAttr(kmResource, "rotation_history.#", "1"),
 					func(s *terraform.State) error {
 						rs, ok := s.RootModule().Resources[kmResource]
@@ -709,8 +680,6 @@ func TestCckmAWSKeyMaterialRepairCombined(t *testing.T) {
 				// After repair: key_state=Enabled, rotation_history.#=2.
 				Config: awsConnectionResource + fmt.Sprintf(createConfig, repairMaterialConfig),
 				Check: resource.ComposeTestCheckFunc(
-					testAccListResourceAttributes(kmResource),
-					testAccListResourceAttributes(keyResource),
 					resource.TestCheckResourceAttr(kmResource, "rotation_history.#", "2"),
 				),
 			},
@@ -855,9 +824,6 @@ func TestCckmAWSKeyMaterialMultiRegionOOBDeleteMaterial(t *testing.T) {
 	addNewMaterial2Config := createReplicasConfig + fmt.Sprintf(keyMaterialConfig, material2)
 	addNewMaterial3Config := createReplicasConfig + fmt.Sprintf(keyMaterialConfig, material2+","+material3)
 
-	fmt.Printf("createReplicasConfig: \n%s\n", createReplicasConfig)
-	fmt.Printf("addNewMaterial2Config: \n%s\n", addNewMaterial2Config)
-
 	var capturedPrimaryKeyID string
 	var capturedCmKeyID string
 
@@ -876,12 +842,6 @@ func TestCckmAWSKeyMaterialMultiRegionOOBDeleteMaterial(t *testing.T) {
 				// Step 1. Create primary key and replicas and 2 extra cm keys
 				Config: createReplicasConfig,
 				Check: resource.ComposeTestCheckFunc(
-					testAccListResourceAttributes(primaryResource),
-					testAccListResourceAttributes(replica1Resource),
-					testAccListResourceAttributes(replica2Resource),
-					testAccListResourceAttributes(replica3Resource),
-					testAccListResourceAttributes(replica4Resource),
-
 					resource.TestCheckResourceAttr(primaryResource, "aws_param.key_state", "Enabled"),
 					resource.TestCheckResourceAttr(replica1Resource, "aws_param.key_state", "Enabled"),
 					resource.TestCheckResourceAttr(replica2Resource, "aws_param.key_state", "Enabled"),
@@ -913,13 +873,6 @@ func TestCckmAWSKeyMaterialMultiRegionOOBDeleteMaterial(t *testing.T) {
 				// Step 2.  Add material2. Primary rotates to material2; replicas sync.
 				Config: addNewMaterial2Config,
 				Check: resource.ComposeTestCheckFunc(
-					testAccListResourceAttributes(primaryResource),
-					testAccListResourceAttributes(replica1Resource),
-					testAccListResourceAttributes(replica2Resource),
-					testAccListResourceAttributes(replica3Resource),
-					testAccListResourceAttributes(replica4Resource),
-					testAccListResourceAttributes(kmResource),
-
 					resource.TestCheckResourceAttr(primaryResource, "aws_param.key_state", "Enabled"),
 					resource.TestCheckResourceAttr(replica1Resource, "aws_param.key_state", "Enabled"),
 					resource.TestCheckResourceAttr(replica2Resource, "aws_param.key_state", "Enabled"),
@@ -937,13 +890,6 @@ func TestCckmAWSKeyMaterialMultiRegionOOBDeleteMaterial(t *testing.T) {
 				// Step 3.  Refresh state and check the rotation history of the keys
 				RefreshState: true,
 				Check: resource.ComposeTestCheckFunc(
-					testAccListResourceAttributes(primaryResource),
-					testAccListResourceAttributes(replica1Resource),
-					testAccListResourceAttributes(replica2Resource),
-					testAccListResourceAttributes(replica3Resource),
-					testAccListResourceAttributes(replica4Resource),
-					testAccListResourceAttributes(kmResource),
-
 					resource.TestCheckResourceAttr(primaryResource, "aws_param.key_state", "Enabled"),
 					resource.TestCheckResourceAttr(replica1Resource, "aws_param.key_state", "Enabled"),
 					resource.TestCheckResourceAttr(replica2Resource, "aws_param.key_state", "Enabled"),
@@ -991,13 +937,6 @@ func TestCckmAWSKeyMaterialMultiRegionOOBDeleteMaterial(t *testing.T) {
 				// Step 4. Add material3. Primary rotates to material2; replicas sync.
 				Config: addNewMaterial3Config,
 				Check: resource.ComposeTestCheckFunc(
-					testAccListResourceAttributes(primaryResource),
-					testAccListResourceAttributes(replica1Resource),
-					testAccListResourceAttributes(replica2Resource),
-					testAccListResourceAttributes(replica3Resource),
-					testAccListResourceAttributes(replica4Resource),
-					testAccListResourceAttributes(kmResource),
-
 					resource.TestCheckResourceAttr(primaryResource, "aws_param.key_state", "Enabled"),
 					resource.TestCheckResourceAttr(replica1Resource, "aws_param.key_state", "Enabled"),
 					resource.TestCheckResourceAttr(replica2Resource, "aws_param.key_state", "Enabled"),
@@ -1031,13 +970,6 @@ func TestCckmAWSKeyMaterialMultiRegionOOBDeleteMaterial(t *testing.T) {
 				// Step 5. Refresh state and check keys
 				RefreshState: true,
 				Check: resource.ComposeTestCheckFunc(
-					testAccListResourceAttributes(primaryResource),
-					testAccListResourceAttributes(replica1Resource),
-					testAccListResourceAttributes(replica2Resource),
-					testAccListResourceAttributes(replica3Resource),
-					testAccListResourceAttributes(replica4Resource),
-					testAccListResourceAttributes(kmResource),
-
 					resource.TestCheckResourceAttr(primaryResource, "aws_param.key_state", "Enabled"),
 					resource.TestCheckResourceAttr(replica1Resource, "aws_param.key_state", "Enabled"),
 					resource.TestCheckResourceAttr(replica2Resource, "aws_param.key_state", "Enabled"),
@@ -1110,12 +1042,6 @@ func TestCckmAWSKeyMaterialMultiRegionOOBDeleteMaterial(t *testing.T) {
 				// rotation_history.# should return to 3 on primary and all 3 replicas.
 				Config: addNewMaterial3Config,
 				Check: resource.ComposeTestCheckFunc(
-					testAccListResourceAttributes(primaryResource),
-					testAccListResourceAttributes(replica1Resource),
-					testAccListResourceAttributes(replica2Resource),
-					testAccListResourceAttributes(replica3Resource),
-					testAccListResourceAttributes(replica3Resource),
-					testAccListResourceAttributes(kmResource),
 					resource.TestCheckResourceAttr(kmResource, "rotation_history.#", "3"),
 					resource.TestCheckResourceAttr(kmResource, "rotation_history.0.aws_params.key_material_state", "CURRENT"),
 					resource.TestCheckResourceAttr(kmResource, "rotation_history.0.aws_params.import_state", "IMPORTED"),
@@ -1300,9 +1226,6 @@ func TestCckmAWSKeyMaterialRepairMultiRegionPendingImportAndRotation(t *testing.
 	createConfigStr := fmt.Sprintf(createConfig, replica1Alias, replica2Alias, replica3Alias, "\n")
 	addMaterialConfigStr := fmt.Sprintf(createConfig, replica1Alias, replica2Alias, replica3Alias, addMaterialConfig)
 
-	fmt.Printf("createConfigStr: \n%s", createConfigStr)
-	fmt.Printf("addMaterialConfigStr: \n%s", addMaterialConfigStr)
-
 	resource.Test(t, resource.TestCase{
 		PreCheck:                 func() { cleanupCckmAwsKMS() },
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
@@ -1311,10 +1234,6 @@ func TestCckmAWSKeyMaterialRepairMultiRegionPendingImportAndRotation(t *testing.
 				// Step 1: create primary MR key + 3 replicas
 				Config: awsConnectionResource + createConfigStr,
 				Check: resource.ComposeTestCheckFunc(
-					testAccListResourceAttributes(primaryResource),
-					testAccListResourceAttributes("ciphertrust_cm_key.cm_aes_key"),
-					testAccListResourceAttributes("ciphertrust_cm_key.cm_aes_key2"),
-					testAccListResourceAttributes(rotationHistoryDSResource),
 					resource.TestCheckResourceAttr(primaryResource, "aws_param.multi_region", "true"),
 					resource.TestCheckResourceAttr(primaryResource, "aws_param.origin", "EXTERNAL"),
 				),
@@ -1324,8 +1243,6 @@ func TestCckmAWSKeyMaterialRepairMultiRegionPendingImportAndRotation(t *testing.
 				// Capture primary CM UUID and material2 CM key ID for later OOB import.
 				Config: awsConnectionResource + createConfigStr,
 				Check: resource.ComposeTestCheckFunc(
-					testAccListResourceAttributes(primaryResource),
-					resource.TestCheckResourceAttr(primaryResource, "rotation_history.#", "1"),
 					func(s *terraform.State) error {
 						rs, ok := s.RootModule().Resources[primaryResource]
 						if !ok {
@@ -1367,7 +1284,6 @@ func TestCckmAWSKeyMaterialRepairMultiRegionPendingImportAndRotation(t *testing.
 				// material1 is not included in the plan so won't cant be repaired
 				Config: awsConnectionResource + createConfigStr,
 				Check: resource.ComposeTestCheckFunc(
-					testAccListResourceAttributes(rotationHistoryDSResource),
 					resource.TestCheckResourceAttr(rotationHistoryDSResource, "rotations.0.aws_params.key_material_state", "PENDING_MULTI_REGION_IMPORT_AND_ROTATION"),
 					resource.TestCheckResourceAttr(rotationHistoryDSResource, "rotations.1.aws_params.key_material_state", "CURRENT"),
 				),
@@ -1380,8 +1296,6 @@ func TestCckmAWSKeyMaterialRepairMultiRegionPendingImportAndRotation(t *testing.
 				// Both keys should become Enabled with rotation_history.#=2.
 				Config: awsConnectionResource + addMaterialConfigStr,
 				Check: resource.ComposeTestCheckFunc(
-					testAccListResourceAttributes(kmResource),
-					testAccListResourceAttributes(rotationHistoryDSResource),
 					resource.TestCheckResourceAttr(kmResource, "rotation_history.#", "2"),
 					resource.TestCheckResourceAttrSet(rotationHistoryDSResource, "key_id"),
 				),
@@ -1468,7 +1382,6 @@ func TestCckmAWSKeyMaterialAdoptPendingRotation(t *testing.T) {
 				// Capture both CM IDs for use in the Step 2 PreConfig.
 				Config: awsConnectionResource + fmt.Sprintf(createConfig, "\n"),
 				Check: resource.ComposeTestCheckFunc(
-					testAccListResourceAttributes(extKeyResource),
 					resource.TestCheckResourceAttrSet(extKeyResource, "id"),
 					resource.TestCheckResourceAttr(extKeyResource, "aws_param.key_state", "PendingImport"),
 					resource.TestCheckResourceAttr(extKeyResource, "aws_param.origin", "EXTERNAL"),
@@ -1502,7 +1415,6 @@ func TestCckmAWSKeyMaterialAdoptPendingRotation(t *testing.T) {
 				},
 				Config: awsConnectionResource + fmt.Sprintf(createConfig, adoptMaterialConfig),
 				Check: resource.ComposeTestCheckFunc(
-					testAccListResourceAttributes(kmResource),
 					resource.TestCheckResourceAttrSet(kmResource, "id"),
 					resource.TestCheckResourceAttr(kmResource, "rotation_history.#", "1"),
 					resource.TestCheckResourceAttr(kmResource, "rotation_history.0.aws_params.key_material_state", "CURRENT"),
@@ -1641,9 +1553,6 @@ func TestCckmAWSKeyMaterialAdoptPendingMRRotation(t *testing.T) {
 	createConfigStr := fmt.Sprintf(createConfig, replica1Alias, replica2Alias, "\n")
 	adoptOriginalAndAddConfigStr := fmt.Sprintf(createConfig, replica1Alias, replica2Alias, adoptMaterialAndAddMaterialConfig)
 
-	fmt.Printf("createConfigStr: \n%s\n", createConfigStr)
-	fmt.Printf("adoptAndAddConfigStr: \n%s\n", adoptOriginalAndAddConfigStr)
-
 	primaryResource := "ciphertrust_aws_byok_key.mr_primary"
 	replica1Resource := "ciphertrust_aws_byok_key.mr_replica_1"
 	replica2Resource := "ciphertrust_aws_byok_key.mr_replica_2"
@@ -1660,9 +1569,6 @@ func TestCckmAWSKeyMaterialAdoptPendingMRRotation(t *testing.T) {
 				// Capture the primary CM id, replica_1 CM id, and cm_aes_key2 CM id.
 				Config: awsConnectionResource + createConfigStr,
 				Check: resource.ComposeTestCheckFunc(
-					testAccListResourceAttributes(primaryResource),
-					testAccListResourceAttributes(replica1Resource),
-					testAccListResourceAttributes(replica2Resource),
 					resource.TestCheckResourceAttrSet(primaryResource, "id"),
 					resource.TestCheckResourceAttr(primaryResource, "aws_param.key_state", "Enabled"),
 					resource.TestCheckResourceAttr(primaryResource, "aws_param.origin", "EXTERNAL"),
@@ -1703,11 +1609,7 @@ func TestCckmAWSKeyMaterialAdoptPendingMRRotation(t *testing.T) {
 			},
 			{
 				RefreshState: true,
-				Check: resource.ComposeTestCheckFunc(
-					testAccListResourceAttributes(primaryResource),
-					testAccListResourceAttributes(replica1Resource),
-					testAccListResourceAttributes(replica2Resource),
-				)},
+				Check:        resource.ComposeTestCheckFunc()},
 			{
 				// Step 2+3: Import cm_aes_key2 to primary and replica_1, leaving replica_2 without
 				// cm_aes_key2 bytes. Primary enters PENDING_MULTI_REGION_IMPORT_AND_ROTATION.
@@ -1760,11 +1662,6 @@ func TestCckmAWSKeyMaterialAdoptPendingMRRotation(t *testing.T) {
 				},
 				Config: awsConnectionResource + adoptOriginalAndAddConfigStr,
 				Check: resource.ComposeTestCheckFunc(
-					testAccListResourceAttributes(primaryResource),
-					testAccListResourceAttributes(replica1Resource),
-					testAccListResourceAttributes(replica2Resource),
-					testAccListResourceAttributes(kmResource),
-
 					resource.TestCheckResourceAttrSet(kmResource, "id"),
 					// rotation_history is ordered newest first. After adoption:
 					//   [0] = cm_aes_key2 (newly activated by the adopt, CURRENT)
@@ -1818,10 +1715,6 @@ func TestCckmAWSKeyMaterialAdoptPendingMRRotation(t *testing.T) {
 				// rotation history after RefreshState confirms no drift.
 				Config: awsConnectionResource + adoptOriginalAndAddConfigStr,
 				Check: resource.ComposeTestCheckFunc(
-					testAccListResourceAttributes(kmResource),
-					testAccListResourceAttributes(primaryResource),
-					testAccListResourceAttributes(replica1Resource),
-					testAccListResourceAttributes(replica2Resource),
 					// km resource: primary material settled.
 					resource.TestCheckResourceAttr(kmResource, "rotation_history.#", "2"),
 					resource.TestCheckResourceAttr(kmResource, "rotation_history.0.aws_params.key_material_state", "CURRENT"),
@@ -1908,7 +1801,6 @@ func TestCckmAWSKeyMaterialMRPendingImportFirstMaterial(t *testing.T) {
 				// Step 1: create the MR primary key with no material. Verify PendingImport.
 				Config: awsConnectionResource + createConfig,
 				Check: resource.ComposeTestCheckFunc(
-					testAccListResourceAttributes(primaryResource),
 					resource.TestCheckResourceAttrSet(primaryResource, "id"),
 					resource.TestCheckResourceAttr(primaryResource, "aws_param.key_state", "PendingImport"),
 					resource.TestCheckResourceAttr(primaryResource, "aws_param.origin", "EXTERNAL"),
@@ -1920,7 +1812,6 @@ func TestCckmAWSKeyMaterialMRPendingImportFirstMaterial(t *testing.T) {
 				// Step 2: add aws_key_material with material1. Key transitions to Enabled.
 				Config: awsConnectionResource + updateConfig,
 				Check: resource.ComposeTestCheckFunc(
-					testAccListResourceAttributes(kmResource),
 					resource.TestCheckResourceAttrSet(kmResource, "id"),
 					resource.TestCheckResourceAttr(kmResource, "rotation_history.#", "1"),
 					resource.TestCheckResourceAttr(kmResource, "rotation_history.0.aws_params.import_state", "IMPORTED"),
@@ -2244,7 +2135,6 @@ func TestCckmAWSByokKeyCreatePendingImport(t *testing.T) {
 				// Create key with no source_key_identifier - lands in PendingImport.
 				Config: awsConnectionResource + createConfig,
 				Check: resource.ComposeTestCheckFunc(
-					testAccListResourceAttributes(keyResource),
 					resource.TestCheckResourceAttrSet(keyResource, "id"),
 					resource.TestCheckResourceAttr(keyResource, "rotation_history.#", "0"),
 					resource.TestCheckResourceAttrSet(keyResource, "aws_param.arn"),

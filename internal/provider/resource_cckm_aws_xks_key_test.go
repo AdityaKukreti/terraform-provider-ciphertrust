@@ -202,9 +202,6 @@ func TestCckmAWSXksUnlinkedKey(t *testing.T) {
 	modifyPlanConfigStr := awsConnectionResource + createKeyStoreConfigStr + policyTemplateConfigStr + enableRotationConfigStr +
 		fmt.Sprintf(createXksKeyConfig, aliasList[0], aliasList[1], false, `"tf-fake-key-id"`)
 
-	fmt.Printf("createXksKeyConfigStr: \n%s\n", createXksKeyConfigStr)
-	fmt.Printf("updateConfigStr: \n%s\n", updateConfigStr)
-
 	keyResourceMaxParams := "ciphertrust_aws_xks_key.unlinked_cm_source_max_params"
 	keyResourceMinParams := "ciphertrust_aws_xks_key.unlinked_cm_source_min_params"
 

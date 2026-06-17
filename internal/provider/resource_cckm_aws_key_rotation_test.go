@@ -71,7 +71,6 @@ func TestCckmAWSKeyRotationNative(t *testing.T) {
 				// Create no rotations
 				Config: awsConnectionResource + createConfigStr,
 				Check: resource.ComposeTestCheckFunc(
-					testAccListResourceAttributes(keyResource),
 					resource.TestCheckResourceAttrSet(keyResource, "id"),
 					resource.TestCheckResourceAttrSet(keyResource, "aws_param.key_id"),
 					// At this stage there may or may be 0 or 1 rotations in rotation_history
@@ -82,8 +81,6 @@ func TestCckmAWSKeyRotationNative(t *testing.T) {
 				// Step 1: first rotation.
 				Config: awsConnectionResource + rotationConfigStr1,
 				Check: resource.ComposeTestCheckFunc(
-					testAccListResourceAttributes(keyResource),
-					testAccListResourceAttributes(rotationListResource),
 					// Rotation resource identity.
 					resource.TestCheckResourceAttrSet(rotationListResource, "id"),
 					resource.TestCheckResourceAttrSet(rotationListResource, "key_id"),
@@ -112,8 +109,6 @@ func TestCckmAWSKeyRotationNative(t *testing.T) {
 				// which fires another rotate-material call.
 				Config: awsConnectionResource + rotationConfigStr2,
 				Check: resource.ComposeTestCheckFunc(
-					testAccListResourceAttributes(keyResource),
-					testAccListResourceAttributes(rotationListResource),
 					// Rotation resource identity.
 					resource.TestCheckResourceAttrSet(rotationListResource, "id"),
 					resource.TestCheckResourceAttrSet(rotationListResource, "key_id"),

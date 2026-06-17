@@ -159,7 +159,6 @@ func TestCckmAWSByokKeyAESCreateWithSourceKey(t *testing.T) {
 				// Step 1: create with all source key params including valid_to + description.
 				Config: base + createKeyConfig,
 				Check: resource.ComposeTestCheckFunc(
-					testAccListResourceAttributes(keyResource),
 					resource.TestCheckResourceAttrSet(keyResource, "id"),
 					resource.TestCheckResourceAttr(keyResource, "key_admins.#", "1"),
 					resource.TestCheckResourceAttr(keyResource, "key_admins.0", awsPolicyUserPrefix+awsKeyUsers[0]),
@@ -197,7 +196,6 @@ func TestCckmAWSByokKeyAESCreateWithSourceKey(t *testing.T) {
 				// Step 3: update - disable key, switch to raw JSON policy, change aliases/tags/description.
 				Config: base + updateKeyConfig,
 				Check: resource.ComposeTestCheckFunc(
-					testAccListResourceAttributes(keyResource),
 					resource.TestCheckResourceAttr(keyResource, "key_users.#", "0"),
 					resource.TestCheckResourceAttr(keyResource, "key_admins.#", "0"),
 					resource.TestCheckResourceAttr(keyResource, "key_users_roles.#", "0"),
@@ -340,7 +338,6 @@ func TestCckmAWSByokKeyUpdates(t *testing.T) {
 				// Step 1: create with all possible non-MR parameters.
 				Config: base + createParamsConfig,
 				Check: resource.ComposeTestCheckFunc(
-					testAccListResourceAttributes(keyResource),
 					resource.TestCheckResourceAttrSet(keyResource, "id"),
 					resource.TestCheckResourceAttr(keyResource, "key_admins.#", "1"),
 					resource.TestCheckResourceAttr(keyResource, "key_admins.0", awsPolicyUserPrefix+awsKeyUsers[0]),
@@ -379,7 +376,6 @@ func TestCckmAWSByokKeyUpdates(t *testing.T) {
 				// Step 3: update all updatable attributes; remove enable_rotation.
 				Config: base + updateParamsConfig,
 				Check: resource.ComposeTestCheckFunc(
-					testAccListResourceAttributes(keyResource),
 					resource.TestCheckResourceAttr(keyResource, "key_admins.#", "0"),
 					resource.TestCheckResourceAttr(keyResource, "key_users.#", "0"),
 					resource.TestCheckResourceAttr(keyResource, "key_admins_roles.#", "0"),
@@ -402,7 +398,6 @@ func TestCckmAWSByokKeyUpdates(t *testing.T) {
 				// Step 4: re-apply createParamsConfig to verify all values are safely restored.
 				Config: base + createParamsConfig,
 				Check: resource.ComposeTestCheckFunc(
-					testAccListResourceAttributes(keyResource),
 					resource.TestCheckResourceAttr(keyResource, "key_admins.#", "1"),
 					resource.TestCheckResourceAttr(keyResource, "key_admins.0", awsPolicyUserPrefix+awsKeyUsers[0]),
 					resource.TestCheckResourceAttr(keyResource, "key_users.#", "1"),
@@ -505,7 +500,6 @@ func TestCckmAWSByokKeyPolicyUpdates(t *testing.T) {
 				// Step 1: create with structured key_admins/key_users policy.
 				Config: base + withAdminsConfig,
 				Check: resource.ComposeTestCheckFunc(
-					testAccListResourceAttributes(keyResource),
 					resource.TestCheckResourceAttr(keyResource, "key_admins.#", "1"),
 					resource.TestCheckResourceAttr(keyResource, "key_admins.0", awsPolicyUserPrefix+awsKeyUsers[0]),
 					resource.TestCheckResourceAttr(keyResource, "key_users.#", "1"),
@@ -522,7 +516,6 @@ func TestCckmAWSByokKeyPolicyUpdates(t *testing.T) {
 				// Step 2: switch to raw JSON policy - admins/users removed from policy.
 				Config: base + rawPolicyConfig,
 				Check: resource.ComposeTestCheckFunc(
-					testAccListResourceAttributes(keyResource),
 					resource.TestCheckResourceAttr(keyResource, "key_admins.#", "0"),
 					resource.TestCheckResourceAttr(keyResource, "key_users.#", "0"),
 					resource.TestCheckResourceAttr(keyResource, "key_admins_roles.#", "0"),
@@ -535,7 +528,6 @@ func TestCckmAWSByokKeyPolicyUpdates(t *testing.T) {
 				// Step 3: restore structured key_admins/key_users policy.
 				Config: base + withAdminsConfig,
 				Check: resource.ComposeTestCheckFunc(
-					testAccListResourceAttributes(keyResource),
 					resource.TestCheckResourceAttr(keyResource, "key_admins.#", "1"),
 					resource.TestCheckResourceAttr(keyResource, "key_admins.0", awsPolicyUserPrefix+awsKeyUsers[0]),
 					resource.TestCheckResourceAttr(keyResource, "key_users.#", "1"),
@@ -553,7 +545,6 @@ func TestCckmAWSByokKeyPolicyUpdates(t *testing.T) {
 				// which resets the key to the default AWS root-only policy.
 				Config: base + noPolicyConfig,
 				Check: resource.ComposeTestCheckFunc(
-					testAccListResourceAttributes(keyResource),
 					resource.TestCheckResourceAttr(keyResource, "key_admins.#", "0"),
 					resource.TestCheckResourceAttr(keyResource, "key_users.#", "0"),
 					resource.TestCheckResourceAttr(keyResource, "key_admins_roles.#", "0"),
@@ -731,7 +722,6 @@ func TestCckmAWSByokKeyRSACreateWithSourceKey(t *testing.T) {
 				// Verify the key reaches Enabled state with rotation_history.#=1.
 				Config: base + createKeyConfig,
 				Check: resource.ComposeTestCheckFunc(
-					testAccListResourceAttributes(keyResource),
 					resource.TestCheckResourceAttrSet(keyResource, "id"),
 					resource.TestCheckResourceAttrSet(keyResource, "aws_param.arn"),
 					resource.TestCheckResourceAttr(keyResource, "aws_param.customer_master_key_spec", "RSA_2048"),
@@ -756,7 +746,6 @@ func TestCckmAWSByokKeyRSACreateWithSourceKey(t *testing.T) {
 				// Step 3: update mutable attributes - disable key, change description and tags.
 				Config: base + updateKeyConfig,
 				Check: resource.ComposeTestCheckFunc(
-					testAccListResourceAttributes(keyResource),
 					resource.TestCheckResourceAttr(keyResource, "aws_param.customer_master_key_spec", "RSA_2048"),
 					resource.TestCheckResourceAttr(keyResource, "aws_param.description", "RSA 2048 BYOK key - updated"),
 					resource.TestCheckResourceAttr(keyResource, "aws_param.enabled", "false"),
@@ -821,7 +810,6 @@ func TestCckmAWSByokKeyMultiRegionAndMakePrimary(t *testing.T) {
 				// identifies this key as PRIMARY with no replicas yet.
 				Config: base + primaryConfig,
 				Check: resource.ComposeTestCheckFunc(
-					testAccListResourceAttributes(primaryResource),
 					resource.TestCheckResourceAttrSet(primaryResource, "id"),
 					resource.TestCheckResourceAttrSet(primaryResource, "aws_param.arn"),
 					resource.TestCheckResourceAttr(primaryResource, "aws_param.multi_region", "true"),
@@ -839,8 +827,6 @@ func TestCckmAWSByokKeyMultiRegionAndMakePrimary(t *testing.T) {
 				// Verify the replica is now the PRIMARY
 				Config: base + primaryConfig + replicaConfig,
 				Check: resource.ComposeTestCheckFunc(
-					testAccListResourceAttributes(primaryResource),
-					testAccListResourceAttributes(replicaResource),
 					resource.TestCheckResourceAttrSet(replicaResource, "id"),
 					resource.TestCheckResourceAttr(primaryResource, "aws_param.key_state", "Enabled"),
 					resource.TestCheckResourceAttrSet(replicaResource, "aws_param.arn"),
@@ -859,8 +845,6 @@ func TestCckmAWSByokKeyMultiRegionAndMakePrimary(t *testing.T) {
 				// Step 3: Verify the original primary key is now a replica
 				Config: base + primaryConfig + replicaConfig,
 				Check: resource.ComposeTestCheckFunc(
-					testAccListResourceAttributes(primaryResource),
-					testAccListResourceAttributes(replicaResource),
 					resource.TestCheckResourceAttr(primaryResource, "multi_region_configuration.multi_region_key_type", "REPLICA"),
 					resource.TestCheckResourceAttr(replicaResource, "multi_region_configuration.multi_region_key_type", "PRIMARY"),
 				),
@@ -933,7 +917,6 @@ func TestCckmAWSByokKeyMultiRegionAndPrimaryRegion(t *testing.T) {
 				// identifies this key as PRIMARY with no replicas yet.
 				Config: base + primaryConfig,
 				Check: resource.ComposeTestCheckFunc(
-					testAccListResourceAttributes(primaryResource),
 					resource.TestCheckResourceAttrSet(primaryResource, "id"),
 					resource.TestCheckResourceAttrSet(primaryResource, "aws_param.arn"),
 					resource.TestCheckResourceAttr(primaryResource, "aws_param.multi_region", "true"),
@@ -950,8 +933,6 @@ func TestCckmAWSByokKeyMultiRegionAndPrimaryRegion(t *testing.T) {
 				// Verify the replica is REPLICA and the primary now shows 1 replica.
 				Config: base + primaryConfig + replicaConfig,
 				Check: resource.ComposeTestCheckFunc(
-					testAccListResourceAttributes(primaryResource),
-					testAccListResourceAttributes(replicaResource),
 					resource.TestCheckResourceAttrSet(replicaResource, "id"),
 					resource.TestCheckResourceAttr(primaryResource, "multi_region_configuration.multi_region_key_type", "PRIMARY"),
 					resource.TestCheckResourceAttr(replicaResource, "multi_region_configuration.multi_region_key_type", "REPLICA"),
@@ -970,8 +951,6 @@ func TestCckmAWSByokKeyMultiRegionAndPrimaryRegion(t *testing.T) {
 				// The old primary becomes REPLICA. Both keys remain Enabled.
 				Config: base + makeReplicaPrimaryConfig + replicaConfig,
 				Check: resource.ComposeTestCheckFunc(
-					testAccListResourceAttributes(primaryResource),
-					testAccListResourceAttributes(replicaResource),
 					resource.TestCheckResourceAttr(primaryResource, "multi_region_configuration.multi_region_key_type", "REPLICA"),
 					// At this point the replicaResource will still show REPLICA - a refresh is required
 					resource.TestCheckResourceAttr(primaryResource, "aws_param.key_state", "Enabled"),
@@ -981,8 +960,6 @@ func TestCckmAWSByokKeyMultiRegionAndPrimaryRegion(t *testing.T) {
 			{
 				RefreshState: true,
 				Check: resource.ComposeTestCheckFunc(
-					testAccListResourceAttributes(primaryResource),
-					testAccListResourceAttributes(replicaResource),
 					resource.TestCheckResourceAttr(replicaResource, "multi_region_configuration.multi_region_key_type", "PRIMARY"),
 				),
 			},
