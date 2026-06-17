@@ -50,9 +50,9 @@ func TestCckmAWSDataSourceKey(t *testing.T) {
 
 	alias := awsKeyNamePrefix + uuid.New().String()[:8]
 	keyResource := "ciphertrust_aws_key.aws_key"
-	dsByAwsKeyID := "ciphertrust_aws_keys_list.by_aws_key_id"
+	dsByAwsKeyID := "data.ciphertrust_aws_keys_list.by_aws_key_id"
 	dsByAwsKeyIDAndRegion := "data.ciphertrust_aws_keys_list.by_key_id_and_region"
-	dsByKeyID := "ciphertrust_aws_keys_list.by_ciphertrust_key_id"
+	dsByKeyID := "data.ciphertrust_aws_keys_list.by_ciphertrust_key_id"
 
 	resource.Test(t, resource.TestCase{
 		PreCheck:                 func() { cleanupCckmAwsKMS() },
