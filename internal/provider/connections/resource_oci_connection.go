@@ -318,6 +318,22 @@ func (r *resourceCCKMOCIConnection) Update(ctx context.Context, req resource.Upd
 		return
 	}
 
+	// name is immutable at the CM API level; reject the change with a clear error
+	// rather than silently ignoring it (which would corrupt Terraform state).
+	if plan.Name.ValueString() != state.Name.ValueString() {
+		resp.Diagnostics.AddError(
+			"OCI Connection name cannot be changed",
+			fmt.Sprintf(
+				"The 'name' field is immutable after creation. "+
+					"Current name on CipherTrust Manager: %q. "+
+					"To use a different name, remove this resource from Terraform state "+
+					"(terraform state rm) and import or recreate it with the desired name.",
+				state.Name.ValueString(),
+			),
+		)
+		return
+	}
+
 	response, err := r.client.GetById(ctx, id, state.ID.ValueString(), common.URL_OCI_CONNECTION)
 	if err != nil {
 		tflog.Error(ctx, common.ERR_METHOD_END+err.Error()+" [resource_oci_connection.go -> Read]["+id+"]")
@@ -419,6 +435,10 @@ func (r *resourceCCKMOCIConnection) Update(ctx context.Context, req resource.Upd
 
 	if plan.UserOcid.ValueString() != gjson.Get(response, "user_ocid").String() {
 		payload.UserOCID = plan.UserOcid.ValueString()
+	}
+
+	if plan.Region.ValueString() != gjson.Get(response, "region").String() {
+		payload.Region = plan.Region.ValueString()
 	}
 
 	payloadJSON, err := json.Marshal(payload)
