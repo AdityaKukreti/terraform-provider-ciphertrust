@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	common "github.com/ThalesGroup/terraform-provider-ciphertrust/internal/provider/common"
+	"github.com/google/uuid"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/acctest"
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
 	"github.com/hashicorp/terraform-plugin-testing/terraform"
@@ -25,11 +26,13 @@ resource "ciphertrust_cm_key" "test_key" {
 
 // TestResourceCMKey is the original integration smoke-test (create + update mutable fields).
 func TestResourceCMKey(t *testing.T) {
+	keyName := "terraform-" + uuid.New().String()[:8]
+
 	resource.Test(t, resource.TestCase{
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
 		Steps: []resource.TestStep{
 			{
-				Config: providerConfig + `
+				Config: providerConfig + fmt.Sprintf(`
 data "ciphertrust_cm_users_list" "users_list" {
   filters = {
     username = "admin"
@@ -37,7 +40,7 @@ data "ciphertrust_cm_users_list" "users_list" {
 }
 
 resource "ciphertrust_cm_key" "cte_key" {
-  name="terraform"
+  name=%q
   algorithm="aes"
   key_size=256
   usage_mask=76
@@ -64,22 +67,22 @@ resource "ciphertrust_cm_key" "cte_key" {
     xts=false
   }
 }
-`,
+`, keyName),
 				Check: resource.ComposeAggregateTestCheckFunc(
 					resource.TestCheckResourceAttrSet("ciphertrust_cm_key.cte_key", "id"),
 				),
 			},
 			// Update and Read testing (name is immutable — keep it unchanged)
 			{
-				Config: providerConfig + `
+				Config: providerConfig + fmt.Sprintf(`
 resource "ciphertrust_cm_key" "cte_key" {
-  name="terraform"
+  name=%q
   algorithm="aes"
   key_size=256
   usage_mask=13
   description="updated via terraform"
 }
-`,
+`, keyName),
 				Check: resource.ComposeAggregateTestCheckFunc(
 					resource.TestCheckResourceAttrSet("ciphertrust_cm_key.cte_key", "id"),
 				),

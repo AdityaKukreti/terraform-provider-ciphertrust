@@ -151,7 +151,7 @@ func (r *resourceCMUser) Create(ctx context.Context, req resource.CreateRequest,
 		if resp.Diagnostics.HasError() {
 			return
 		}
-		payload.Metadata = metadata
+		payload.Metadata = stringsToRawJSON(metadata)
 	}
 
 	payloadJSON, err := json.Marshal(payload)
@@ -333,7 +333,7 @@ func (r *resourceCMUser) Update(ctx context.Context, req resource.UpdateRequest,
 			return
 		}
 		// Convert map[string]string to map[string]interface{}
-		payload.Metadata = metadata
+		payload.Metadata = stringsToRawJSON(metadata)
 	}
 
 	payloadJSON, err := json.Marshal(payload)
