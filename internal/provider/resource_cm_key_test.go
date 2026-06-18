@@ -69,11 +69,11 @@ resource "ciphertrust_cm_key" "cte_key" {
 					resource.TestCheckResourceAttrSet("ciphertrust_cm_key.cte_key", "id"),
 				),
 			},
-			// Update and Read testing
+			// Update and Read testing (name is immutable — keep it unchanged)
 			{
 				Config: providerConfig + `
 resource "ciphertrust_cm_key" "cte_key" {
-  name="terraform_upd"
+  name="terraform"
   algorithm="aes"
   key_size=256
   usage_mask=13
