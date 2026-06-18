@@ -1,6 +1,7 @@
 package cm
 
 import (
+	"strings"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -159,6 +160,14 @@ func (r *resourceCMNTP) Read(ctx context.Context, req resource.ReadRequest, resp
 
 	response, err := r.client.ReadDataByParam(ctx, id, state.Host.ValueString(), common.URL_NTP)
 	if err != nil {
+		if strings.Contains(err.Error(), "status: 404") {
+			resp.Diagnostics.AddWarning(
+				"NTP Server Not Found",
+				"The NTP Server resource was not found on CipherTrust Manager (HTTP 404). " It may have been deleted outside of Terraform. Removing it from state.",
+			)
+			resp.State.RemoveResource(ctx)
+			return
+		}
 		tflog.Debug(ctx, common.ERR_METHOD_END+err.Error()+" [resource_ntp.go -> Read]["+id+"]")
 		resp.Diagnostics.AddError(
 			"Error reading CM NTP on CipherTrust Manager: ",

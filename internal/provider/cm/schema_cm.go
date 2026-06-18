@@ -927,7 +927,7 @@ type DatabaseBackupParamsTFSDK struct {
 	Description    types.String        `tfsdk:"description"`
 	BackupKey      types.String        `tfsdk:"backup_key"`
 	Scope          types.String        `tfsdk:"scope"`
-	Filters        []BackupFilterTFSDK `tfsdk:"filters"`
+	Filters        types.List          `tfsdk:"filters"`
 	RetentionCount types.Int64         `tfsdk:"retention_count"`
 	DoSCP          types.Bool          `tfsdk:"do_scp"`
 	Connection     types.String        `tfsdk:"connection"`
@@ -936,6 +936,11 @@ type DatabaseBackupParamsTFSDK struct {
 type BackupFilterTFSDK struct {
 	ResourceType  types.String `tfsdk:"resource_type"`
 	ResourceQuery types.String `tfsdk:"resource_query"`
+}
+
+var backupFilterAttrTypes = map[string]attr.Type{
+	"resource_type":  types.StringType,
+	"resource_query": types.StringType,
 }
 
 type CreateJobConfigParamsListJSON struct {
