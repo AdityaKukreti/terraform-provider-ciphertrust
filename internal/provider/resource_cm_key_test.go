@@ -396,7 +396,8 @@ resource "ciphertrust_cm_key" "k" {
 			},
 			{
 				PreConfig: func() {
-					_, _ = client.DeleteByID(context.Background(), "DELETE", capturedID, common.URL_KEY_MANAGEMENT, nil)
+					deleteURL := fmt.Sprintf("%s/%s/%s", client.CipherTrustURL, common.URL_KEY_MANAGEMENT, capturedID)
+					_, _ = client.DeleteByID(context.Background(), "DELETE", capturedID, deleteURL, nil)
 				},
 				RefreshState:       true,
 				ExpectNonEmptyPlan: true,
