@@ -171,7 +171,7 @@ func (r *resourceCMTrialLicense) Read(ctx context.Context, req resource.ReadRequ
 		if strings.Contains(err.Error(), "status: 404") {
 			resp.Diagnostics.AddWarning(
 				"Trial License Not Found",
-				"The Trial License resource was not found on CipherTrust Manager (HTTP 404). " It may have been deleted outside of Terraform. Removing it from state.",
+				"The Trial License resource was not found on CipherTrust Manager (HTTP 404). It may have been deleted outside of Terraform. Removing it from state.",
 			)
 			resp.State.RemoveResource(ctx)
 			return

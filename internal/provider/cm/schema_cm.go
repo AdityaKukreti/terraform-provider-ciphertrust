@@ -927,7 +927,7 @@ type DatabaseBackupParamsTFSDK struct {
 	Description    types.String        `tfsdk:"description"`
 	BackupKey      types.String        `tfsdk:"backup_key"`
 	Scope          types.String        `tfsdk:"scope"`
-	Filters        types.List          `tfsdk:"filters"`
+	Filters        []BackupFilterTFSDK `tfsdk:"filters"`
 	RetentionCount types.Int64         `tfsdk:"retention_count"`
 	DoSCP          types.Bool          `tfsdk:"do_scp"`
 	Connection     types.String        `tfsdk:"connection"`

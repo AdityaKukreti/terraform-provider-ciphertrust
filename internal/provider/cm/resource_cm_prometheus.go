@@ -115,7 +115,7 @@ func (r *resourceCMPrometheus) Read(ctx context.Context, req resource.ReadReques
 		if strings.Contains(err.Error(), "status: 404") {
 			resp.Diagnostics.AddWarning(
 				"Prometheus Integration Not Found",
-				"The Prometheus Integration resource was not found on CipherTrust Manager (HTTP 404). " It may have been deleted outside of Terraform. Removing it from state.",
+				"The Prometheus Integration resource was not found on CipherTrust Manager (HTTP 404). It may have been deleted outside of Terraform. Removing it from state.",
 			)
 			resp.State.RemoveResource(ctx)
 			return

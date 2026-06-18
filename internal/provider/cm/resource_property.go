@@ -145,7 +145,7 @@ func (r *resourceCMProperty) Read(ctx context.Context, req resource.ReadRequest,
 		if strings.Contains(err.Error(), "status: 404") {
 			resp.Diagnostics.AddWarning(
 				"Property Not Found",
-				"The Property resource was not found on CipherTrust Manager (HTTP 404). " It may have been deleted outside of Terraform. Removing it from state.",
+				"The Property resource was not found on CipherTrust Manager (HTTP 404). It may have been deleted outside of Terraform. Removing it from state.",
 			)
 			resp.State.RemoveResource(ctx)
 			return

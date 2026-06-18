@@ -184,7 +184,7 @@ func (r *resourceCMSyslog) Read(ctx context.Context, req resource.ReadRequest, r
 		if strings.Contains(err.Error(), "status: 404") {
 			resp.Diagnostics.AddWarning(
 				"Syslog Not Found",
-				"The Syslog resource was not found on CipherTrust Manager (HTTP 404). " It may have been deleted outside of Terraform. Removing it from state.",
+				"The Syslog resource was not found on CipherTrust Manager (HTTP 404). It may have been deleted outside of Terraform. Removing it from state.",
 			)
 			resp.State.RemoveResource(ctx)
 			return

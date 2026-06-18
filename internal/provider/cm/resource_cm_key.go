@@ -1299,7 +1299,7 @@ func (r *resourceCMKey) Delete(ctx context.Context, req resource.DeleteRequest, 
 			// Resource was already deleted outside of Terraform — desired state achieved.
 			resp.Diagnostics.AddWarning(
 				"CipherTrust Key Not Found on Delete",
-				"The CipherTrust Key resource returned HTTP 404 during deletion. " It was likely removed outside of Terraform. Treating as successfully deleted.",
+				"The CipherTrust Key resource returned HTTP 404 during deletion. It was likely removed outside of Terraform. Treating as successfully deleted.",
 			)
 			return
 		}
