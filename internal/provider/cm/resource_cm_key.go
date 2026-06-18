@@ -551,7 +551,11 @@ func (r *resourceCMKey) Schema(_ context.Context, _ resource.SchemaRequest, resp
 								},
 								"index": schema.StringAttribute{
 									Optional:    true,
-									Description: "Index associated with alias. Each alias within an object has a unique index.",
+									Computed:    true,
+									Description: "Index associated with alias. Each alias within an object has a unique index. Assigned by the server; cannot be set by the user.",
+									PlanModifiers: []planmodifier.String{
+										stringplanmodifier.UseStateForUnknown(),
+									},
 								},
 								"type": schema.StringAttribute{
 									Required:    true,
@@ -1135,8 +1139,10 @@ func (r *resourceCMKey) Create(ctx context.Context, req resource.CreateRequest, 
 	}
 	if r := gjson.Get(response, "xts"); r.Exists() {
 		plan.XTS = types.BoolValue(r.Bool())
+	} else if !plan.XTS.IsNull() && !plan.XTS.IsUnknown() {
+		// CM omits xts from POST response for non-XTS keys; preserve user-configured value.
 	} else {
-		plan.XTS = types.BoolValue(false)
+		plan.XTS = types.BoolNull()
 	}
 
 	// Hydrate aliases from POST response to pick up server-assigned indices.
