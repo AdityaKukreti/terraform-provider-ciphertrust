@@ -443,8 +443,10 @@ type CMUserJSON struct {
 	Password               string             `json:"password,omitempty"`
 	IsDomainUser           bool               `json:"is_domain_user"`
 	LoginFlags             UserLoginFlagsJSON `json:"login_flags"`
-	PasswordChangeRequired bool               `json:"password_change_required"`
-	Metadata               map[string]string  `json:"user_metadata,omitempty"`
+	PasswordChangeRequired bool                       `json:"password_change_required"`
+	// user_metadata values can be strings or nested objects (e.g. current_domain
+	// on CDSPaaS); use json.RawMessage to accept any JSON value without error.
+	Metadata               map[string]json.RawMessage `json:"user_metadata,omitempty"`
 }
 
 type CMSSHKeyTFSDK struct {
@@ -1217,5 +1219,16 @@ var CCKMSynchronizationParamsAttribs = map[string]attr.Type{
 
 type CCKMXksRotateCredentialsParamsTFSDK struct {
 	CloudName types.String `tfsdk:"cloud_name"`
+}
+
+// stringsToRawJSON converts map[string]string to map[string]json.RawMessage
+// so string values from Terraform config can be assigned to CMUserJSON.Metadata.
+func stringsToRawJSON(m map[string]string) map[string]json.RawMessage {
+	out := make(map[string]json.RawMessage, len(m))
+	for k, v := range m {
+		b, _ := json.Marshal(v)
+		out[k] = json.RawMessage(b)
+	}
+	return out
 }
 
