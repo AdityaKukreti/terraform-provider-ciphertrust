@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"github.com/tidwall/gjson"
 	"reflect"
+	"strconv"
 	"strings"
 
 	"github.com/google/uuid"
@@ -15,6 +16,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/boolplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
@@ -89,7 +91,11 @@ func (r *resourceCMKey) Schema(_ context.Context, _ resource.SchemaRequest, resp
 						},
 						"index": schema.StringAttribute{
 							Optional:    true,
-							Description: "Index associated with alias. Each alias within an object has a unique index.",
+							Computed:    true,
+							Description: "Index associated with alias. Each alias within an object has a unique index. Assigned by the server; cannot be set by the user.",
+							PlanModifiers: []planmodifier.String{
+								stringplanmodifier.UseStateForUnknown(),
+							},
 						},
 						"type": schema.StringAttribute{
 							Optional:    true,
@@ -402,11 +408,19 @@ func (r *resourceCMKey) Schema(_ context.Context, _ resource.SchemaRequest, resp
 			},
 			"unexportable": schema.BoolAttribute{
 				Optional:    true,
+				Computed:    true,
 				Description: "Key is not exportable. Defaults to false.",
+				PlanModifiers: []planmodifier.Bool{
+					boolplanmodifier.UseStateForUnknown(),
+				},
 			},
 			"undeletable": schema.BoolAttribute{
 				Optional:    true,
+				Computed:    true,
 				Description: "Key is not deletable. Defaults to false.",
+				PlanModifiers: []planmodifier.Bool{
+					boolplanmodifier.UseStateForUnknown(),
+				},
 			},
 			"state": schema.StringAttribute{
 				Optional:    true,
@@ -479,7 +493,11 @@ func (r *resourceCMKey) Schema(_ context.Context, _ resource.SchemaRequest, resp
 			},
 			"xts": schema.BoolAttribute{
 				Optional:    true,
+				Computed:    true,
 				Description: "If set to true, then key created will be XTS/CBC-CS1 Key. Defaults to false. Key algorithm must be 'AES'.",
+				PlanModifiers: []planmodifier.Bool{
+					boolplanmodifier.UseStateForUnknown(),
+				},
 			},
 			"public_key_parameters": schema.SingleNestedAttribute{
 				Optional:    true,
@@ -526,7 +544,7 @@ func (r *resourceCMKey) Schema(_ context.Context, _ resource.SchemaRequest, resp
 									Required:    true,
 									Description: "An alias for a key name.",
 								},
-								"index": schema.Int64Attribute{
+								"index": schema.StringAttribute{
 									Required:    true,
 									Description: "Index associated with alias. Each alias within an object has a unique index.",
 								},
@@ -855,8 +873,13 @@ func (r *resourceCMKey) Create(ctx context.Context, req resource.CreateRequest, 
 		if alias.Alias.ValueString() != "" && alias.Alias.ValueString() != types.StringNull().ValueString() {
 			aliasJSON.Alias = alias.Alias.ValueString()
 		}
-		if alias.Index.ValueInt64() != types.Int64Null().ValueInt64() {
-			aliasJSON.Index = alias.Index.ValueInt64()
+		if alias.Index.ValueString() != "" {
+			parsed, parseErr := strconv.ParseInt(alias.Index.ValueString(), 10, 64)
+			if parseErr != nil {
+				resp.Diagnostics.AddError("Error Creating CipherTrust Key", "Invalid alias index value: "+alias.Index.ValueString()+": "+parseErr.Error())
+				return
+			}
+			aliasJSON.Index = parsed
 		}
 		if alias.Type.ValueString() != "" && alias.Type.ValueString() != types.StringNull().ValueString() {
 			aliasJSON.Type = alias.Type.ValueString()
@@ -987,8 +1010,13 @@ func (r *resourceCMKey) Create(ctx context.Context, req resource.CreateRequest, 
 			if pubKeyAlias.Alias.ValueString() != "" && pubKeyAlias.Alias.ValueString() != types.StringNull().ValueString() {
 				pubKeyAliasJSON.Alias = pubKeyAlias.Alias.ValueString()
 			}
-			if pubKeyAlias.Index.ValueInt64() != types.Int64Null().ValueInt64() {
-				pubKeyAliasJSON.Index = pubKeyAlias.Index.ValueInt64()
+			if pubKeyAlias.Index.ValueString() != "" {
+				parsed, parseErr := strconv.ParseInt(pubKeyAlias.Index.ValueString(), 10, 64)
+				if parseErr != nil {
+					resp.Diagnostics.AddError("Error Creating CipherTrust Key", "Invalid public key alias index value: "+pubKeyAlias.Index.ValueString()+": "+parseErr.Error())
+					return
+				}
+				pubKeyAliasJSON.Index = parsed
 			}
 			if pubKeyAlias.Type.ValueString() != "" && pubKeyAlias.Type.ValueString() != types.StringNull().ValueString() {
 				pubKeyAliasJSON.Type = pubKeyAlias.Type.ValueString()
@@ -1084,6 +1112,61 @@ func (r *resourceCMKey) Create(ctx context.Context, req resource.CreateRequest, 
 
 	plan.ID = types.StringValue(gjson.Get(response, "id").String())
 
+	if r := gjson.Get(response, "undeletable"); r.Exists() {
+		plan.UnDeletable = types.BoolValue(r.Bool())
+	} else if plan.UnDeletable.IsUnknown() {
+		plan.UnDeletable = types.BoolNull()
+	}
+	if r := gjson.Get(response, "unexportable"); r.Exists() {
+		plan.UnExportable = types.BoolValue(r.Bool())
+	} else if plan.UnExportable.IsUnknown() {
+		plan.UnExportable = types.BoolNull()
+	}
+	if r := gjson.Get(response, "xts"); r.Exists() {
+		plan.XTS = types.BoolValue(r.Bool())
+	} else if plan.XTS.IsUnknown() {
+		plan.XTS = types.BoolNull()
+	}
+
+	// Hydrate aliases from POST response to pick up server-assigned indices.
+	// Only hydrate if user configured aliases (plan.Aliases != nil).
+	if plan.Aliases != nil {
+		aliasesResp := gjson.Get(response, "aliases")
+		if aliasesResp.Exists() && len(aliasesResp.Array()) > 0 {
+			// Build a set of alias names the user configured to filter out server-auto-created entries.
+			configured := make(map[string]bool, len(plan.Aliases))
+			for _, ca := range plan.Aliases {
+				configured[ca.Alias.ValueString()] = true
+			}
+			var hydratedAliases []*KeyAliasTFSDK
+			for _, elem := range aliasesResp.Array() {
+				if !configured[elem.Get("alias").String()] {
+					continue
+				}
+				a := &KeyAliasTFSDK{}
+				if r := elem.Get("alias"); r.Exists() {
+					a.Alias = types.StringValue(r.String())
+				} else {
+					a.Alias = types.StringNull()
+				}
+				if r := elem.Get("index"); r.Exists() {
+					a.Index = types.StringValue(r.String())
+				} else {
+					a.Index = types.StringNull()
+				}
+				if r := elem.Get("type"); r.Exists() {
+					a.Type = types.StringValue(r.String())
+				} else {
+					a.Type = types.StringNull()
+				}
+				hydratedAliases = append(hydratedAliases, a)
+			}
+			if hydratedAliases != nil {
+				plan.Aliases = hydratedAliases
+			}
+		}
+	}
+
 	tflog.Trace(ctx, common.MSG_METHOD_END+"[resource_cm_key.go -> Create]["+id+"]")
 	diags = resp.State.Set(ctx, plan)
 	resp.Diagnostics.Append(diags...)
@@ -1094,14 +1177,372 @@ func (r *resourceCMKey) Create(ctx context.Context, req resource.CreateRequest, 
 
 // Read refreshes the Terraform state with the latest data.
 func (r *resourceCMKey) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
+	id := uuid.New().String()
+	tflog.Trace(ctx, common.MSG_METHOD_START+"[resource_cm_key.go -> Read]["+id+"]")
+	defer tflog.Trace(ctx, common.MSG_METHOD_END+"[resource_cm_key.go -> Read]["+id+"]")
+
+	var state CMKeyTFSDK
+	diags := req.State.Get(ctx, &state)
+	resp.Diagnostics.Append(diags...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	response, err := r.client.GetById(ctx, id, state.ID.ValueString(), common.URL_KEY_MANAGEMENT)
+	if err != nil {
+		if strings.Contains(err.Error(), notFoundError) {
+			resp.State.RemoveResource(ctx)
+			return
+		}
+		tflog.Debug(ctx, common.ERR_METHOD_END+err.Error()+" [resource_cm_key.go -> Read]["+id+"]")
+		resp.Diagnostics.AddError(
+			"Error Reading CipherTrust Key",
+			"Could not read key "+state.ID.ValueString()+": "+err.Error(),
+		)
+		return
+	}
+
+	plan := state
+
+	// Computed-only — unconditional
+	plan.ID = types.StringValue(gjson.Get(response, "id").String())
+
+	// Unconditional Optional+Computed scalar fields
+	if r := gjson.Get(response, "name"); r.Exists() {
+		plan.Name = types.StringValue(r.String())
+	} else {
+		plan.Name = types.StringNull()
+	}
+	if r := gjson.Get(response, "algorithm"); r.Exists() {
+		plan.Algorithm = types.StringValue(strings.ToLower(r.String()))
+	} else {
+		plan.Algorithm = types.StringNull()
+	}
+	if r := gjson.Get(response, "usageMask"); r.Exists() {
+		plan.UsageMask = types.Int64Value(r.Int())
+	} else {
+		plan.UsageMask = types.Int64Null()
+	}
+	if r := gjson.Get(response, "size"); r.Exists() {
+		plan.Size = types.Int64Value(r.Int())
+	} else {
+		plan.Size = types.Int64Null()
+	}
+	if r := gjson.Get(response, "description"); r.Exists() {
+		plan.Description = types.StringValue(r.String())
+	} else {
+		plan.Description = types.StringNull()
+	}
+	if r := gjson.Get(response, "rotationFrequencyDays"); r.Exists() {
+		plan.RotationFrequencyDays = types.StringValue(r.String())
+	} else {
+		plan.RotationFrequencyDays = types.StringNull()
+	}
+	// Bug 2 fix — unconditional bool fields with absent→BoolNull()
+	if r := gjson.Get(response, "undeletable"); r.Exists() {
+		plan.UnDeletable = types.BoolValue(r.Bool())
+	} else {
+		plan.UnDeletable = types.BoolNull()
+	}
+	if r := gjson.Get(response, "unexportable"); r.Exists() {
+		plan.UnExportable = types.BoolValue(r.Bool())
+	} else {
+		plan.UnExportable = types.BoolNull()
+	}
+	if r := gjson.Get(response, "xts"); r.Exists() {
+		plan.XTS = types.BoolValue(r.Bool())
+	} else {
+		plan.XTS = types.BoolNull()
+	}
+
+	// Server-auto-populated Optional+Computed — guard on IsNull to prevent drift for unconfigured fields
+	if !state.State.IsNull() {
+		if r := gjson.Get(response, "state"); r.Exists() {
+			plan.State = types.StringValue(r.String())
+		} else {
+			plan.State = types.StringNull()
+		}
+	}
+	if !state.UUID.IsNull() {
+		if r := gjson.Get(response, "uuid"); r.Exists() {
+			plan.UUID = types.StringValue(r.String())
+		} else {
+			plan.UUID = types.StringNull()
+		}
+	}
+	if !state.MUID.IsNull() {
+		if r := gjson.Get(response, "muid"); r.Exists() {
+			plan.MUID = types.StringValue(r.String())
+		} else {
+			plan.MUID = types.StringNull()
+		}
+	}
+	if !state.ObjectType.IsNull() {
+		if r := gjson.Get(response, "objectType"); r.Exists() {
+			plan.ObjectType = types.StringValue(r.String())
+		} else {
+			plan.ObjectType = types.StringNull()
+		}
+	}
+	if !state.DefaultIV.IsNull() {
+		if r := gjson.Get(response, "defaultIV"); r.Exists() {
+			plan.DefaultIV = types.StringValue(r.String())
+		} else {
+			plan.DefaultIV = types.StringNull()
+		}
+	}
+	if !state.ActivationDate.IsNull() {
+		if r := gjson.Get(response, "activationDate"); r.Exists() {
+			plan.ActivationDate = types.StringValue(r.String())
+		} else {
+			plan.ActivationDate = types.StringNull()
+		}
+	}
+	if !state.DeactivationDate.IsNull() {
+		if r := gjson.Get(response, "deactivationDate"); r.Exists() {
+			plan.DeactivationDate = types.StringValue(r.String())
+		} else {
+			plan.DeactivationDate = types.StringNull()
+		}
+	}
+	if !state.ArchiveDate.IsNull() {
+		if r := gjson.Get(response, "archiveDate"); r.Exists() {
+			plan.ArchiveDate = types.StringValue(r.String())
+		} else {
+			plan.ArchiveDate = types.StringNull()
+		}
+	}
+
+	// Labels
+	labelsResult := gjson.Get(response, "labels")
+	if labelsResult.Exists() && labelsResult.Type != gjson.Null {
+		m := make(map[string]string)
+		for k, v := range labelsResult.Map() {
+			m[k] = v.String()
+		}
+		plan.Labels, diags = types.MapValueFrom(ctx, types.StringType, m)
+		resp.Diagnostics.Append(diags...)
+		if resp.Diagnostics.HasError() {
+			return
+		}
+	} else {
+		plan.Labels = types.MapNull(types.StringType)
+	}
+
+	// Bug 3 fix — hydrate top-level aliases (guarded: only when user configured aliases).
+	// Filter out the server-auto-created key-name alias if it was not explicitly configured.
+	if state.Aliases != nil {
+		keyName := state.Name.ValueString()
+		configuredAliasNames := make(map[string]bool, len(state.Aliases))
+		for _, sa := range state.Aliases {
+			configuredAliasNames[sa.Alias.ValueString()] = true
+		}
+		aliasesResult := gjson.Get(response, "aliases")
+		if aliasesResult.Exists() && len(aliasesResult.Array()) > 0 {
+			var aliases []*KeyAliasTFSDK
+			for _, elem := range aliasesResult.Array() {
+				aliasName := elem.Get("alias").String()
+				if aliasName == keyName && !configuredAliasNames[keyName] {
+					continue // skip server-auto-created key-name alias
+				}
+				a := &KeyAliasTFSDK{}
+				if r := elem.Get("alias"); r.Exists() {
+					a.Alias = types.StringValue(r.String())
+				} else {
+					a.Alias = types.StringNull()
+				}
+				if r := elem.Get("index"); r.Exists() {
+					a.Index = types.StringValue(r.String())
+				} else {
+					a.Index = types.StringNull()
+				}
+				if r := elem.Get("type"); r.Exists() {
+					a.Type = types.StringValue(r.String())
+				} else {
+					a.Type = types.StringNull()
+				}
+				aliases = append(aliases, a)
+			}
+			if aliases != nil {
+				plan.Aliases = aliases
+			} else {
+				plan.Aliases = nil
+			}
+		} else {
+			plan.Aliases = nil
+		}
+	}
+
+	// Bug 4 fix — hydrate meta unconditionally
+	metaResult := gjson.Get(response, "meta")
+	if metaResult.Exists() && metaResult.Type != gjson.Null {
+		var metaVal KeyMetadataTFSDK
+		if r := gjson.Get(response, "meta.owner_id"); r.Exists() && r.String() != "" {
+			metaVal.OwnerId = types.StringValue(r.String())
+		} else {
+			metaVal.OwnerId = types.StringNull()
+		}
+		permsResult := gjson.Get(response, "meta.permissions")
+		if permsResult.Exists() && permsResult.Type != gjson.Null {
+			var perms KeyMetadataPermissionsTFSDK
+			for _, item := range gjson.Get(response, "meta.permissions.DecryptWithKey").Array() {
+				perms.DecryptWithKey = append(perms.DecryptWithKey, types.StringValue(item.String()))
+			}
+			for _, item := range gjson.Get(response, "meta.permissions.EncryptWithKey").Array() {
+				perms.EncryptWithKey = append(perms.EncryptWithKey, types.StringValue(item.String()))
+			}
+			for _, item := range gjson.Get(response, "meta.permissions.ExportKey").Array() {
+				perms.ExportKey = append(perms.ExportKey, types.StringValue(item.String()))
+			}
+			for _, item := range gjson.Get(response, "meta.permissions.MACVerifyWithKey").Array() {
+				perms.MACVerifyWithKey = append(perms.MACVerifyWithKey, types.StringValue(item.String()))
+			}
+			for _, item := range gjson.Get(response, "meta.permissions.MACWithKey").Array() {
+				perms.MACWithKey = append(perms.MACWithKey, types.StringValue(item.String()))
+			}
+			for _, item := range gjson.Get(response, "meta.permissions.ReadKey").Array() {
+				perms.ReadKey = append(perms.ReadKey, types.StringValue(item.String()))
+			}
+			for _, item := range gjson.Get(response, "meta.permissions.SignVerifyWithKey").Array() {
+				perms.SignVerifyWithKey = append(perms.SignVerifyWithKey, types.StringValue(item.String()))
+			}
+			for _, item := range gjson.Get(response, "meta.permissions.SignWithKey").Array() {
+				perms.SignWithKey = append(perms.SignWithKey, types.StringValue(item.String()))
+			}
+			for _, item := range gjson.Get(response, "meta.permissions.UseKey").Array() {
+				perms.UseKey = append(perms.UseKey, types.StringValue(item.String()))
+			}
+			metaVal.Permissions = &perms
+		} else {
+			metaVal.Permissions = nil
+		}
+		cteResult := gjson.Get(response, "meta.cte")
+		if cteResult.Exists() && cteResult.Type != gjson.Null {
+			var cte KeyMetadataCTETFSDK
+			if r := gjson.Get(response, "meta.cte.persistent_on_client"); r.Exists() {
+				cte.PersistentOnClient = types.BoolValue(r.Bool())
+			} else {
+				cte.PersistentOnClient = types.BoolNull()
+			}
+			if r := gjson.Get(response, "meta.cte.encryption_mode"); r.Exists() {
+				cte.EncryptionMode = types.StringValue(r.String())
+			} else {
+				cte.EncryptionMode = types.StringNull()
+			}
+			if r := gjson.Get(response, "meta.cte.cte_versioned"); r.Exists() {
+				cte.CTEVersioned = types.BoolValue(r.Bool())
+			} else {
+				cte.CTEVersioned = types.BoolNull()
+			}
+			metaVal.CTE = &cte
+		} else {
+			metaVal.CTE = nil
+		}
+		plan.Metadata = &metaVal
+	} else {
+		plan.Metadata = nil
+	}
+
+	// Hydrate public_key_parameters
+	pkpResult := gjson.Get(response, "publicKeyParameters")
+	if pkpResult.Exists() && pkpResult.Type != gjson.Null {
+		var pkp PublicKeyParametersTFSDK
+		if r := gjson.Get(response, "publicKeyParameters.name"); r.Exists() {
+			pkp.Name = types.StringValue(r.String())
+		} else {
+			pkp.Name = types.StringNull()
+		}
+		if r := gjson.Get(response, "publicKeyParameters.usageMask"); r.Exists() {
+			pkp.UsageMask = types.Int64Value(r.Int())
+		} else {
+			pkp.UsageMask = types.Int64Null()
+		}
+		if r := gjson.Get(response, "publicKeyParameters.undeletable"); r.Exists() {
+			pkp.UnDeletable = types.BoolValue(r.Bool())
+		} else {
+			pkp.UnDeletable = types.BoolNull()
+		}
+		if r := gjson.Get(response, "publicKeyParameters.unexportable"); r.Exists() {
+			pkp.UnExportable = types.BoolValue(r.Bool())
+		} else {
+			pkp.UnExportable = types.BoolNull()
+		}
+		if state.PublicKeyParameters != nil && !state.PublicKeyParameters.State.IsNull() {
+			if r := gjson.Get(response, "publicKeyParameters.state"); r.Exists() {
+				pkp.State = types.StringValue(r.String())
+			} else {
+				pkp.State = types.StringNull()
+			}
+		}
+		if state.PublicKeyParameters != nil && !state.PublicKeyParameters.ActivationDate.IsNull() {
+			if r := gjson.Get(response, "publicKeyParameters.activationDate"); r.Exists() {
+				pkp.ActivationDate = types.StringValue(r.String())
+			} else {
+				pkp.ActivationDate = types.StringNull()
+			}
+		}
+		if state.PublicKeyParameters != nil && !state.PublicKeyParameters.DeactivationDate.IsNull() {
+			if r := gjson.Get(response, "publicKeyParameters.deactivationDate"); r.Exists() {
+				pkp.DeactivationDate = types.StringValue(r.String())
+			} else {
+				pkp.DeactivationDate = types.StringNull()
+			}
+		}
+		if state.PublicKeyParameters != nil && !state.PublicKeyParameters.ArchiveDate.IsNull() {
+			if r := gjson.Get(response, "publicKeyParameters.archiveDate"); r.Exists() {
+				pkp.ArchiveDate = types.StringValue(r.String())
+			} else {
+				pkp.ArchiveDate = types.StringNull()
+			}
+		}
+		// PKP aliases — value type ([]KeyAliasTFSDK)
+		pkpAliasesResult := gjson.Get(response, "publicKeyParameters.aliases")
+		if pkpAliasesResult.Exists() && len(pkpAliasesResult.Array()) > 0 {
+			var pkpAliases []KeyAliasTFSDK
+			for _, elem := range pkpAliasesResult.Array() {
+				a := KeyAliasTFSDK{}
+				if r := elem.Get("alias"); r.Exists() {
+					a.Alias = types.StringValue(r.String())
+				} else {
+					a.Alias = types.StringNull()
+				}
+				if r := elem.Get("index"); r.Exists() {
+					a.Index = types.StringValue(r.String())
+				} else {
+					a.Index = types.StringNull()
+				}
+				if r := elem.Get("type"); r.Exists() {
+					a.Type = types.StringValue(r.String())
+				} else {
+					a.Type = types.StringNull()
+				}
+				pkpAliases = append(pkpAliases, a)
+			}
+			pkp.Aliases = pkpAliases
+		} else {
+			pkp.Aliases = nil
+		}
+		plan.PublicKeyParameters = &pkp
+	} else {
+		plan.PublicKeyParameters = nil
+	}
+
+	diags = resp.State.Set(ctx, plan)
+	resp.Diagnostics.Append(diags...)
 }
 
 // Update updates the resource and sets the updated Terraform state on success.
 func (r *resourceCMKey) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
 	var plan CMKeyTFSDK
+	var state CMKeyTFSDK
 	var payload CMKeyJSON
 
 	diags := req.Plan.Get(ctx, &plan)
+	resp.Diagnostics.Append(diags...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	diags = req.State.Get(ctx, &state)
 	resp.Diagnostics.Append(diags...)
 	if resp.Diagnostics.HasError() {
 		return
@@ -1117,8 +1558,13 @@ func (r *resourceCMKey) Update(ctx context.Context, req resource.UpdateRequest, 
 		if alias.Alias.ValueString() != "" && alias.Alias.ValueString() != types.StringNull().ValueString() {
 			aliasJSON.Alias = alias.Alias.ValueString()
 		}
-		if alias.Index.ValueInt64() != types.Int64Null().ValueInt64() {
-			aliasJSON.Index = alias.Index.ValueInt64()
+		if alias.Index.ValueString() != "" {
+			parsed, parseErr := strconv.ParseInt(alias.Index.ValueString(), 10, 64)
+			if parseErr != nil {
+				resp.Diagnostics.AddError("Error Updating CipherTrust Key", "Invalid alias index value: "+alias.Index.ValueString()+": "+parseErr.Error())
+				return
+			}
+			aliasJSON.Index = parsed
 		}
 		if alias.Type.ValueString() != "" && alias.Type.ValueString() != types.StringNull().ValueString() {
 			aliasJSON.Type = alias.Type.ValueString()
@@ -1273,6 +1719,18 @@ func (r *resourceCMKey) Update(ctx context.Context, req resource.UpdateRequest, 
 
 	plan.ID = types.StringValue(response)
 
+	// Resolve any Optional+Computed bool fields that remain unknown after the PATCH.
+	// The CM API does not return these in the PATCH response, so use the prior state.
+	if plan.XTS.IsUnknown() {
+		plan.XTS = state.XTS
+	}
+	if plan.UnDeletable.IsUnknown() {
+		plan.UnDeletable = state.UnDeletable
+	}
+	if plan.UnExportable.IsUnknown() {
+		plan.UnExportable = state.UnExportable
+	}
+
 	tflog.Trace(ctx, common.MSG_METHOD_END+"[resource_cm_key.go -> Update]["+plan.ID.ValueString()+"]")
 	diags = resp.State.Set(ctx, plan)
 	resp.Diagnostics.Append(diags...)
@@ -1295,12 +1753,7 @@ func (r *resourceCMKey) Delete(ctx context.Context, req resource.DeleteRequest, 
 	output, err := r.client.DeleteByID(ctx, "DELETE", state.ID.ValueString(), url, nil)
 	tflog.Trace(ctx, common.MSG_METHOD_END+"[resource_cm_key.go -> Delete]["+state.ID.ValueString()+"]["+output+"]")
 	if err != nil {
-		if strings.Contains(err.Error(), "status: 404") {
-			// Resource was already deleted outside of Terraform — desired state achieved.
-			resp.Diagnostics.AddWarning(
-				"CipherTrust Key Not Found on Delete",
-				"The CipherTrust Key resource returned HTTP 404 during deletion. It was likely removed outside of Terraform. Treating as successfully deleted.",
-			)
+		if strings.Contains(err.Error(), notFoundError) {
 			return
 		}
 		if strings.Contains(strings.ToLower(err.Error()), "key is not deletable") && state.RemoveFromStateOnDestroy.ValueBool() {

@@ -2,11 +2,12 @@ package provider
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"regexp"
 	"testing"
 
-	common "github.com/ThalesGroup/terraform-provider-ciphertrust/internal/provider/common"
+	"github.com/ThalesGroup/terraform-provider-ciphertrust/internal/provider/common"
 	"github.com/google/uuid"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/acctest"
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
@@ -24,67 +25,424 @@ resource "ciphertrust_cm_key" "test_key" {
 `, name, keySize)
 }
 
-// TestResourceCMKey is the original integration smoke-test (create + update mutable fields).
-func TestResourceCMKey(t *testing.T) {
-	keyName := "terraform-" + uuid.New().String()[:8]
+func TestAccCMKey_undeletableDrift(t *testing.T) {
+	RequireCM(t)
+	client, ok := createCMClient()
+	if !ok {
+		t.Skip("createCMClient failed")
+	}
+
+	suffix := uuid.New().String()[:8]
+	keyName := "tf-acc-key-undel-" + suffix
+
+	var capturedID string
 
 	resource.Test(t, resource.TestCase{
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
 		Steps: []resource.TestStep{
 			{
 				Config: providerConfig + fmt.Sprintf(`
-data "ciphertrust_cm_users_list" "users_list" {
-  filters = {
-    username = "admin"
-  }
+resource "ciphertrust_cm_key" "k" {
+  name        = %q
+  algorithm   = "aes"
+  key_size    = 256
+  unexportable = false
+}
+`, keyName),
+				Check: checkStep(t, "undeletable drift: create",
+					resource.TestCheckResourceAttrSet("ciphertrust_cm_key.k", "id"),
+					resource.TestCheckResourceAttr("ciphertrust_cm_key.k", "unexportable", "false"),
+					func(s *terraform.State) error {
+						capturedID = s.RootModule().Resources["ciphertrust_cm_key.k"].Primary.ID
+						return nil
+					},
+				),
+			},
+			{
+				PreConfig: func() {
+					patchPayload, _ := json.Marshal(map[string]interface{}{"unexportable": true})
+					_, _ = client.UpdateData(context.Background(), capturedID, common.URL_KEY_MANAGEMENT, patchPayload, "id")
+				},
+				RefreshState:       true,
+				ExpectNonEmptyPlan: true,
+			},
+		},
+	})
 }
 
-resource "ciphertrust_cm_key" "cte_key" {
-  name=%q
-  algorithm="aes"
-  key_size=256
-  usage_mask=76
-  undeletable=false
-  unexportable=false
-  meta={
-    owner_id=tolist(data.ciphertrust_cm_users_list.users_list.users)[0].user_id
-    permissions={
-      decrypt_with_key=["CTE Clients"]
-      encrypt_with_key=["CTE Clients"]
-      export_key=["CTE Clients"]
-      mac_verify_with_key=["CTE Clients"]
-      mac_with_key=["CTE Clients"]
-      read_key=["CTE Clients"]
-      sign_verify_with_key=["CTE Clients"]
-      sign_with_key=["CTE Clients"]
-      use_key=["CTE Clients"]
+func TestAccCMKey_xtsDrift(t *testing.T) {
+	RequireCM(t)
+	client, ok := createCMClient()
+	if !ok {
+		t.Skip("createCMClient failed")
+	}
+
+	suffix := uuid.New().String()[:8]
+	keyName := "tf-acc-key-xts-" + suffix
+
+	var capturedID string
+
+	resource.Test(t, resource.TestCase{
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		Steps: []resource.TestStep{
+			{
+				Config: providerConfig + fmt.Sprintf(`
+resource "ciphertrust_cm_key" "k" {
+  name      = %q
+  algorithm = "aes"
+  key_size  = 256
+  xts       = false
+}
+`, keyName),
+				Check: checkStep(t, "xts drift: create",
+					resource.TestCheckResourceAttrSet("ciphertrust_cm_key.k", "id"),
+					resource.TestCheckResourceAttr("ciphertrust_cm_key.k", "xts", "false"),
+					func(s *terraform.State) error {
+						capturedID = s.RootModule().Resources["ciphertrust_cm_key.k"].Primary.ID
+						return nil
+					},
+				),
+			},
+			{
+				PreConfig: func() {
+					patchPayload, _ := json.Marshal(map[string]interface{}{"xts": true})
+					_, _ = client.UpdateData(context.Background(), capturedID, common.URL_KEY_MANAGEMENT, patchPayload, "id")
+				},
+				RefreshState:       true,
+				ExpectNonEmptyPlan: true,
+			},
+		},
+	})
+}
+
+func TestAccCMKey_aliasHydration(t *testing.T) {
+	RequireCM(t)
+
+	suffix := uuid.New().String()[:8]
+	keyName := "tf-acc-key-alias-" + suffix
+
+	var capturedID string
+
+	resource.Test(t, resource.TestCase{
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		Steps: []resource.TestStep{
+			{
+				Config: providerConfig + fmt.Sprintf(`
+resource "ciphertrust_cm_key" "k" {
+  name      = %q
+  algorithm = "aes"
+  key_size  = 256
+  aliases   = [
+    {
+      alias = "test-alias"
+      type  = "string"
     }
-    cte={
-      persistent_on_client=true
-      encryption_mode="CBC"
-      cte_versioned=false
+  ]
+}
+`, keyName),
+				Check: checkStep(t, "alias hydration: create",
+					resource.TestCheckResourceAttrSet("ciphertrust_cm_key.k", "id"),
+					resource.TestCheckResourceAttr("ciphertrust_cm_key.k", "aliases.0.alias", "test-alias"),
+					resource.TestCheckResourceAttrSet("ciphertrust_cm_key.k", "aliases.0.index"),
+					func(s *terraform.State) error {
+						capturedID = s.RootModule().Resources["ciphertrust_cm_key.k"].Primary.ID
+						return nil
+					},
+				),
+			},
+			{
+				RefreshState:       true,
+				ExpectNonEmptyPlan: false,
+				Check: checkStep(t, "alias hydration: no drift after refresh",
+					resource.TestCheckResourceAttr("ciphertrust_cm_key.k", "aliases.0.alias", "test-alias"),
+				),
+			},
+		},
+	})
+	_ = capturedID
+}
+
+func TestAccCMKey_metaHydration(t *testing.T) {
+	RequireCM(t)
+
+	suffix := uuid.New().String()[:8]
+	keyName := "tf-acc-key-meta-" + suffix
+
+	resource.Test(t, resource.TestCase{
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		Steps: []resource.TestStep{
+			{
+				Config: providerConfig + fmt.Sprintf(`
+resource "ciphertrust_cm_key" "k" {
+  name      = %q
+  algorithm = "aes"
+  key_size  = 256
+  meta = {
+    cte = {
+      persistent_on_client = true
+      encryption_mode      = "CBC"
+      cte_versioned        = false
     }
-    xts=false
   }
+}
+`, keyName),
+				Check: checkStep(t, "meta hydration: create",
+					resource.TestCheckResourceAttrSet("ciphertrust_cm_key.k", "id"),
+					resource.TestCheckResourceAttr("ciphertrust_cm_key.k", "meta.cte.encryption_mode", "CBC"),
+				),
+			},
+			{
+				RefreshState:       true,
+				ExpectNonEmptyPlan: false,
+				Check: checkStep(t, "meta hydration: no drift after refresh",
+					resource.TestCheckResourceAttr("ciphertrust_cm_key.k", "meta.cte.encryption_mode", "CBC"),
+				),
+			},
+		},
+	})
+}
+
+func TestAccCMKey_metaDrift(t *testing.T) {
+	RequireCM(t)
+	client, ok := createCMClient()
+	if !ok {
+		t.Skip("createCMClient failed")
+	}
+
+	suffix := uuid.New().String()[:8]
+	keyName := "tf-acc-key-metadrift-" + suffix
+
+	var capturedID string
+
+	resource.Test(t, resource.TestCase{
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		Steps: []resource.TestStep{
+			{
+				Config: providerConfig + fmt.Sprintf(`
+resource "ciphertrust_cm_key" "k" {
+  name      = %q
+  algorithm = "aes"
+  key_size  = 256
+  meta = {
+    cte = {
+      persistent_on_client = true
+      encryption_mode      = "CBC"
+      cte_versioned        = false
+    }
+  }
+}
+`, keyName),
+				Check: checkStep(t, "meta drift: create",
+					resource.TestCheckResourceAttrSet("ciphertrust_cm_key.k", "id"),
+					resource.TestCheckResourceAttr("ciphertrust_cm_key.k", "meta.cte.encryption_mode", "CBC"),
+					func(s *terraform.State) error {
+						capturedID = s.RootModule().Resources["ciphertrust_cm_key.k"].Primary.ID
+						return nil
+					},
+				),
+			},
+			{
+				PreConfig: func() {
+					patchPayload, _ := json.Marshal(map[string]interface{}{
+						"meta": map[string]interface{}{
+							"cte": map[string]interface{}{
+								"persistent_on_client": true,
+								"encryption_mode":      "CTR",
+								"cte_versioned":        false,
+							},
+						},
+					})
+					_, _ = client.UpdateData(context.Background(), capturedID, common.URL_KEY_MANAGEMENT, patchPayload, "id")
+				},
+				RefreshState:       true,
+				ExpectNonEmptyPlan: true,
+			},
+		},
+	})
+}
+
+func TestAccCMKey_labelsDrift(t *testing.T) {
+	RequireCM(t)
+	client, ok := createCMClient()
+	if !ok {
+		t.Skip("createCMClient failed")
+	}
+
+	suffix := uuid.New().String()[:8]
+	keyName := "tf-acc-key-labels-" + suffix
+
+	var capturedID string
+
+	resource.Test(t, resource.TestCase{
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		Steps: []resource.TestStep{
+			{
+				Config: providerConfig + fmt.Sprintf(`
+resource "ciphertrust_cm_key" "k" {
+  name      = %q
+  algorithm = "aes"
+  key_size  = 256
+  labels    = { "env" = "test" }
+}
+`, keyName),
+				Check: checkStep(t, "labels drift: create",
+					resource.TestCheckResourceAttrSet("ciphertrust_cm_key.k", "id"),
+					resource.TestCheckResourceAttr("ciphertrust_cm_key.k", "labels.env", "test"),
+					func(s *terraform.State) error {
+						capturedID = s.RootModule().Resources["ciphertrust_cm_key.k"].Primary.ID
+						return nil
+					},
+				),
+			},
+			{
+				PreConfig: func() {
+					patchPayload, _ := json.Marshal(map[string]interface{}{
+						"labels": map[string]interface{}{"env": "prod"},
+					})
+					_, _ = client.UpdateData(context.Background(), capturedID, common.URL_KEY_MANAGEMENT, patchPayload, "id")
+				},
+				RefreshState:       true,
+				ExpectNonEmptyPlan: true,
+			},
+		},
+	})
+}
+
+func TestAccCMKey_aliasDrift(t *testing.T) {
+	RequireCM(t)
+	client, ok := createCMClient()
+	if !ok {
+		t.Skip("createCMClient failed")
+	}
+
+	suffix := uuid.New().String()[:8]
+	keyName := "tf-acc-key-aldrift-" + suffix
+
+	var capturedID string
+
+	resource.Test(t, resource.TestCase{
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		Steps: []resource.TestStep{
+			{
+				Config: providerConfig + fmt.Sprintf(`
+resource "ciphertrust_cm_key" "k" {
+  name      = %q
+  algorithm = "aes"
+  key_size  = 256
+  aliases   = [
+    {
+      alias = "alias-a"
+      type  = "string"
+    }
+  ]
+}
+`, keyName),
+				Check: checkStep(t, "alias drift: create",
+					resource.TestCheckResourceAttrSet("ciphertrust_cm_key.k", "id"),
+					resource.TestCheckResourceAttr("ciphertrust_cm_key.k", "aliases.0.alias", "alias-a"),
+					func(s *terraform.State) error {
+						capturedID = s.RootModule().Resources["ciphertrust_cm_key.k"].Primary.ID
+						return nil
+					},
+				),
+			},
+			{
+				PreConfig: func() {
+					patchPayload, _ := json.Marshal(map[string]interface{}{
+						"aliases": []map[string]interface{}{
+							{"alias": "alias-a", "type": "string"},
+							{"alias": "alias-b", "type": "string"},
+						},
+					})
+					_, _ = client.UpdateData(context.Background(), capturedID, common.URL_KEY_MANAGEMENT, patchPayload, "id")
+				},
+				RefreshState:       true,
+				ExpectNonEmptyPlan: true,
+			},
+		},
+	})
+}
+
+func TestAccCMKey_readNotFound(t *testing.T) {
+	RequireCM(t)
+	client, ok := createCMClient()
+	if !ok {
+		t.Skip("createCMClient failed")
+	}
+
+	suffix := uuid.New().String()[:8]
+	keyName := "tf-acc-key-notfound-" + suffix
+
+	var capturedID string
+
+	resource.Test(t, resource.TestCase{
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		Steps: []resource.TestStep{
+			{
+				Config: providerConfig + fmt.Sprintf(`
+resource "ciphertrust_cm_key" "k" {
+  name      = %q
+  algorithm = "aes"
+  key_size  = 256
+}
+`, keyName),
+				Check: checkStep(t, "read not found: create",
+					resource.TestCheckResourceAttrSet("ciphertrust_cm_key.k", "id"),
+					func(s *terraform.State) error {
+						capturedID = s.RootModule().Resources["ciphertrust_cm_key.k"].Primary.ID
+						return nil
+					},
+				),
+			},
+			{
+				PreConfig: func() {
+					_, _ = client.DeleteByID(context.Background(), "DELETE", capturedID, common.URL_KEY_MANAGEMENT, nil)
+				},
+				RefreshState:       true,
+				ExpectNonEmptyPlan: true,
+			},
+		},
+	})
+}
+
+func TestResourceCMKey(t *testing.T) {
+	suffix := uuid.New().String()[:8]
+	keyName := "terraform-" + suffix
+
+	resource.Test(t, resource.TestCase{
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		Steps: []resource.TestStep{
+			{
+				Config: providerConfig + fmt.Sprintf(`
+resource "ciphertrust_cm_key" "cte_key" {
+  name        = %q
+  algorithm   = "aes"
+  key_size    = 256
+  usage_mask  = 76
+  undeletable = false
+  unexportable = false
 }
 `, keyName),
 				Check: resource.ComposeAggregateTestCheckFunc(
 					resource.TestCheckResourceAttrSet("ciphertrust_cm_key.cte_key", "id"),
 				),
 			},
-			// Update and Read testing (name is immutable — keep it unchanged)
+			// Update and Read testing — same name (immutable), only patch usage_mask + description
 			{
 				Config: providerConfig + fmt.Sprintf(`
 resource "ciphertrust_cm_key" "cte_key" {
-  name=%q
-  algorithm="aes"
-  key_size=256
-  usage_mask=13
-  description="updated via terraform"
+  name        = %q
+  algorithm   = "aes"
+  key_size    = 256
+  usage_mask  = 13
+  undeletable = false
+  unexportable = false
+  description = "updated via terraform"
 }
 `, keyName),
 				Check: resource.ComposeAggregateTestCheckFunc(
 					resource.TestCheckResourceAttrSet("ciphertrust_cm_key.cte_key", "id"),
+					resource.TestCheckResourceAttr("ciphertrust_cm_key.cte_key", "description", "updated via terraform"),
 				),
 			},
 			// Delete testing automatically occurs in TestCase
