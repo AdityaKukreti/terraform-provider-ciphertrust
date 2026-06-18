@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
 	"regexp"
 	"testing"
 
@@ -91,10 +92,12 @@ resource "ciphertrust_cm_key" "k" {
   name      = %q
   algorithm = "aes"
   key_size  = 256
+  xts       = false
 }
 `, keyName),
 				Check: checkStep(t, "xts drift: create",
 					resource.TestCheckResourceAttrSet("ciphertrust_cm_key.k", "id"),
+					resource.TestCheckResourceAttr("ciphertrust_cm_key.k", "xts", "false"),
 					func(s *terraform.State) error {
 						capturedID = s.RootModule().Resources["ciphertrust_cm_key.k"].Primary.ID
 						return nil
@@ -163,8 +166,15 @@ resource "ciphertrust_cm_key" "k" {
 func TestAccCMKey_metaHydration(t *testing.T) {
 	RequireCM(t)
 
+	ownerID := os.Getenv("TEST_CM_KEY_OWNER_ID")
+	if ownerID == "" {
+		t.Skip("TEST_CM_KEY_OWNER_ID not set")
+	}
+
 	suffix := uuid.New().String()[:8]
 	keyName := "tf-acc-key-meta-" + suffix
+
+	var capturedID string
 
 	resource.Test(t, resource.TestCase{
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
@@ -176,28 +186,29 @@ resource "ciphertrust_cm_key" "k" {
   algorithm = "aes"
   key_size  = 256
   meta = {
-    cte = {
-      persistent_on_client = true
-      encryption_mode      = "CBC"
-      cte_versioned        = false
-    }
+    owner_id = %q
   }
 }
-`, keyName),
+`, keyName, ownerID),
 				Check: checkStep(t, "meta hydration: create",
 					resource.TestCheckResourceAttrSet("ciphertrust_cm_key.k", "id"),
-					resource.TestCheckResourceAttr("ciphertrust_cm_key.k", "meta.cte.encryption_mode", "CBC"),
+					resource.TestCheckResourceAttr("ciphertrust_cm_key.k", "meta.owner_id", ownerID),
+					func(s *terraform.State) error {
+						capturedID = s.RootModule().Resources["ciphertrust_cm_key.k"].Primary.ID
+						return nil
+					},
 				),
 			},
 			{
 				RefreshState:       true,
 				ExpectNonEmptyPlan: false,
 				Check: checkStep(t, "meta hydration: no drift after refresh",
-					resource.TestCheckResourceAttr("ciphertrust_cm_key.k", "meta.cte.encryption_mode", "CBC"),
+					resource.TestCheckResourceAttr("ciphertrust_cm_key.k", "meta.owner_id", ownerID),
 				),
 			},
 		},
 	})
+	_ = capturedID
 }
 
 func TestAccCMKey_metaDrift(t *testing.T) {
@@ -205,6 +216,12 @@ func TestAccCMKey_metaDrift(t *testing.T) {
 	client, ok := createCMClient()
 	if !ok {
 		t.Skip("createCMClient failed")
+	}
+
+	ownerIDA := os.Getenv("TEST_CM_KEY_OWNER_ID_A")
+	ownerIDB := os.Getenv("TEST_CM_KEY_OWNER_ID_B")
+	if ownerIDA == "" || ownerIDB == "" {
+		t.Skip("TEST_CM_KEY_OWNER_ID_A or TEST_CM_KEY_OWNER_ID_B not set")
 	}
 
 	suffix := uuid.New().String()[:8]
@@ -222,17 +239,13 @@ resource "ciphertrust_cm_key" "k" {
   algorithm = "aes"
   key_size  = 256
   meta = {
-    cte = {
-      persistent_on_client = true
-      encryption_mode      = "CBC"
-      cte_versioned        = false
-    }
+    owner_id = %q
   }
 }
-`, keyName),
+`, keyName, ownerIDA),
 				Check: checkStep(t, "meta drift: create",
 					resource.TestCheckResourceAttrSet("ciphertrust_cm_key.k", "id"),
-					resource.TestCheckResourceAttr("ciphertrust_cm_key.k", "meta.cte.encryption_mode", "CBC"),
+					resource.TestCheckResourceAttr("ciphertrust_cm_key.k", "meta.owner_id", ownerIDA),
 					func(s *terraform.State) error {
 						capturedID = s.RootModule().Resources["ciphertrust_cm_key.k"].Primary.ID
 						return nil
@@ -243,11 +256,7 @@ resource "ciphertrust_cm_key" "k" {
 				PreConfig: func() {
 					patchPayload, _ := json.Marshal(map[string]interface{}{
 						"meta": map[string]interface{}{
-							"cte": map[string]interface{}{
-								"persistent_on_client": true,
-								"encryption_mode":      "CTR",
-								"cte_versioned":        false,
-							},
+							"owner_id": ownerIDB,
 						},
 					})
 					_, _ = client.UpdateData(context.Background(), capturedID, common.URL_KEY_MANAGEMENT, patchPayload, "id")
@@ -394,8 +403,7 @@ resource "ciphertrust_cm_key" "k" {
 			},
 			{
 				PreConfig: func() {
-					deleteURL := fmt.Sprintf("%s/%s/%s", client.CipherTrustURL, common.URL_KEY_MANAGEMENT, capturedID)
-					_, _ = client.DeleteByID(context.Background(), "DELETE", capturedID, deleteURL, nil)
+					_, _ = client.DeleteByURL(context.Background(), uuid.New().String(), common.URL_KEY_MANAGEMENT+"/"+capturedID)
 				},
 				RefreshState:       true,
 				ExpectNonEmptyPlan: true,

@@ -17,7 +17,6 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/boolplanmodifier"
-	"github.com/hashicorp/terraform-plugin-framework/resource/schema/int64planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
@@ -429,11 +428,7 @@ func (r *resourceCMKey) Schema(_ context.Context, _ resource.SchemaRequest, resp
 			},
 			"usage_mask": schema.Int64Attribute{
 				Optional:    true,
-				Computed:    true,
 				Description: "Cryptographic usage mask. Add the usage masks to allow certain usages. Sign (1), Verify (2), Encrypt (4), Decrypt (8), Wrap Key (16), Unwrap Key (32), Export (64), MAC Generate (128), MAC Verify (256), Derive Key (512), Content Commitment (1024), Key Agreement (2048), Certificate Sign (4096), CRL Sign (8192), Generate Cryptogram (16384), Validate Cryptogram (32768), Translate Encrypt (65536), Translate Decrypt (131072), Translate Wrap (262144), Translate Unwrap (524288), FPE Encrypt (1048576), FPE Decrypt (2097152). Add the usage mask values to allow the usages. To set all usage mask bits, use 4194303. Equivalent usageMask values for deprecated usages 'fpe' (FPE Encrypt + FPE Decrypt = 3145728), 'blob' (Encrypt + Decrypt = 12), 'hmac' (MAC Generate + MAC Verify = 384), 'encrypt' (Encrypt + Decrypt = 12), 'sign' (Sign + Verify = 3), 'any' (4194303 - all usage masks).",
-				PlanModifiers: []planmodifier.Int64{
-					int64planmodifier.UseStateForUnknown(),
-				},
 			},
 			"uuid": schema.StringAttribute{
 				Optional:    true,
@@ -1121,25 +1116,25 @@ func (r *resourceCMKey) Create(ctx context.Context, req resource.CreateRequest, 
 
 	plan.ID = types.StringValue(gjson.Get(response, "id").String())
 
-	if r := gjson.Get(response, "usageMask"); r.Exists() {
-		plan.UsageMask = types.Int64Value(r.Int())
-	} else {
-		plan.UsageMask = types.Int64Null()
-	}
-
+	// For Optional+Computed bool fields the CM API omits the field when it is false
+	// (the default). Only update from the POST response when the API explicitly returns
+	// a value; if the field is absent AND the plan already has a known value (e.g. the
+	// user set xts=false), preserve that known value to avoid "Provider produced
+	// inconsistent result after apply". Only set null when the plan value was Unknown
+	// (first apply, user did not configure the field).
 	if r := gjson.Get(response, "undeletable"); r.Exists() {
 		plan.UnDeletable = types.BoolValue(r.Bool())
-	} else {
+	} else if plan.UnDeletable.IsUnknown() {
 		plan.UnDeletable = types.BoolNull()
 	}
 	if r := gjson.Get(response, "unexportable"); r.Exists() {
 		plan.UnExportable = types.BoolValue(r.Bool())
-	} else {
+	} else if plan.UnExportable.IsUnknown() {
 		plan.UnExportable = types.BoolNull()
 	}
 	if r := gjson.Get(response, "xts"); r.Exists() {
 		plan.XTS = types.BoolValue(r.Bool())
-	} else {
+	} else if plan.XTS.IsUnknown() {
 		plan.XTS = types.BoolNull()
 	}
 
@@ -1233,10 +1228,14 @@ func (r *resourceCMKey) Read(ctx context.Context, req resource.ReadRequest, resp
 	} else {
 		plan.Algorithm = types.StringNull()
 	}
-	if r := gjson.Get(response, "usageMask"); r.Exists() {
-		plan.UsageMask = types.Int64Value(r.Int())
-	} else {
-		plan.UsageMask = types.Int64Null()
+	// usage_mask is Optional only — hydrate only when the user configured it (state
+	// non-null) to avoid perpetual drift for keys created without a usage_mask.
+	if !state.UsageMask.IsNull() {
+		if r := gjson.Get(response, "usageMask"); r.Exists() {
+			plan.UsageMask = types.Int64Value(r.Int())
+		} else {
+			plan.UsageMask = types.Int64Null()
+		}
 	}
 	if r := gjson.Get(response, "size"); r.Exists() {
 		plan.Size = types.Int64Value(r.Int())
@@ -1253,21 +1252,23 @@ func (r *resourceCMKey) Read(ctx context.Context, req resource.ReadRequest, resp
 	} else {
 		plan.RotationFrequencyDays = types.StringNull()
 	}
-	// Bug 2 fix — unconditional bool fields with absent→BoolNull()
+	// Bug 2 fix — unconditional bool fields; when CM omits the field (false is the
+	// API default and is returned by omission), preserve the prior state value to
+	// avoid perpetual drift for configurations that set these to false.
 	if r := gjson.Get(response, "undeletable"); r.Exists() {
 		plan.UnDeletable = types.BoolValue(r.Bool())
 	} else {
-		plan.UnDeletable = types.BoolNull()
+		plan.UnDeletable = state.UnDeletable
 	}
 	if r := gjson.Get(response, "unexportable"); r.Exists() {
 		plan.UnExportable = types.BoolValue(r.Bool())
 	} else {
-		plan.UnExportable = types.BoolNull()
+		plan.UnExportable = state.UnExportable
 	}
 	if r := gjson.Get(response, "xts"); r.Exists() {
 		plan.XTS = types.BoolValue(r.Bool())
 	} else {
-		plan.XTS = types.BoolNull()
+		plan.XTS = state.XTS
 	}
 
 	// Server-auto-populated Optional+Computed — guard on IsNull to prevent drift for unconfigured fields
