@@ -1139,8 +1139,6 @@ func (r *resourceCMKey) Create(ctx context.Context, req resource.CreateRequest, 
 	}
 	if r := gjson.Get(response, "xts"); r.Exists() {
 		plan.XTS = types.BoolValue(r.Bool())
-	} else if !plan.XTS.IsNull() && !plan.XTS.IsUnknown() {
-		// CM omits xts from POST response for non-XTS keys; preserve user-configured value.
 	} else {
 		plan.XTS = types.BoolNull()
 	}
@@ -1269,7 +1267,7 @@ func (r *resourceCMKey) Read(ctx context.Context, req resource.ReadRequest, resp
 	if r := gjson.Get(response, "xts"); r.Exists() {
 		plan.XTS = types.BoolValue(r.Bool())
 	} else {
-		plan.XTS = types.BoolValue(false)
+		plan.XTS = types.BoolNull()
 	}
 
 	// Server-auto-populated Optional+Computed — guard on IsNull to prevent drift for unconfigured fields

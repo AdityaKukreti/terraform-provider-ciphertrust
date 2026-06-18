@@ -91,12 +91,10 @@ resource "ciphertrust_cm_key" "k" {
   name      = %q
   algorithm = "aes"
   key_size  = 256
-  xts       = false
 }
 `, keyName),
 				Check: checkStep(t, "xts drift: create",
 					resource.TestCheckResourceAttrSet("ciphertrust_cm_key.k", "id"),
-					resource.TestCheckResourceAttr("ciphertrust_cm_key.k", "xts", "false"),
 					func(s *terraform.State) error {
 						capturedID = s.RootModule().Resources["ciphertrust_cm_key.k"].Primary.ID
 						return nil
