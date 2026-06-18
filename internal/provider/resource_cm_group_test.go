@@ -12,6 +12,8 @@ import (
 	"github.com/hashicorp/terraform-plugin-testing/terraform"
 )
 
+var testGroupName = "TFTestGroup-" + uuid.New().String()[:8]
+
 func cmGroupConfig(name, description, appMeta string) string {
 	cfg := fmt.Sprintf(`
 resource "ciphertrust_groups" "testGroup" {
