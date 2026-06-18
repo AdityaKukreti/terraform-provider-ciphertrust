@@ -82,13 +82,19 @@ func (r *resourceScheduler) Schema(_ context.Context, _ resource.SchemaRequest, 
 			},
 			"name": schema.StringAttribute{
 				Required:    true,
-				Description: "The name of the job configuration.",
+				Description: "The name of the job configuration. Immutable after creation.",
+				PlanModifiers: []planmodifier.String{
+					NameImmutableModifier{},
+				},
 			},
 			"operation": schema.StringAttribute{
 				Required:    true,
-				Description: "The operation field specifies the type of operation to be performed. Currently, only " + strings.Join(supportedOperations, ", ") + " are supported. ",
+				Description: "The operation field specifies the type of operation to be performed. Currently, only " + strings.Join(supportedOperations, ", ") + " are supported. Immutable after creation — changing this field forces replacement.",
 				Validators: []validator.String{
 					stringvalidator.OneOf(supportedOperations...),
+				},
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.RequiresReplace(),
 				},
 			},
 			"run_at": schema.StringAttribute{

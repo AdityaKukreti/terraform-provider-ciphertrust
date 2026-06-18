@@ -57,10 +57,13 @@ func (r *resourceCMKey) Schema(_ context.Context, _ resource.SchemaRequest, resp
 				Optional:    true,
 				Description: "Date/time the object becomes active",
 			},
-			"algorithm": schema.StringAttribute{
-				Optional:    true,
-				Description: "Cryptographic algorithm this key is used with. Defaults to 'aes'",
-				Validators: []validator.String{
+		"algorithm": schema.StringAttribute{
+			Optional:    true,
+			Description: "Cryptographic algorithm this key is used with. Defaults to 'aes'. Immutable after creation.",
+			PlanModifiers: []planmodifier.String{
+				StringImmutableModifier{FieldName: "algorithm"},
+			},
+			Validators: []validator.String{
 					stringvalidator.OneOf([]string{"aes",
 						"tdes",
 						"rsa",
@@ -123,10 +126,13 @@ func (r *resourceCMKey) Schema(_ context.Context, _ resource.SchemaRequest, resp
 				Optional:    true,
 				Description: "Date/time when the object was first believed to be compromised, if known. Only valid if the revocation reason is CACompromise or KeyCompromise, otherwise ignored.",
 			},
-			"curveid": schema.StringAttribute{
-				Optional:    true,
-				Description: "Cryptographic curve id for elliptic key. Key algorithm must be 'EC'.",
-				Validators: []validator.String{
+		"curveid": schema.StringAttribute{
+			Optional:    true,
+			Description: "Cryptographic curve id for elliptic key. Key algorithm must be 'EC'. Immutable after creation.",
+			PlanModifiers: []planmodifier.String{
+				StringImmutableModifier{FieldName: "curveid"},
+			},
+			Validators: []validator.String{
 					stringvalidator.OneOf([]string{"secp224k1",
 						"secp224r1",
 						"secp256k1",
@@ -236,6 +242,9 @@ func (r *resourceCMKey) Schema(_ context.Context, _ resource.SchemaRequest, resp
 			},
 			"material": schema.StringAttribute{
 				Optional:    true,
+				PlanModifiers: []planmodifier.String{
+					StringImmutableModifier{FieldName: "material"},
+				},
 				Description: "If set, the value will be imported as the key's material. If not set, new key material will be generated on the server (certificate objects must always specify the material). The format of this value depends on the algorithm. If the algorithm is 'aes', 'tdes', 'hmac-*', 'seed' or 'aria', the value should be the hex-encoded bytes of the key material. If the algorithm is 'rsa', and the format is 'pkcs12', it should be the base64 encoded PFX file. If the algorithm is 'rsa' or 'ec', and format is not 'pkcs12', the value should be a PEM-encoded private or public key using PKCS1 or PKCS8 format. For a X.509 DER encoded certificate, certType equals 'x509-der' and the material should equal the hex encoded certificate. The material for a X.509 PEM encoded certificate (certType = 'x509-pem') should equal the certificate itself. When placing the PEM encoded certificate inside a JSON object (as in the playground), be sure to change all new line characters in the certificate to the string '\\n'.",
 			},
 			"muid": schema.StringAttribute{
@@ -244,6 +253,9 @@ func (r *resourceCMKey) Schema(_ context.Context, _ resource.SchemaRequest, resp
 			},
 			"object_type": schema.StringAttribute{
 				Optional:    true,
+				PlanModifiers: []planmodifier.String{
+					StringImmutableModifier{FieldName: "object_type"},
+				},
 				Description: "This specifies the type of object that is being created. Valid values are 'Symmetric Key', 'Public Key', 'Private Key', 'Secret Data', 'Opaque Object', or 'Certificate'. The object type is inferred for many objects, but must be supplied for the certificate object.",
 				Validators: []validator.String{
 					stringvalidator.OneOf([]string{"Symmetric Key",
@@ -257,6 +269,9 @@ func (r *resourceCMKey) Schema(_ context.Context, _ resource.SchemaRequest, resp
 			"name": schema.StringAttribute{
 				Optional:    true,
 				Description: "Optional friendly name, The key name should not contain special characters such as angular brackets (<,>) and backslash (\\).",
+				PlanModifiers: []planmodifier.String{
+					NameImmutableModifier{},
+				},
 			},
 			"meta": schema.SingleNestedAttribute{
 				Optional:    true,
@@ -380,7 +395,10 @@ func (r *resourceCMKey) Schema(_ context.Context, _ resource.SchemaRequest, resp
 			},
 			"key_size": schema.Int64Attribute{
 				Optional:    true,
-				Description: "Bit length for the key.",
+				PlanModifiers: []planmodifier.Int64{
+					Int64ImmutableModifier{FieldName: "key_size"},
+				},
+				Description: "Bit length for the key. Immutable after creation.",
 			},
 			"unexportable": schema.BoolAttribute{
 				Optional:    true,
@@ -1277,6 +1295,14 @@ func (r *resourceCMKey) Delete(ctx context.Context, req resource.DeleteRequest, 
 	output, err := r.client.DeleteByID(ctx, "DELETE", state.ID.ValueString(), url, nil)
 	tflog.Trace(ctx, common.MSG_METHOD_END+"[resource_cm_key.go -> Delete]["+state.ID.ValueString()+"]["+output+"]")
 	if err != nil {
+		if strings.Contains(err.Error(), "status: 404") {
+			// Resource was already deleted outside of Terraform — desired state achieved.
+			resp.Diagnostics.AddWarning(
+				"CipherTrust Key Not Found on Delete",
+				"The CipherTrust Key resource returned HTTP 404 during deletion. It was likely removed outside of Terraform. Treating as successfully deleted.",
+			)
+			return
+		}
 		if strings.Contains(strings.ToLower(err.Error()), "key is not deletable") && state.RemoveFromStateOnDestroy.ValueBool() {
 			resp.Diagnostics.AddWarning("Ciphertrust key can't be deleted from CipherTrust Manager as it's undeletable but will be removed from state.",
 				"key id: "+state.ID.ValueString(),
