@@ -443,8 +443,10 @@ type CMUserJSON struct {
 	Password               string             `json:"password,omitempty"`
 	IsDomainUser           bool               `json:"is_domain_user"`
 	LoginFlags             UserLoginFlagsJSON `json:"login_flags"`
-	PasswordChangeRequired bool               `json:"password_change_required"`
-	Metadata               map[string]string  `json:"user_metadata,omitempty"`
+	PasswordChangeRequired bool                       `json:"password_change_required"`
+	// user_metadata values can be strings or nested objects (e.g. current_domain
+	// on CDSPaaS); use json.RawMessage to accept any JSON value without error.
+	Metadata               map[string]json.RawMessage `json:"user_metadata,omitempty"`
 }
 
 type CMSSHKeyTFSDK struct {
@@ -922,20 +924,23 @@ type JobConfigParamsTFSDK struct {
 	CCKMSynchronizationParams *CCKMSynchronizationParamsTFSDK       `tfsdk:"cckm_synchronization_params"`
 }
 
-type DatabaseBackupParamsTFSDK struct {
-	TiedToHSM      types.Bool          `tfsdk:"tied_to_hsm"`
-	Description    types.String        `tfsdk:"description"`
-	BackupKey      types.String        `tfsdk:"backup_key"`
-	Scope          types.String        `tfsdk:"scope"`
-	Filters        []BackupFilterTFSDK `tfsdk:"filters"`
-	RetentionCount types.Int64         `tfsdk:"retention_count"`
-	DoSCP          types.Bool          `tfsdk:"do_scp"`
-	Connection     types.String        `tfsdk:"connection"`
+// BackupFilterElemType is the object type for a single filters list element.
+var BackupFilterElemType = types.ObjectType{
+	AttrTypes: map[string]attr.Type{
+		"resource_type":  types.StringType,
+		"resource_query": types.StringType,
+	},
 }
 
-type BackupFilterTFSDK struct {
-	ResourceType  types.String `tfsdk:"resource_type"`
-	ResourceQuery types.String `tfsdk:"resource_query"`
+type DatabaseBackupParamsTFSDK struct {
+	TiedToHSM      types.Bool   `tfsdk:"tied_to_hsm"`
+	Description    types.String `tfsdk:"description"`
+	BackupKey      types.String `tfsdk:"backup_key"`
+	Scope          types.String `tfsdk:"scope"`
+	Filters        types.List   `tfsdk:"filters"`
+	RetentionCount types.Int64  `tfsdk:"retention_count"`
+	DoSCP          types.Bool   `tfsdk:"do_scp"`
+	Connection     types.String `tfsdk:"connection"`
 }
 
 type CreateJobConfigParamsListJSON struct {
@@ -1215,3 +1220,15 @@ var CCKMSynchronizationParamsAttribs = map[string]attr.Type{
 type CCKMXksRotateCredentialsParamsTFSDK struct {
 	CloudName types.String `tfsdk:"cloud_name"`
 }
+
+// stringsToRawJSON converts map[string]string to map[string]json.RawMessage
+// so string values from Terraform config can be assigned to CMUserJSON.Metadata.
+func stringsToRawJSON(m map[string]string) map[string]json.RawMessage {
+	out := make(map[string]json.RawMessage, len(m))
+	for k, v := range m {
+		b, _ := json.Marshal(v)
+		out[k] = json.RawMessage(b)
+	}
+	return out
+}
+

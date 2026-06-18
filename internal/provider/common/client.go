@@ -15,6 +15,15 @@ import (
 // Default CipherTrust Manager URL
 const CipherTrustURL string = "https://10.10.10.10"
 
+// normalizeAddress ensures the address has an https:// scheme and no trailing slash.
+func normalizeAddress(addr string) string {
+	addr = strings.TrimRight(addr, "/")
+	if !strings.HasPrefix(addr, "http://") && !strings.HasPrefix(addr, "https://") {
+		addr = "https://" + addr
+	}
+	return addr
+}
+
 type CCKMProviderConfig struct {
 	AwsOperationTimeout int64
 	OCIOperationTimeout int64
@@ -67,6 +76,7 @@ func NewCMClientBoot(ctx context.Context, uuid string, address *string, insecure
 	tflog.Trace(ctx, MSG_METHOD_START+"[client.go -> NewCMClientBoot]["+uuid+"]")
 	tr := &http.Transport{
 		TLSClientConfig: &tls.Config{InsecureSkipVerify: insecureSkipVerify},
+		Proxy: http.ProxyFromEnvironment, // respects HTTPS_PROXY/NO_PROXY env vars
 	}
 
 	c := CMClientBootstrap{
@@ -79,7 +89,7 @@ func NewCMClientBoot(ctx context.Context, uuid string, address *string, insecure
 	}
 
 	if address != nil {
-		c.CipherTrustURL = strings.TrimRight(*address, "/")
+		c.CipherTrustURL = normalizeAddress(*address)
 	}
 
 	tflog.Trace(ctx, MSG_METHOD_END+" [client.go -> NewCMClientBoot]["+uuid+"]")
@@ -95,6 +105,7 @@ func NewClient(ctx context.Context, uuid string, address, auth_domain, domain, u
 	tflog.Trace(ctx, MSG_METHOD_START+"[client.go -> NewClient]["+uuid+"]")
 	tr := &http.Transport{
 		TLSClientConfig: &tls.Config{InsecureSkipVerify: insecureSkipVerify},
+		Proxy: http.ProxyFromEnvironment, // respects HTTPS_PROXY/NO_PROXY env vars
 	}
 
 	// Create the token refresh transport (client back-reference set below).
@@ -113,7 +124,7 @@ func NewClient(ctx context.Context, uuid string, address, auth_domain, domain, u
 	refreshTransport.client = &c
 
 	if address != nil {
-		c.CipherTrustURL = strings.TrimRight(*address, "/")
+		c.CipherTrustURL = normalizeAddress(*address)
 	}
 
 	// If username or password not provided, return empty client
