@@ -1252,21 +1252,29 @@ func (r *resourceCMKey) Read(ctx context.Context, req resource.ReadRequest, resp
 	}
 	// Bug 2 fix — unconditional bool fields; when CM omits the field (false is the
 	// API default and is returned by omission), preserve the prior state value to
-	// avoid perpetual drift for configurations that set these to false.
-	if r := gjson.Get(response, "undeletable"); r.Exists() {
-		plan.UnDeletable = types.BoolValue(r.Bool())
-	} else {
-		plan.UnDeletable = state.UnDeletable
+	// Only hydrate undeletable/unexportable/xts from GET when the user explicitly
+	// configured them (state non-null). CM returns false for unconfigured booleans;
+	// hydrating unconditionally causes false→null drift for users who never set them.
+	if !state.UnDeletable.IsNull() {
+		if r := gjson.Get(response, "undeletable"); r.Exists() {
+			plan.UnDeletable = types.BoolValue(r.Bool())
+		} else {
+			plan.UnDeletable = types.BoolNull()
+		}
 	}
-	if r := gjson.Get(response, "unexportable"); r.Exists() {
-		plan.UnExportable = types.BoolValue(r.Bool())
-	} else {
-		plan.UnExportable = state.UnExportable
+	if !state.UnExportable.IsNull() {
+		if r := gjson.Get(response, "unexportable"); r.Exists() {
+			plan.UnExportable = types.BoolValue(r.Bool())
+		} else {
+			plan.UnExportable = types.BoolNull()
+		}
 	}
-	if r := gjson.Get(response, "xts"); r.Exists() {
-		plan.XTS = types.BoolValue(r.Bool())
-	} else {
-		plan.XTS = state.XTS
+	if !state.XTS.IsNull() {
+		if r := gjson.Get(response, "xts"); r.Exists() {
+			plan.XTS = types.BoolValue(r.Bool())
+		} else {
+			plan.XTS = types.BoolNull()
+		}
 	}
 
 	// Server-auto-populated Optional+Computed — guard on IsNull to prevent drift for unconfigured fields
