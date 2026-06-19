@@ -828,10 +828,12 @@ func (r *resourceCMKey) Create(ctx context.Context, req resource.CreateRequest, 
 		payload.TemplateID = plan.TemplateID.ValueString()
 	}
 	if !plan.UnDeletable.IsNull() && !plan.UnDeletable.IsUnknown() {
-		payload.UnDeletable = plan.UnDeletable.ValueBool()
+		v := plan.UnDeletable.ValueBool()
+		payload.UnDeletable = &v
 	}
 	if !plan.UnExportable.IsNull() && !plan.UnExportable.IsUnknown() {
-		payload.UnExportable = plan.UnExportable.ValueBool()
+		v := plan.UnExportable.ValueBool()
+		payload.UnExportable = &v
 	}
 	if !plan.UsageMask.IsNull() && !plan.UsageMask.IsUnknown() {
 		payload.UsageMask = plan.UsageMask.ValueInt64()
@@ -1226,9 +1228,15 @@ func (r *resourceCMKey) Read(ctx context.Context, req resource.ReadRequest, resp
 		plan.Name = types.StringNull()
 	}
 	// algorithm: CM normalizes to uppercase ("AES") but existing configs use both
-	// "aes" and "AES". Hydrating from GET causes drift when config casing differs
-	// from CM's return. Preserve prior state via plan = state (already set above).
-	// Algorithm drift detection is intentionally deferred to avoid breaking existing tests.
+	// "aes" and "AES". When state is null (import passthrough), hydrate from server
+	// and lowercase to match the typical config casing. Otherwise preserve state to
+	// avoid perpetual casing drift.
+	if state.Algorithm.IsNull() && state.Name.IsNull() {
+		// Import path: state has only ID populated; hydrate algorithm from server.
+		if r := gjson.Get(response, "algorithm"); r.Exists() {
+			plan.Algorithm = types.StringValue(strings.ToLower(r.String()))
+		}
+	}
 	// usage_mask is Optional only — hydrate only when the user configured it (state
 	// non-null) to avoid perpetual drift for keys created without a usage_mask.
 	if !state.UsageMask.IsNull() {
@@ -1238,10 +1246,11 @@ func (r *resourceCMKey) Read(ctx context.Context, req resource.ReadRequest, resp
 			plan.UsageMask = types.Int64Null()
 		}
 	}
-	if !state.Size.IsNull() {
+	// key_size: hydrate when user configured it (non-null) OR on import (name null).
+	if !state.Size.IsNull() || state.Name.IsNull() {
 		if r := gjson.Get(response, "size"); r.Exists() {
 			plan.Size = types.Int64Value(r.Int())
-		} else {
+		} else if !state.Size.IsNull() {
 			plan.Size = types.Int64Null()
 		}
 	}
@@ -1266,7 +1275,14 @@ func (r *resourceCMKey) Read(ctx context.Context, req resource.ReadRequest, resp
 				plan.RotationFrequencyDays = types.StringValue(serverVal)
 			}
 		} else {
-			plan.RotationFrequencyDays = types.StringNull()
+			// Field absent from response means rotation is disabled (server treats as "").
+			// Preserve "0" in state when user configured "0" to disable rotation, so the
+			// round-trip "0" → absent does not cause a perpetual diff.
+			if state.RotationFrequencyDays.ValueString() == "0" {
+				plan.RotationFrequencyDays = state.RotationFrequencyDays
+			} else {
+				plan.RotationFrequencyDays = types.StringNull()
+			}
 		}
 	}
 	// Bug 2 fix — unconditional bool fields; when CM omits the field (false is the
@@ -1350,25 +1366,29 @@ func (r *resourceCMKey) Read(ctx context.Context, req resource.ReadRequest, resp
 		}
 	}
 
-	// Labels: if the server returns {} (empty object) and the user never configured
-	// labels, keep state as null to avoid a perpetual null→empty-map diff.
-	labelsResult := gjson.Get(response, "labels")
-	if labelsResult.Exists() && labelsResult.Type != gjson.Null {
-		m := make(map[string]string)
-		for k, v := range labelsResult.Map() {
-			m[k] = v.String()
-		}
-		if len(m) == 0 && state.Labels.IsNull() {
-			plan.Labels = types.MapNull(types.StringType)
-		} else {
-			plan.Labels, diags = types.MapValueFrom(ctx, types.StringType, m)
-			resp.Diagnostics.Append(diags...)
-			if resp.Diagnostics.HasError() {
-				return
+	// Labels: only hydrate when the user explicitly configured labels (state non-null).
+	// When state is null (labels never configured), keep null regardless of what the
+	// server returns. This prevents server-auto-added internal labels (e.g.,
+	// "ncryptify-reserved/composite-key") from appearing in state and causing drift.
+	if !state.Labels.IsNull() {
+		labelsResult := gjson.Get(response, "labels")
+		if labelsResult.Exists() && labelsResult.Type != gjson.Null {
+			m := make(map[string]string)
+			for k, v := range labelsResult.Map() {
+				m[k] = v.String()
 			}
+			if len(m) == 0 {
+				plan.Labels = types.MapNull(types.StringType)
+			} else {
+				plan.Labels, diags = types.MapValueFrom(ctx, types.StringType, m)
+				resp.Diagnostics.Append(diags...)
+				if resp.Diagnostics.HasError() {
+					return
+				}
+			}
+		} else {
+			plan.Labels = types.MapNull(types.StringType)
 		}
-	} else {
-		plan.Labels = types.MapNull(types.StringType)
 	}
 
 	// Hydrate top-level aliases (guarded: only when user configured aliases).
@@ -1530,37 +1550,33 @@ func (r *resourceCMKey) Update(ctx context.Context, req resource.UpdateRequest, 
 		payload.ActivationDate = plan.ActivationDate.ValueString()
 	}
 	// Build alias PATCH payload using the API's delta semantics:
-	//   - add:    { alias, type }           (no index)
-	//   - modify: { alias, type, index }    (existing index)
-	//   - delete: { index }                 (index only, no alias/type)
+	//   - add:    { alias, type }  (no index)  — alias not present in prior state
+	//   - delete: { index }        (index only) — alias removed from plan
+	//   Unchanged aliases (present in both state and plan) are NOT re-emitted;
+	//   re-sending {alias, type, index} for an existing alias triggers a 409.
 	var arrAlias []KeyAliasJSON
 
-	// Emit add/modify entries for all aliases in the plan.
-	for _, alias := range plan.Aliases {
-		var aliasJSON KeyAliasJSON
-		if alias.Alias.ValueString() != "" {
-			aliasJSON.Alias = alias.Alias.ValueString()
-		}
-		if alias.Index.ValueString() != "" {
-			parsed, parseErr := strconv.ParseInt(alias.Index.ValueString(), 10, 64)
-			if parseErr != nil {
-				resp.Diagnostics.AddError("Error Updating CipherTrust Key", "Invalid alias index value: "+alias.Index.ValueString()+": "+parseErr.Error())
-				return
-			}
-			aliasJSON.Index = &parsed // modify existing alias
-		}
-		// else: no index → add new alias
-		if alias.Type.ValueString() != "" {
-			aliasJSON.Type = alias.Type.ValueString()
-		}
-		arrAlias = append(arrAlias, aliasJSON)
+	stateAliasByName := make(map[string]*KeyAliasTFSDK, len(state.Aliases))
+	for _, sa := range state.Aliases {
+		stateAliasByName[sa.Alias.ValueString()] = sa
 	}
 
-	// Emit delete entries for aliases present in prior state but removed from plan.
 	planAliasNames := make(map[string]bool, len(plan.Aliases))
-	for _, a := range plan.Aliases {
-		planAliasNames[a.Alias.ValueString()] = true
+	for _, alias := range plan.Aliases {
+		planAliasNames[alias.Alias.ValueString()] = true
+		if _, existsInState := stateAliasByName[alias.Alias.ValueString()]; !existsInState {
+			// New alias not in state — ADD (no index).
+			var aliasJSON KeyAliasJSON
+			aliasJSON.Alias = alias.Alias.ValueString()
+			if alias.Type.ValueString() != "" {
+				aliasJSON.Type = alias.Type.ValueString()
+			}
+			arrAlias = append(arrAlias, aliasJSON)
+		}
+		// Unchanged aliases (in state and plan) are intentionally omitted.
 	}
+
+	// Emit delete entries for aliases in state but removed from plan.
 	for _, sa := range state.Aliases {
 		if !planAliasNames[sa.Alias.ValueString()] && sa.Index.ValueString() != "" {
 			idx, _ := strconv.ParseInt(sa.Index.ValueString(), 10, 64)
@@ -1676,10 +1692,12 @@ func (r *resourceCMKey) Update(ctx context.Context, req resource.UpdateRequest, 
 		payload.RotationFrequencyDays = plan.RotationFrequencyDays.ValueString()
 	}
 	if !plan.UnDeletable.IsNull() && !plan.UnDeletable.IsUnknown() {
-		payload.UnDeletable = plan.UnDeletable.ValueBool()
+		v := plan.UnDeletable.ValueBool()
+		payload.UnDeletable = &v
 	}
 	if !plan.UnExportable.IsNull() && !plan.UnExportable.IsUnknown() {
-		payload.UnExportable = plan.UnExportable.ValueBool()
+		v := plan.UnExportable.ValueBool()
+		payload.UnExportable = &v
 	}
 	if !plan.UsageMask.IsNull() && !plan.UsageMask.IsUnknown() {
 		payload.UsageMask = plan.UsageMask.ValueInt64()
@@ -1730,47 +1748,63 @@ func (r *resourceCMKey) Update(ctx context.Context, req resource.UpdateRequest, 
 		plan.UnExportable = state.UnExportable
 	}
 
-	// Re-hydrate alias indices from PATCH response so newly added aliases get their
-	// server-assigned index immediately (no need to wait for the next Read).
+	// Hydrate bool fields from PATCH response so state reflects what the server accepted.
+	if !plan.UnDeletable.IsNull() {
+		if r := gjson.Get(responseBody, "undeletable"); r.Exists() {
+			plan.UnDeletable = types.BoolValue(r.Bool())
+		}
+	}
+	if !plan.UnExportable.IsNull() {
+		if r := gjson.Get(responseBody, "unexportable"); r.Exists() {
+			plan.UnExportable = types.BoolValue(r.Bool())
+		}
+	}
+
+	// Re-hydrate aliases from PATCH response:
+	//   - Unchanged aliases (were in state, not re-sent): preserve from state.
+	//   - New aliases (were added): pick up server-assigned index from response.
 	if plan.Aliases != nil {
-		aliasesResp := gjson.Get(responseBody, "aliases")
-		if aliasesResp.Exists() && len(aliasesResp.Array()) > 0 {
-			planOrder := make(map[string]int, len(plan.Aliases))
-			configuredAliasNames := make(map[string]bool, len(plan.Aliases))
-			for i, a := range plan.Aliases {
-				planOrder[a.Alias.ValueString()] = i
-				configuredAliasNames[a.Alias.ValueString()] = true
-			}
-			var hydratedAliases []*KeyAliasTFSDK
+		planOrder := make(map[string]int, len(plan.Aliases))
+		for i, a := range plan.Aliases {
+			planOrder[a.Alias.ValueString()] = i
+		}
+
+		serverAliasByName := make(map[string]gjson.Result)
+		if aliasesResp := gjson.Get(responseBody, "aliases"); aliasesResp.Exists() {
 			for _, elem := range aliasesResp.Array() {
-				if !configuredAliasNames[elem.Get("alias").String()] {
-					continue
-				}
-				a := &KeyAliasTFSDK{}
-				if rv := elem.Get("alias"); rv.Exists() {
-					a.Alias = types.StringValue(rv.String())
-				} else {
-					a.Alias = types.StringNull()
-				}
+				serverAliasByName[elem.Get("alias").String()] = elem
+			}
+		}
+
+		var hydratedAliases []*KeyAliasTFSDK
+		for _, planAlias := range plan.Aliases {
+			aliasName := planAlias.Alias.ValueString()
+			if sa, existsInState := stateAliasByName[aliasName]; existsInState {
+				// Unchanged alias — preserve state entry (keeps existing index/type).
+				hydratedAliases = append(hydratedAliases, sa)
+			} else if elem, existsInServer := serverAliasByName[aliasName]; existsInServer {
+				// Newly added alias — capture server-assigned index.
+				na := &KeyAliasTFSDK{}
+				na.Alias = types.StringValue(aliasName)
 				if rv := elem.Get("index"); rv.Exists() {
-					a.Index = types.StringValue(rv.String())
+					na.Index = types.StringValue(rv.String())
 				} else {
-					a.Index = types.StringNull()
+					na.Index = types.StringNull()
 				}
 				if rv := elem.Get("type"); rv.Exists() {
-					a.Type = types.StringValue(rv.String())
+					na.Type = types.StringValue(rv.String())
 				} else {
-					a.Type = types.StringNull()
+					na.Type = types.StringNull()
 				}
-				hydratedAliases = append(hydratedAliases, a)
+				hydratedAliases = append(hydratedAliases, na)
 			}
-			if hydratedAliases != nil {
-				sort.Slice(hydratedAliases, func(i, j int) bool {
-					return planOrder[hydratedAliases[i].Alias.ValueString()] <
-						planOrder[hydratedAliases[j].Alias.ValueString()]
-				})
-				plan.Aliases = hydratedAliases
-			}
+		}
+		if hydratedAliases != nil {
+			sort.Slice(hydratedAliases, func(i, j int) bool {
+				return planOrder[hydratedAliases[i].Alias.ValueString()] <
+					planOrder[hydratedAliases[j].Alias.ValueString()]
+			})
+			plan.Aliases = hydratedAliases
 		}
 	}
 

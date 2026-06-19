@@ -335,8 +335,8 @@ type CMKeyJSON struct {
 	SecretDataLink           string                   `json:"secretDataLink,omitempty"`
 	SigningAlgo              string                   `json:"signingAlgo,omitempty"`
 	Size                     int64                    `json:"size,omitempty"`
-	UnExportable             bool                     `json:"unexportable,omitempty"`
-	UnDeletable              bool                     `json:"undeletable,omitempty"`
+	UnExportable             *bool                    `json:"unexportable,omitempty"`
+	UnDeletable              *bool                    `json:"undeletable,omitempty"`
 	State                    string                   `json:"state,omitempty"`
 	TemplateID               string                   `json:"templateId,omitempty"`
 	UsageMask                int64                    `json:"usageMask,omitempty"`
