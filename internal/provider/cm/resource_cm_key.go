@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/tidwall/gjson"
-	"reflect"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -14,6 +14,7 @@ import (
 	common "github.com/ThalesGroup/terraform-provider-ciphertrust/internal/provider/common"
 	"github.com/hashicorp/terraform-plugin-framework-validators/int64validator"
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
+	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
@@ -24,8 +25,9 @@ import (
 )
 
 var (
-	_ resource.Resource              = &resourceCMKey{}
-	_ resource.ResourceWithConfigure = &resourceCMKey{}
+	_ resource.Resource                = &resourceCMKey{}
+	_ resource.ResourceWithConfigure   = &resourceCMKey{}
+	_ resource.ResourceWithImportState = &resourceCMKey{}
 )
 
 func NewResourceCMKey() resource.Resource {
@@ -52,31 +54,24 @@ func (r *resourceCMKey) Schema(_ context.Context, _ resource.SchemaRequest, resp
 			},
 			"template_id": schema.StringAttribute{
 				Optional:    true,
-				Description: "",
+				Description: "ID of a key template to apply during creation. On CDSPaaS, Restricted Key Users must use a template and may only supply owner_id in meta.",
 			},
 			"activation_date": schema.StringAttribute{
 				Optional:    true,
 				Description: "Date/time the object becomes active",
 			},
-		"algorithm": schema.StringAttribute{
-			Optional:    true,
-			Description: "Cryptographic algorithm this key is used with. Defaults to 'aes'. Immutable after creation.",
-			PlanModifiers: []planmodifier.String{
-				StringImmutableModifier{FieldName: "algorithm"},
-			},
-			Validators: []validator.String{
-					stringvalidator.OneOf([]string{"aes",
-						"tdes",
-						"rsa",
-						"ec",
-						"hmac-sha1",
-						"hmac-sha256",
-						"hmac-sha384",
-						"hmac-sha512",
-						"seed",
-						"aria",
-						"opaque",
-						"AES", "EC", "RSA"}...),
+			"algorithm": schema.StringAttribute{
+				Optional:    true,
+				Description: "Cryptographic algorithm this key is used with. Defaults to 'aes'. Immutable after creation.",
+				PlanModifiers: []planmodifier.String{
+					StringImmutableModifier{FieldName: "algorithm"},
+				},
+				Validators: []validator.String{
+					stringvalidator.OneOf([]string{
+						"aes", "tdes", "rsa", "ec",
+						"hmac-sha1", "hmac-sha256", "hmac-sha384", "hmac-sha512",
+						"seed", "aria", "opaque",
+					}...),
 				},
 			},
 			"aliases": schema.ListNestedAttribute{
@@ -85,13 +80,12 @@ func (r *resourceCMKey) Schema(_ context.Context, _ resource.SchemaRequest, resp
 				NestedObject: schema.NestedAttributeObject{
 					Attributes: map[string]schema.Attribute{
 						"alias": schema.StringAttribute{
-							Optional:    true,
+							Required:    true,
 							Description: "An alias for a key name.",
 						},
 						"index": schema.StringAttribute{
-							Optional:    true,
 							Computed:    true,
-							Description: "Index associated with alias. Each alias within an object has a unique index. Assigned by the server; cannot be set by the user.",
+							Description: "Index assigned by the server. Read-only.",
 							PlanModifiers: []planmodifier.String{
 								stringplanmodifier.UseStateForUnknown(),
 							},
@@ -131,13 +125,13 @@ func (r *resourceCMKey) Schema(_ context.Context, _ resource.SchemaRequest, resp
 				Optional:    true,
 				Description: "Date/time when the object was first believed to be compromised, if known. Only valid if the revocation reason is CACompromise or KeyCompromise, otherwise ignored.",
 			},
-		"curveid": schema.StringAttribute{
-			Optional:    true,
-			Description: "Cryptographic curve id for elliptic key. Key algorithm must be 'EC'. Immutable after creation.",
-			PlanModifiers: []planmodifier.String{
-				StringImmutableModifier{FieldName: "curveid"},
-			},
-			Validators: []validator.String{
+			"curveid": schema.StringAttribute{
+				Optional:    true,
+				Description: "Cryptographic curve id for elliptic key. Key algorithm must be 'EC'. Immutable after creation.",
+				PlanModifiers: []planmodifier.String{
+					StringImmutableModifier{FieldName: "curveid"},
+				},
+				Validators: []validator.String{
 					stringvalidator.OneOf([]string{"secp224k1",
 						"secp224r1",
 						"secp256k1",
@@ -246,7 +240,8 @@ func (r *resourceCMKey) Schema(_ context.Context, _ resource.SchemaRequest, resp
 				},
 			},
 			"material": schema.StringAttribute{
-				Optional:    true,
+				Optional:  true,
+				Sensitive: true,
 				PlanModifiers: []planmodifier.String{
 					StringImmutableModifier{FieldName: "material"},
 				},
@@ -257,7 +252,7 @@ func (r *resourceCMKey) Schema(_ context.Context, _ resource.SchemaRequest, resp
 				Description: "Additional identifier of the key. This is optional and applicable for import key only. If set, the value is imported as the key's muid.",
 			},
 			"object_type": schema.StringAttribute{
-				Optional:    true,
+				Optional: true,
 				PlanModifiers: []planmodifier.String{
 					StringImmutableModifier{FieldName: "object_type"},
 				},
@@ -279,8 +274,10 @@ func (r *resourceCMKey) Schema(_ context.Context, _ resource.SchemaRequest, resp
 				},
 			},
 			"meta": schema.SingleNestedAttribute{
-				Optional:    true,
-				Description: "Optional end-user or service data stored with the key",
+				Optional: true,
+				Description: "Optional end-user or service data stored with the key. " +
+					"PATCH merges JSON objects: removing a field from config does NOT clear it on the server. " +
+					"On CDSPaaS, non-admin users must supply owner_id; Restricted Key Users may only supply owner_id.",
 				Attributes: map[string]schema.Attribute{
 					"owner_id": schema.StringAttribute{
 						Optional:    true,
@@ -351,6 +348,7 @@ func (r *resourceCMKey) Schema(_ context.Context, _ resource.SchemaRequest, resp
 			},
 			"password": schema.StringAttribute{
 				Optional:    true,
+				Sensitive:   true,
 				Description: "For pkcs12 format, either password or secretDataLink should be specified. This should be the base64 encoded value of the password.",
 			},
 			"process_start_date": schema.StringAttribute{
@@ -399,7 +397,7 @@ func (r *resourceCMKey) Schema(_ context.Context, _ resource.SchemaRequest, resp
 				},
 			},
 			"key_size": schema.Int64Attribute{
-				Optional:    true,
+				Optional: true,
 				PlanModifiers: []planmodifier.Int64{
 					Int64ImmutableModifier{FieldName: "key_size"},
 				},
@@ -532,9 +530,8 @@ func (r *resourceCMKey) Schema(_ context.Context, _ resource.SchemaRequest, resp
 									Description: "An alias for a key name.",
 								},
 								"index": schema.StringAttribute{
-									Optional:    true,
 									Computed:    true,
-									Description: "Index associated with alias. Each alias within an object has a unique index. Assigned by the server; cannot be set by the user.",
+									Description: "Index assigned by the server. Read-only.",
 									PlanModifiers: []planmodifier.String{
 										stringplanmodifier.UseStateForUnknown(),
 									},
@@ -612,6 +609,7 @@ func (r *resourceCMKey) Schema(_ context.Context, _ resource.SchemaRequest, resp
 					},
 					"salt": schema.StringAttribute{
 						Optional:    true,
+						Sensitive:   true,
 						Description: "A Hex encoded string. pbeSalt must be in range of 16 bytes to 512 bytes.",
 						Validators: []validator.String{
 							stringvalidator.LengthBetween(16, 512),
@@ -626,6 +624,7 @@ func (r *resourceCMKey) Schema(_ context.Context, _ resource.SchemaRequest, resp
 					},
 					"password": schema.StringAttribute{
 						Optional:    true,
+						Sensitive:   true,
 						Description: "Base password to generate derive keys. It cannot be used in conjunction with passwordidentifier. password must be in range of 8 bytes to 128 bytes.",
 						Validators: []validator.String{
 							stringvalidator.LengthBetween(8, 128),
@@ -653,7 +652,7 @@ func (r *resourceCMKey) Schema(_ context.Context, _ resource.SchemaRequest, resp
 			},
 			"wrap_rsaaes": schema.SingleNestedAttribute{
 				Optional:    true,
-				Description: "",
+				Description: "Parameters for wrapping a key using RSA AES Key Wrap Padding (RSA/RSAAESKEYWRAPPADDING).",
 				Attributes: map[string]schema.Attribute{
 					"aes_key_size": schema.Int64Attribute{
 						Optional:    true,
@@ -681,6 +680,7 @@ func (r *resourceCMKey) Schema(_ context.Context, _ resource.SchemaRequest, resp
 			"labels": schema.MapAttribute{
 				ElementType: types.StringType,
 				Optional:    true,
+				Description: "Optional map of string key-value labels to associate with the key.",
 			},
 			"all_versions": schema.BoolAttribute{
 				Optional: true,
@@ -704,175 +704,178 @@ func (r *resourceCMKey) Create(ctx context.Context, req resource.CreateRequest, 
 		return
 	}
 
-	if plan.ActivationDate.ValueString() != "" && plan.ActivationDate.ValueString() != types.StringNull().ValueString() {
+	if plan.ActivationDate.ValueString() != "" {
 		payload.ActivationDate = plan.ActivationDate.ValueString()
 	}
-	if plan.Algorithm.ValueString() != "" && plan.Algorithm.ValueString() != types.StringNull().ValueString() {
+	if plan.Algorithm.ValueString() != "" {
 		payload.Algorithm = plan.Algorithm.ValueString()
 	}
-	if plan.ArchiveDate.ValueString() != "" && plan.ArchiveDate.ValueString() != types.StringNull().ValueString() {
+	if plan.ArchiveDate.ValueString() != "" {
 		payload.ArchiveDate = plan.ArchiveDate.ValueString()
 	}
-	if plan.AssignSelfAsOwner.ValueBool() != types.BoolNull().ValueBool() {
+	if !plan.AssignSelfAsOwner.IsNull() && !plan.AssignSelfAsOwner.IsUnknown() {
 		payload.AssignSelfAsOwner = plan.AssignSelfAsOwner.ValueBool()
 	}
-	if plan.CertType.ValueString() != "" && plan.CertType.ValueString() != types.StringNull().ValueString() {
+	if plan.CertType.ValueString() != "" {
 		payload.CertType = plan.CertType.ValueString()
 	}
-	if plan.CompromiseDate.ValueString() != "" && plan.CompromiseDate.ValueString() != types.StringNull().ValueString() {
+	if plan.CompromiseDate.ValueString() != "" {
 		payload.CompromiseDate = plan.CompromiseDate.ValueString()
 	}
-	if plan.CompromiseOccurrenceDate.ValueString() != "" && plan.CompromiseOccurrenceDate.ValueString() != types.StringNull().ValueString() {
+	if plan.CompromiseOccurrenceDate.ValueString() != "" {
 		payload.CompromiseOccurrenceDate = plan.CompromiseOccurrenceDate.ValueString()
 	}
-	if plan.Curveid.ValueString() != "" && plan.Curveid.ValueString() != types.StringNull().ValueString() {
+	if plan.Curveid.ValueString() != "" {
 		payload.Curveid = plan.Curveid.ValueString()
 	}
-	if plan.DeactivationDate.ValueString() != "" && plan.DeactivationDate.ValueString() != types.StringNull().ValueString() {
+	if plan.DeactivationDate.ValueString() != "" {
 		payload.DeactivationDate = plan.DeactivationDate.ValueString()
 	}
-	if plan.DefaultIV.ValueString() != "" && plan.DefaultIV.ValueString() != types.StringNull().ValueString() {
+	if plan.DefaultIV.ValueString() != "" {
 		payload.DefaultIV = plan.DefaultIV.ValueString()
 	}
-	if plan.Description.ValueString() != "" && plan.Description.ValueString() != types.StringNull().ValueString() {
+	if plan.Description.ValueString() != "" {
 		payload.Description = plan.Description.ValueString()
 	}
-	if plan.DestroyDate.ValueString() != "" && plan.DestroyDate.ValueString() != types.StringNull().ValueString() {
+	if plan.DestroyDate.ValueString() != "" {
 		payload.DestroyDate = plan.DestroyDate.ValueString()
 	}
-	if plan.EmptyMaterial.ValueBool() != types.BoolNull().ValueBool() {
+	if !plan.EmptyMaterial.IsNull() && !plan.EmptyMaterial.IsUnknown() {
 		payload.EmptyMaterial = plan.EmptyMaterial.ValueBool()
 	}
-	if plan.Encoding.ValueString() != "" && plan.Encoding.ValueString() != types.StringNull().ValueString() {
+	if plan.Encoding.ValueString() != "" {
 		payload.Encoding = plan.Encoding.ValueString()
 	}
-	if plan.Format.ValueString() != "" && plan.Format.ValueString() != types.StringNull().ValueString() {
+	if plan.Format.ValueString() != "" {
 		payload.Format = plan.Format.ValueString()
 	}
-	if plan.GenerateKeyId.ValueBool() != types.BoolNull().ValueBool() {
+	if !plan.GenerateKeyId.IsNull() && !plan.GenerateKeyId.IsUnknown() {
 		payload.GenerateKeyId = plan.GenerateKeyId.ValueBool()
 	}
-	// if plan.ID.ValueString() != "" && plan.ID.ValueString() != types.StringNull().ValueString() {
+	// if plan.ID.ValueString() != "" {
 	// 	payload.ID = plan.ID.ValueString()
 	// }
-	if plan.IDSize.ValueInt64() != types.Int64Null().ValueInt64() {
+	if !plan.IDSize.IsNull() && !plan.IDSize.IsUnknown() {
 		payload.IDSize = plan.IDSize.ValueInt64()
 	}
-	if plan.KeyId.ValueString() != "" && plan.KeyId.ValueString() != types.StringNull().ValueString() {
+	if plan.KeyId.ValueString() != "" {
 		payload.KeyId = plan.KeyId.ValueString()
 	}
-	if plan.MacSignBytes.ValueString() != "" && plan.MacSignBytes.ValueString() != types.StringNull().ValueString() {
+	if plan.MacSignBytes.ValueString() != "" {
 		payload.MacSignBytes = plan.MacSignBytes.ValueString()
 	}
-	if plan.MacSignKeyIdentifier.ValueString() != "" && plan.MacSignKeyIdentifier.ValueString() != types.StringNull().ValueString() {
+	if plan.MacSignKeyIdentifier.ValueString() != "" {
 		payload.MacSignKeyIdentifier = plan.MacSignKeyIdentifier.ValueString()
 	}
-	if plan.MacSignKeyIdentifierType.ValueString() != "" && plan.MacSignKeyIdentifierType.ValueString() != types.StringNull().ValueString() {
+	if plan.MacSignKeyIdentifierType.ValueString() != "" {
 		payload.MacSignKeyIdentifierType = plan.MacSignKeyIdentifierType.ValueString()
 	}
-	if plan.Material.ValueString() != "" && plan.Material.ValueString() != types.StringNull().ValueString() {
+	if plan.Material.ValueString() != "" {
 		payload.Material = plan.Material.ValueString()
 	}
-	if plan.MUID.ValueString() != "" && plan.MUID.ValueString() != types.StringNull().ValueString() {
+	if plan.MUID.ValueString() != "" {
 		payload.MUID = plan.MUID.ValueString()
 	}
-	if plan.Name.ValueString() != "" && plan.Name.ValueString() != types.StringNull().ValueString() {
+	if plan.Name.ValueString() != "" {
 		payload.Name = plan.Name.ValueString()
 	}
-	if plan.ObjectType.ValueString() != "" && plan.ObjectType.ValueString() != types.StringNull().ValueString() {
+	if plan.ObjectType.ValueString() != "" {
 		payload.ObjectType = plan.ObjectType.ValueString()
 	}
-	if plan.Padded.ValueBool() != types.BoolNull().ValueBool() {
+	if !plan.Padded.IsNull() && !plan.Padded.IsUnknown() {
 		payload.Padded = plan.Padded.ValueBool()
 	}
-	if plan.Password.ValueString() != "" && plan.Password.ValueString() != types.StringNull().ValueString() {
+	if plan.Password.ValueString() != "" {
 		payload.Password = plan.Password.ValueString()
 	}
-	if plan.ProcessStartDate.ValueString() != "" && plan.ProcessStartDate.ValueString() != types.StringNull().ValueString() {
+	if plan.ProcessStartDate.ValueString() != "" {
 		payload.ProcessStartDate = plan.ProcessStartDate.ValueString()
 	}
-	if plan.ProtectStopDate.ValueString() != "" && plan.ProtectStopDate.ValueString() != types.StringNull().ValueString() {
+	if plan.ProtectStopDate.ValueString() != "" {
 		payload.ProtectStopDate = plan.ProtectStopDate.ValueString()
 	}
-	if plan.RevocationMessage.ValueString() != "" && plan.RevocationMessage.ValueString() != types.StringNull().ValueString() {
+	if plan.RevocationMessage.ValueString() != "" {
 		payload.RevocationMessage = plan.RevocationMessage.ValueString()
 	}
-	if plan.RevocationReason.ValueString() != "" && plan.RevocationReason.ValueString() != types.StringNull().ValueString() {
+	if plan.RevocationReason.ValueString() != "" {
 		payload.RevocationReason = plan.RevocationReason.ValueString()
 	}
-	if plan.RotationFrequencyDays.ValueString() != "" && plan.RotationFrequencyDays.ValueString() != types.StringNull().ValueString() {
+	if plan.RotationFrequencyDays.ValueString() != "" {
 		payload.RotationFrequencyDays = plan.RotationFrequencyDays.ValueString()
 	}
-	if plan.SecretDataEncoding.ValueString() != "" && plan.SecretDataEncoding.ValueString() != types.StringNull().ValueString() {
+	if plan.SecretDataEncoding.ValueString() != "" {
 		payload.SecretDataEncoding = plan.SecretDataEncoding.ValueString()
 	}
-	if plan.SecretDataLink.ValueString() != "" && plan.SecretDataLink.ValueString() != types.StringNull().ValueString() {
+	if plan.SecretDataLink.ValueString() != "" {
 		payload.SecretDataLink = plan.SecretDataLink.ValueString()
 	}
-	if plan.SigningAlgo.ValueString() != "" && plan.SigningAlgo.ValueString() != types.StringNull().ValueString() {
+	if plan.SigningAlgo.ValueString() != "" {
 		payload.SigningAlgo = plan.SigningAlgo.ValueString()
 	}
-	if plan.Size.ValueInt64() != types.Int64Null().ValueInt64() {
+	if !plan.Size.IsNull() && !plan.Size.IsUnknown() {
 		payload.Size = plan.Size.ValueInt64()
 	}
-	if plan.State.ValueString() != "" && plan.State.ValueString() != types.StringNull().ValueString() {
+	if plan.State.ValueString() != "" {
 		payload.State = plan.State.ValueString()
 	}
-	if plan.TemplateID.ValueString() != "" && plan.TemplateID.ValueString() != types.StringNull().ValueString() {
+	if plan.TemplateID.ValueString() != "" {
 		payload.TemplateID = plan.TemplateID.ValueString()
 	}
-	if plan.UnDeletable.ValueBool() != types.BoolNull().ValueBool() {
+	if !plan.UnDeletable.IsNull() && !plan.UnDeletable.IsUnknown() {
 		payload.UnDeletable = plan.UnDeletable.ValueBool()
 	}
-	if plan.UnExportable.ValueBool() != types.BoolNull().ValueBool() {
+	if !plan.UnExportable.IsNull() && !plan.UnExportable.IsUnknown() {
 		payload.UnExportable = plan.UnExportable.ValueBool()
 	}
-	if plan.UsageMask.ValueInt64() != types.Int64Null().ValueInt64() {
+	if !plan.UsageMask.IsNull() && !plan.UsageMask.IsUnknown() {
 		payload.UsageMask = plan.UsageMask.ValueInt64()
 	}
-	if plan.UUID.ValueString() != "" && plan.UUID.ValueString() != types.StringNull().ValueString() {
+	if plan.UUID.ValueString() != "" {
 		payload.UUID = plan.UUID.ValueString()
 	}
-	if plan.WrapKeyIDType.ValueString() != "" && plan.WrapKeyIDType.ValueString() != types.StringNull().ValueString() {
+	if plan.WrapKeyIDType.ValueString() != "" {
 		payload.WrapKeyIDType = plan.WrapKeyIDType.ValueString()
 	}
-	if plan.WrapKeyName.ValueString() != "" && plan.WrapKeyName.ValueString() != types.StringNull().ValueString() {
+	if plan.WrapKeyName.ValueString() != "" {
 		payload.WrapKeyName = plan.WrapKeyName.ValueString()
 	}
-	if plan.WrapPublicKey.ValueString() != "" && plan.WrapPublicKey.ValueString() != types.StringNull().ValueString() {
+	if plan.WrapPublicKey.ValueString() != "" {
 		payload.WrapPublicKey = plan.WrapPublicKey.ValueString()
 	}
-	if plan.WrapPublicKeyPadding.ValueString() != "" && plan.WrapPublicKeyPadding.ValueString() != types.StringNull().ValueString() {
+	if plan.WrapPublicKeyPadding.ValueString() != "" {
 		payload.WrapPublicKeyPadding = plan.WrapPublicKeyPadding.ValueString()
 	}
-	if plan.WrappingEncryptionAlgo.ValueString() != "" && plan.WrappingEncryptionAlgo.ValueString() != types.StringNull().ValueString() {
+	if plan.WrappingEncryptionAlgo.ValueString() != "" {
 		payload.WrappingEncryptionAlgo = plan.WrappingEncryptionAlgo.ValueString()
 	}
-	if plan.WrappingHashAlgo.ValueString() != "" && plan.WrappingHashAlgo.ValueString() != types.StringNull().ValueString() {
+	if plan.WrappingHashAlgo.ValueString() != "" {
 		payload.WrappingHashAlgo = plan.WrappingHashAlgo.ValueString()
 	}
-	if plan.WrappingMethod.ValueString() != "" && plan.WrappingMethod.ValueString() != types.StringNull().ValueString() {
+	if plan.WrappingMethod.ValueString() != "" {
 		payload.WrappingMethod = plan.WrappingMethod.ValueString()
 	}
-	if plan.XTS.ValueBool() != types.BoolNull().ValueBool() {
+	if !plan.XTS.IsNull() && !plan.XTS.IsUnknown() {
 		payload.XTS = plan.XTS.ValueBool()
 	}
 	// Add aliases to the payload if set
 	var arrAlias []KeyAliasJSON
 	for _, alias := range plan.Aliases {
 		var aliasJSON KeyAliasJSON
-		if alias.Alias.ValueString() != "" && alias.Alias.ValueString() != types.StringNull().ValueString() {
+		if alias.Alias.ValueString() != "" {
 			aliasJSON.Alias = alias.Alias.ValueString()
 		}
+		// index is Computed-only (server-assigned); only send it if state already has one
+		// (i.e. this is a re-create scenario where we know the prior index). On first Create
+		// the index is always null, so we omit it and let the server assign.
 		if alias.Index.ValueString() != "" {
 			parsed, parseErr := strconv.ParseInt(alias.Index.ValueString(), 10, 64)
 			if parseErr != nil {
 				resp.Diagnostics.AddError("Error Creating CipherTrust Key", "Invalid alias index value: "+alias.Index.ValueString()+": "+parseErr.Error())
 				return
 			}
-			aliasJSON.Index = parsed
+			aliasJSON.Index = &parsed
 		}
-		if alias.Type.ValueString() != "" && alias.Type.ValueString() != types.StringNull().ValueString() {
+		if alias.Type.ValueString() != "" {
 			aliasJSON.Type = alias.Type.ValueString()
 		}
 		arrAlias = append(arrAlias, aliasJSON)
@@ -880,29 +883,29 @@ func (r *resourceCMKey) Create(ctx context.Context, req resource.CreateRequest, 
 	payload.Aliases = arrAlias
 	// Add hkdfCreateParameters to payload if set
 	var hkdfCreateParameters HKDFParametersJSON
-	if !reflect.DeepEqual((*HKDFParametersTFSDK)(nil), plan.HKDFCreateParameters) {
+	if plan.HKDFCreateParameters != nil {
 		tflog.Debug(ctx, "HKDFParameters should not be empty at this point")
-		if plan.HKDFCreateParameters.HashAlgorithm.ValueString() != "" && plan.HKDFCreateParameters.HashAlgorithm.ValueString() != types.StringNull().ValueString() {
+		if plan.HKDFCreateParameters.HashAlgorithm.ValueString() != "" {
 			hkdfCreateParameters.HashAlgorithm = plan.HKDFCreateParameters.HashAlgorithm.ValueString()
 		}
-		if plan.HKDFCreateParameters.IKMKeyName.ValueString() != "" && plan.HKDFCreateParameters.IKMKeyName.ValueString() != types.StringNull().ValueString() {
+		if plan.HKDFCreateParameters.IKMKeyName.ValueString() != "" {
 			hkdfCreateParameters.IKMKeyName = plan.HKDFCreateParameters.IKMKeyName.ValueString()
 		}
-		if plan.HKDFCreateParameters.Info.ValueString() != "" && plan.HKDFCreateParameters.Info.ValueString() != types.StringNull().ValueString() {
+		if plan.HKDFCreateParameters.Info.ValueString() != "" {
 			hkdfCreateParameters.Info = plan.HKDFCreateParameters.Info.ValueString()
 		}
-		if plan.HKDFCreateParameters.Salt.ValueString() != "" && plan.HKDFCreateParameters.Salt.ValueString() != types.StringNull().ValueString() {
+		if plan.HKDFCreateParameters.Salt.ValueString() != "" {
 			hkdfCreateParameters.Salt = plan.HKDFCreateParameters.Salt.ValueString()
 		}
 		payload.HKDFCreateParameters = &hkdfCreateParameters
 	}
-	// Add hkdfCreateParameters to payload if set
+	// Add meta to payload if set
 	var metadata KeyMetadataJSON
-	if !reflect.DeepEqual((*KeyMetadataTFSDK)(nil), plan.Metadata) {
-		if plan.Metadata.OwnerId.ValueString() != "" && plan.Metadata.OwnerId.ValueString() != types.StringNull().ValueString() {
+	if plan.Metadata != nil {
+		if plan.Metadata.OwnerId.ValueString() != "" {
 			metadata.OwnerId = plan.Metadata.OwnerId.ValueString()
 		}
-		if !reflect.DeepEqual((*KeyMetadataPermissionsTFSDK)(nil), plan.Metadata.Permissions) {
+		if plan.Metadata.Permissions != nil {
 			var permission KeyMetadataPermissionsJSON
 			var decryptWithKey []string
 			var encryptWithKey []string
@@ -952,15 +955,15 @@ func (r *resourceCMKey) Create(ctx context.Context, req resource.CreateRequest, 
 			permission.UseKey = useKey
 			metadata.Permissions = &permission
 		}
-		if !reflect.DeepEqual((*KeyMetadataCTETFSDK)(nil), plan.Metadata.CTE) {
+		if plan.Metadata.CTE != nil {
 			var cteParams KeyMetadataCTEJSON
-			if plan.Metadata.CTE.PersistentOnClient.ValueBool() != types.BoolNull().ValueBool() {
+			if !plan.Metadata.CTE.PersistentOnClient.IsNull() && !plan.Metadata.CTE.PersistentOnClient.IsUnknown() {
 				cteParams.PersistentOnClient = plan.Metadata.CTE.PersistentOnClient.ValueBool()
 			}
-			if plan.Metadata.CTE.EncryptionMode.ValueString() != "" && plan.Metadata.CTE.EncryptionMode.ValueString() != types.StringNull().ValueString() {
+			if plan.Metadata.CTE.EncryptionMode.ValueString() != "" {
 				cteParams.EncryptionMode = plan.Metadata.CTE.EncryptionMode.ValueString()
 			}
-			if plan.Metadata.CTE.CTEVersioned.ValueBool() != types.BoolNull().ValueBool() {
+			if !plan.Metadata.CTE.CTEVersioned.IsNull() && !plan.Metadata.CTE.CTEVersioned.IsUnknown() {
 				cteParams.CTEVersioned = plan.Metadata.CTE.CTEVersioned.ValueBool()
 			}
 			metadata.CTE = &cteParams
@@ -970,35 +973,35 @@ func (r *resourceCMKey) Create(ctx context.Context, req resource.CreateRequest, 
 
 	// Add publicKeyParameters to payload if set
 	var publicKeyParameters PublicKeyParametersJSON
-	if !reflect.DeepEqual((*PublicKeyParametersTFSDK)(nil), plan.PublicKeyParameters) {
-		if plan.PublicKeyParameters.ActivationDate.ValueString() != "" && plan.PublicKeyParameters.ActivationDate.ValueString() != types.StringNull().ValueString() {
+	if plan.PublicKeyParameters != nil {
+		if plan.PublicKeyParameters.ActivationDate.ValueString() != "" {
 			publicKeyParameters.ActivationDate = plan.PublicKeyParameters.ActivationDate.ValueString()
 		}
-		if plan.PublicKeyParameters.ArchiveDate.ValueString() != "" && plan.PublicKeyParameters.ArchiveDate.ValueString() != types.StringNull().ValueString() {
+		if plan.PublicKeyParameters.ArchiveDate.ValueString() != "" {
 			publicKeyParameters.ArchiveDate = plan.PublicKeyParameters.ArchiveDate.ValueString()
 		}
-		if plan.PublicKeyParameters.DeactivationDate.ValueString() != "" && plan.PublicKeyParameters.DeactivationDate.ValueString() != types.StringNull().ValueString() {
+		if plan.PublicKeyParameters.DeactivationDate.ValueString() != "" {
 			publicKeyParameters.DeactivationDate = plan.PublicKeyParameters.DeactivationDate.ValueString()
 		}
-		if plan.PublicKeyParameters.Name.ValueString() != "" && plan.PublicKeyParameters.Name.ValueString() != types.StringNull().ValueString() {
+		if plan.PublicKeyParameters.Name.ValueString() != "" {
 			publicKeyParameters.Name = plan.PublicKeyParameters.Name.ValueString()
 		}
-		if plan.PublicKeyParameters.State.ValueString() != "" && plan.PublicKeyParameters.State.ValueString() != types.StringNull().ValueString() {
+		if plan.PublicKeyParameters.State.ValueString() != "" {
 			publicKeyParameters.State = plan.PublicKeyParameters.State.ValueString()
 		}
-		if plan.PublicKeyParameters.UnDeletable.ValueBool() != types.BoolNull().ValueBool() {
+		if !plan.PublicKeyParameters.UnDeletable.IsNull() && !plan.PublicKeyParameters.UnDeletable.IsUnknown() {
 			publicKeyParameters.UnDeletable = plan.PublicKeyParameters.UnDeletable.ValueBool()
 		}
-		if plan.PublicKeyParameters.UnExportable.ValueBool() != types.BoolNull().ValueBool() {
+		if !plan.PublicKeyParameters.UnExportable.IsNull() && !plan.PublicKeyParameters.UnExportable.IsUnknown() {
 			publicKeyParameters.UnExportable = plan.PublicKeyParameters.UnExportable.ValueBool()
 		}
-		if plan.PublicKeyParameters.UsageMask.ValueInt64() != types.Int64Null().ValueInt64() {
+		if !plan.PublicKeyParameters.UsageMask.IsNull() && !plan.PublicKeyParameters.UsageMask.IsUnknown() {
 			publicKeyParameters.UsageMask = plan.PublicKeyParameters.UsageMask.ValueInt64()
 		}
 		var arrPubKeyAlias []KeyAliasJSON
 		for _, pubKeyAlias := range plan.PublicKeyParameters.Aliases {
 			var pubKeyAliasJSON KeyAliasJSON
-			if pubKeyAlias.Alias.ValueString() != "" && pubKeyAlias.Alias.ValueString() != types.StringNull().ValueString() {
+			if pubKeyAlias.Alias.ValueString() != "" {
 				pubKeyAliasJSON.Alias = pubKeyAlias.Alias.ValueString()
 			}
 			if pubKeyAlias.Index.ValueString() != "" {
@@ -1007,9 +1010,9 @@ func (r *resourceCMKey) Create(ctx context.Context, req resource.CreateRequest, 
 					resp.Diagnostics.AddError("Error Creating CipherTrust Key", "Invalid public key alias index value: "+pubKeyAlias.Index.ValueString()+": "+parseErr.Error())
 					return
 				}
-				pubKeyAliasJSON.Index = parsed
+				pubKeyAliasJSON.Index = &parsed
 			}
-			if pubKeyAlias.Type.ValueString() != "" && pubKeyAlias.Type.ValueString() != types.StringNull().ValueString() {
+			if pubKeyAlias.Type.ValueString() != "" {
 				pubKeyAliasJSON.Type = pubKeyAlias.Type.ValueString()
 			}
 			arrPubKeyAlias = append(arrPubKeyAlias, pubKeyAliasJSON)
@@ -1019,57 +1022,57 @@ func (r *resourceCMKey) Create(ctx context.Context, req resource.CreateRequest, 
 	}
 	// Add wrapHKDF to payload if set
 	var wrapHKDF WrapHKDFJSON
-	if !reflect.DeepEqual((*WrapHKDFTFSDK)(nil), plan.HKDFWrap) {
-		if plan.HKDFWrap.HashAlgorithm.ValueString() != "" && plan.HKDFWrap.HashAlgorithm.ValueString() != types.StringNull().ValueString() {
+	if plan.HKDFWrap != nil {
+		if plan.HKDFWrap.HashAlgorithm.ValueString() != "" {
 			wrapHKDF.HashAlgorithm = plan.HKDFWrap.HashAlgorithm.ValueString()
 		}
-		if plan.HKDFWrap.OKMLen.ValueInt64() != types.Int64Null().ValueInt64() {
+		if !plan.HKDFWrap.OKMLen.IsNull() && !plan.HKDFWrap.OKMLen.IsUnknown() {
 			wrapHKDF.OKMLen = plan.HKDFWrap.OKMLen.ValueInt64()
 		}
-		if plan.HKDFWrap.Info.ValueString() != "" && plan.HKDFWrap.Info.ValueString() != types.StringNull().ValueString() {
+		if plan.HKDFWrap.Info.ValueString() != "" {
 			wrapHKDF.Info = plan.HKDFWrap.Info.ValueString()
 		}
-		if plan.HKDFWrap.Salt.ValueString() != "" && plan.HKDFWrap.Salt.ValueString() != types.StringNull().ValueString() {
+		if plan.HKDFWrap.Salt.ValueString() != "" {
 			wrapHKDF.Salt = plan.HKDFWrap.Salt.ValueString()
 		}
 		payload.HKDFWrap = &wrapHKDF
 	}
 	// Add wrapPBE to payload if set
 	var wrapPBE WrapPBEJSON
-	if !reflect.DeepEqual((*WrapPBETFSDK)(nil), plan.PBEWrap) {
-		if plan.PBEWrap.DKLen.ValueInt64() != types.Int64Null().ValueInt64() {
+	if plan.PBEWrap != nil {
+		if !plan.PBEWrap.DKLen.IsNull() && !plan.PBEWrap.DKLen.IsUnknown() {
 			wrapPBE.DKLen = plan.PBEWrap.DKLen.ValueInt64()
 		}
-		if plan.PBEWrap.HashAlgorithm.ValueString() != "" && plan.PBEWrap.HashAlgorithm.ValueString() != types.StringNull().ValueString() {
+		if plan.PBEWrap.HashAlgorithm.ValueString() != "" {
 			wrapPBE.HashAlgorithm = plan.PBEWrap.HashAlgorithm.ValueString()
 		}
-		if plan.PBEWrap.Iteration.ValueInt64() != types.Int64Null().ValueInt64() {
+		if !plan.PBEWrap.Iteration.IsNull() && !plan.PBEWrap.Iteration.IsUnknown() {
 			wrapPBE.Iteration = plan.PBEWrap.Iteration.ValueInt64()
 		}
-		if plan.PBEWrap.Password.ValueString() != "" && plan.PBEWrap.Password.ValueString() != types.StringNull().ValueString() {
+		if plan.PBEWrap.Password.ValueString() != "" {
 			wrapPBE.Password = plan.PBEWrap.Password.ValueString()
 		}
-		if plan.PBEWrap.PasswordIdentifier.ValueString() != "" && plan.PBEWrap.PasswordIdentifier.ValueString() != types.StringNull().ValueString() {
+		if plan.PBEWrap.PasswordIdentifier.ValueString() != "" {
 			wrapPBE.PasswordIdentifier = plan.PBEWrap.PasswordIdentifier.ValueString()
 		}
-		if plan.PBEWrap.PasswordIdentifierType.ValueString() != "" && plan.PBEWrap.PasswordIdentifierType.ValueString() != types.StringNull().ValueString() {
+		if plan.PBEWrap.PasswordIdentifierType.ValueString() != "" {
 			wrapPBE.PasswordIdentifierType = plan.PBEWrap.PasswordIdentifierType.ValueString()
 		}
-		if plan.PBEWrap.Purpose.ValueString() != "" && plan.PBEWrap.Purpose.ValueString() != types.StringNull().ValueString() {
+		if plan.PBEWrap.Purpose.ValueString() != "" {
 			wrapPBE.Purpose = plan.PBEWrap.Purpose.ValueString()
 		}
-		if plan.PBEWrap.Salt.ValueString() != "" && plan.PBEWrap.Salt.ValueString() != types.StringNull().ValueString() {
+		if plan.PBEWrap.Salt.ValueString() != "" {
 			wrapPBE.Salt = plan.PBEWrap.Salt.ValueString()
 		}
 		payload.PBEWrap = &wrapPBE
 	}
 	// Add wrapPBE to payload if set
 	var wrapRSAAES WrapRSAAESJSON
-	if !reflect.DeepEqual((*WrapRSAAESTFSDK)(nil), plan.RSAAESWrap) {
-		if plan.RSAAESWrap.AESKeySize.ValueInt64() != types.Int64Null().ValueInt64() {
+	if plan.RSAAESWrap != nil {
+		if !plan.RSAAESWrap.AESKeySize.IsNull() && !plan.RSAAESWrap.AESKeySize.IsUnknown() {
 			wrapRSAAES.AESKeySize = plan.RSAAESWrap.AESKeySize.ValueInt64()
 		}
-		if plan.RSAAESWrap.Padding.ValueString() != "" && plan.RSAAESWrap.Padding.ValueString() != types.StringNull().ValueString() {
+		if plan.RSAAESWrap.Padding.ValueString() != "" {
 			wrapRSAAES.Padding = plan.RSAAESWrap.Padding.ValueString()
 		}
 		payload.RSAAESWrap = &wrapRSAAES
@@ -1103,35 +1106,24 @@ func (r *resourceCMKey) Create(ctx context.Context, req resource.CreateRequest, 
 
 	plan.ID = types.StringValue(gjson.Get(response, "id").String())
 
-	// For Optional+Computed bool fields the CM API omits the field when it is false
-	// (the default). Only update from the POST response when the API explicitly returns
-	// a value; if the field is absent AND the plan already has a known value (e.g. the
-	// user set xts=false), preserve that known value to avoid "Provider produced
-	// inconsistent result after apply". Only set null when the plan value was Unknown
-	// (first apply, user did not configure the field).
-	// Only hydrate undeletable/unexportable/xts from the POST response when the user
-	// explicitly configured them. CM returns false for these when not set, but the
-	// plan computed null — hydrating false into null-schema state causes
-	// "Provider produced inconsistent result after apply".
+	// Hydrate boolean fields from POST response only when the server explicitly returns
+	// them. If a field is absent from the response (the API omits false-default values,
+	// and xts/unexportable/undeletable are not always echoed), preserve the plan value
+	// that the user already set rather than overwriting with null.
 	if !plan.UnDeletable.IsNull() {
 		if r := gjson.Get(response, "undeletable"); r.Exists() {
 			plan.UnDeletable = types.BoolValue(r.Bool())
-		} else {
-			plan.UnDeletable = types.BoolNull()
 		}
 	}
 	if !plan.UnExportable.IsNull() {
 		if r := gjson.Get(response, "unexportable"); r.Exists() {
 			plan.UnExportable = types.BoolValue(r.Bool())
-		} else {
-			plan.UnExportable = types.BoolNull()
 		}
 	}
 	if !plan.XTS.IsNull() {
+		// xts is not in the Key GET response schema; preserve plan value if absent.
 		if r := gjson.Get(response, "xts"); r.Exists() {
 			plan.XTS = types.BoolValue(r.Bool())
-		} else {
-			plan.XTS = types.BoolNull()
 		}
 	}
 
@@ -1140,9 +1132,11 @@ func (r *resourceCMKey) Create(ctx context.Context, req resource.CreateRequest, 
 	if plan.Aliases != nil {
 		aliasesResp := gjson.Get(response, "aliases")
 		if aliasesResp.Exists() && len(aliasesResp.Array()) > 0 {
-			// Build a set of alias names the user configured to filter out server-auto-created entries.
+			// Build ordered map: alias name → position in plan (for stable sort).
+			planOrder := make(map[string]int, len(plan.Aliases))
 			configured := make(map[string]bool, len(plan.Aliases))
-			for _, ca := range plan.Aliases {
+			for i, ca := range plan.Aliases {
+				planOrder[ca.Alias.ValueString()] = i
 				configured[ca.Alias.ValueString()] = true
 			}
 			var hydratedAliases []*KeyAliasTFSDK
@@ -1169,6 +1163,11 @@ func (r *resourceCMKey) Create(ctx context.Context, req resource.CreateRequest, 
 				hydratedAliases = append(hydratedAliases, a)
 			}
 			if hydratedAliases != nil {
+				// Sort to match the plan's alias order to avoid perpetual list diffs.
+				sort.Slice(hydratedAliases, func(i, j int) bool {
+					return planOrder[hydratedAliases[i].Alias.ValueString()] <
+						planOrder[hydratedAliases[j].Alias.ValueString()]
+				})
 				plan.Aliases = hydratedAliases
 			}
 		}
@@ -1240,15 +1239,29 @@ func (r *resourceCMKey) Read(ctx context.Context, req resource.ReadRequest, resp
 			plan.Size = types.Int64Null()
 		}
 	}
-	if r := gjson.Get(response, "description"); r.Exists() {
-		plan.Description = types.StringValue(r.String())
-	} else {
-		plan.Description = types.StringNull()
+	// description: guard on state to prevent drift for keys created without a description.
+	// CM returns "" for description-less keys; unconditional hydration turns null→"", causing a perpetual diff.
+	if !state.Description.IsNull() {
+		if r := gjson.Get(response, "description"); r.Exists() {
+			plan.Description = types.StringValue(r.String())
+		} else {
+			plan.Description = types.StringNull()
+		}
 	}
-	if r := gjson.Get(response, "rotationFrequencyDays"); r.Exists() {
-		plan.RotationFrequencyDays = types.StringValue(r.String())
-	} else {
-		plan.RotationFrequencyDays = types.StringNull()
+	// rotation_frequency_days: guard on state to avoid drift for keys created without it.
+	// API normalises "0" → "" (disabled). When server returns "" and prior state was "0",
+	// preserve "0" in state so the user's config value survives the round-trip.
+	if !state.RotationFrequencyDays.IsNull() {
+		if r := gjson.Get(response, "rotationFrequencyDays"); r.Exists() {
+			serverVal := r.String()
+			if serverVal == "" && state.RotationFrequencyDays.ValueString() == "0" {
+				plan.RotationFrequencyDays = state.RotationFrequencyDays
+			} else {
+				plan.RotationFrequencyDays = types.StringValue(serverVal)
+			}
+		} else {
+			plan.RotationFrequencyDays = types.StringNull()
+		}
 	}
 	// Bug 2 fix — unconditional bool fields; when CM omits the field (false is the
 	// API default and is returned by omission), preserve the prior state value to
@@ -1258,22 +1271,18 @@ func (r *resourceCMKey) Read(ctx context.Context, req resource.ReadRequest, resp
 	if !state.UnDeletable.IsNull() {
 		if r := gjson.Get(response, "undeletable"); r.Exists() {
 			plan.UnDeletable = types.BoolValue(r.Bool())
-		} else {
-			plan.UnDeletable = types.BoolNull()
 		}
+		// else: API omits false-default value; preserve prior state (plan=state above)
 	}
 	if !state.UnExportable.IsNull() {
 		if r := gjson.Get(response, "unexportable"); r.Exists() {
 			plan.UnExportable = types.BoolValue(r.Bool())
-		} else {
-			plan.UnExportable = types.BoolNull()
 		}
 	}
 	if !state.XTS.IsNull() {
+		// xts is not in the Key GET response schema; preserve state value when absent.
 		if r := gjson.Get(response, "xts"); r.Exists() {
 			plan.XTS = types.BoolValue(r.Bool())
-		} else {
-			plan.XTS = types.BoolNull()
 		}
 	}
 
@@ -1335,28 +1344,36 @@ func (r *resourceCMKey) Read(ctx context.Context, req resource.ReadRequest, resp
 		}
 	}
 
-	// Labels
+	// Labels: if the server returns {} (empty object) and the user never configured
+	// labels, keep state as null to avoid a perpetual null→empty-map diff.
 	labelsResult := gjson.Get(response, "labels")
 	if labelsResult.Exists() && labelsResult.Type != gjson.Null {
 		m := make(map[string]string)
 		for k, v := range labelsResult.Map() {
 			m[k] = v.String()
 		}
-		plan.Labels, diags = types.MapValueFrom(ctx, types.StringType, m)
-		resp.Diagnostics.Append(diags...)
-		if resp.Diagnostics.HasError() {
-			return
+		if len(m) == 0 && state.Labels.IsNull() {
+			plan.Labels = types.MapNull(types.StringType)
+		} else {
+			plan.Labels, diags = types.MapValueFrom(ctx, types.StringType, m)
+			resp.Diagnostics.Append(diags...)
+			if resp.Diagnostics.HasError() {
+				return
+			}
 		}
 	} else {
 		plan.Labels = types.MapNull(types.StringType)
 	}
 
-	// Bug 3 fix — hydrate top-level aliases (guarded: only when user configured aliases).
-	// Filter out the server-auto-created key-name alias if it was not explicitly configured.
+	// Hydrate top-level aliases (guarded: only when user configured aliases).
+	// Filter out the server-auto-created key-name alias if not explicitly configured.
+	// Sort result to match state alias order to avoid perpetual list diffs.
 	if state.Aliases != nil {
 		keyName := state.Name.ValueString()
+		stateOrder := make(map[string]int, len(state.Aliases))
 		configuredAliasNames := make(map[string]bool, len(state.Aliases))
-		for _, sa := range state.Aliases {
+		for i, sa := range state.Aliases {
+			stateOrder[sa.Alias.ValueString()] = i
 			configuredAliasNames[sa.Alias.ValueString()] = true
 		}
 		aliasesResult := gjson.Get(response, "aliases")
@@ -1386,6 +1403,18 @@ func (r *resourceCMKey) Read(ctx context.Context, req resource.ReadRequest, resp
 				aliases = append(aliases, a)
 			}
 			if aliases != nil {
+				// Sort to match the state's alias order to avoid perpetual list diffs.
+				sort.Slice(aliases, func(i, j int) bool {
+					oi, okI := stateOrder[aliases[i].Alias.ValueString()]
+					oj, okJ := stateOrder[aliases[j].Alias.ValueString()]
+					if !okI {
+						return false // new aliases go to the end
+					}
+					if !okJ {
+						return true
+					}
+					return oi < oj
+				})
 				plan.Aliases = aliases
 			} else {
 				plan.Aliases = nil
@@ -1399,7 +1428,7 @@ func (r *resourceCMKey) Read(ctx context.Context, req resource.ReadRequest, resp
 	metaResult := gjson.Get(response, "meta")
 	if metaResult.Exists() && metaResult.Type != gjson.Null {
 		var metaVal KeyMetadataTFSDK
-		if r := gjson.Get(response, "meta.owner_id"); r.Exists() && r.String() != "" {
+		if r := gjson.Get(response, "meta.ownerId"); r.Exists() && r.String() != "" {
 			metaVal.OwnerId = types.StringValue(r.String())
 		} else {
 			metaVal.OwnerId = types.StringNull()
@@ -1465,89 +1494,10 @@ func (r *resourceCMKey) Read(ctx context.Context, req resource.ReadRequest, resp
 		plan.Metadata = nil
 	}
 
-	// Hydrate public_key_parameters
-	pkpResult := gjson.Get(response, "publicKeyParameters")
-	if pkpResult.Exists() && pkpResult.Type != gjson.Null {
-		var pkp PublicKeyParametersTFSDK
-		if r := gjson.Get(response, "publicKeyParameters.name"); r.Exists() {
-			pkp.Name = types.StringValue(r.String())
-		} else {
-			pkp.Name = types.StringNull()
-		}
-		if r := gjson.Get(response, "publicKeyParameters.usageMask"); r.Exists() {
-			pkp.UsageMask = types.Int64Value(r.Int())
-		} else {
-			pkp.UsageMask = types.Int64Null()
-		}
-		if r := gjson.Get(response, "publicKeyParameters.undeletable"); r.Exists() {
-			pkp.UnDeletable = types.BoolValue(r.Bool())
-		} else {
-			pkp.UnDeletable = types.BoolNull()
-		}
-		if r := gjson.Get(response, "publicKeyParameters.unexportable"); r.Exists() {
-			pkp.UnExportable = types.BoolValue(r.Bool())
-		} else {
-			pkp.UnExportable = types.BoolNull()
-		}
-		if state.PublicKeyParameters != nil && !state.PublicKeyParameters.State.IsNull() {
-			if r := gjson.Get(response, "publicKeyParameters.state"); r.Exists() {
-				pkp.State = types.StringValue(r.String())
-			} else {
-				pkp.State = types.StringNull()
-			}
-		}
-		if state.PublicKeyParameters != nil && !state.PublicKeyParameters.ActivationDate.IsNull() {
-			if r := gjson.Get(response, "publicKeyParameters.activationDate"); r.Exists() {
-				pkp.ActivationDate = types.StringValue(r.String())
-			} else {
-				pkp.ActivationDate = types.StringNull()
-			}
-		}
-		if state.PublicKeyParameters != nil && !state.PublicKeyParameters.DeactivationDate.IsNull() {
-			if r := gjson.Get(response, "publicKeyParameters.deactivationDate"); r.Exists() {
-				pkp.DeactivationDate = types.StringValue(r.String())
-			} else {
-				pkp.DeactivationDate = types.StringNull()
-			}
-		}
-		if state.PublicKeyParameters != nil && !state.PublicKeyParameters.ArchiveDate.IsNull() {
-			if r := gjson.Get(response, "publicKeyParameters.archiveDate"); r.Exists() {
-				pkp.ArchiveDate = types.StringValue(r.String())
-			} else {
-				pkp.ArchiveDate = types.StringNull()
-			}
-		}
-		// PKP aliases — value type ([]KeyAliasTFSDK)
-		pkpAliasesResult := gjson.Get(response, "publicKeyParameters.aliases")
-		if pkpAliasesResult.Exists() && len(pkpAliasesResult.Array()) > 0 {
-			var pkpAliases []KeyAliasTFSDK
-			for _, elem := range pkpAliasesResult.Array() {
-				a := KeyAliasTFSDK{}
-				if r := elem.Get("alias"); r.Exists() {
-					a.Alias = types.StringValue(r.String())
-				} else {
-					a.Alias = types.StringNull()
-				}
-				if r := elem.Get("index"); r.Exists() {
-					a.Index = types.StringValue(r.String())
-				} else {
-					a.Index = types.StringNull()
-				}
-				if r := elem.Get("type"); r.Exists() {
-					a.Type = types.StringValue(r.String())
-				} else {
-					a.Type = types.StringNull()
-				}
-				pkpAliases = append(pkpAliases, a)
-			}
-			pkp.Aliases = pkpAliases
-		} else {
-			pkp.Aliases = nil
-		}
-		plan.PublicKeyParameters = &pkp
-	} else {
-		plan.PublicKeyParameters = nil
-	}
+	// public_key_parameters is a Create-only request field; GET /vault/keys2/{id} never
+	// returns it (swagger-keys.yaml Key schema has no publicKeyParameters property).
+	// Preserve whatever is in state to avoid perpetual drift for RSA keys that configure it.
+	plan.PublicKeyParameters = state.PublicKeyParameters
 
 	diags = resp.State.Set(ctx, plan)
 	resp.Diagnostics.Append(diags...)
@@ -1570,14 +1520,19 @@ func (r *resourceCMKey) Update(ctx context.Context, req resource.UpdateRequest, 
 		return
 	}
 
-	if plan.ActivationDate.ValueString() != "" && plan.ActivationDate.ValueString() != types.StringNull().ValueString() {
+	if plan.ActivationDate.ValueString() != "" {
 		payload.ActivationDate = plan.ActivationDate.ValueString()
 	}
-	// Add aliases to the payload if set
+	// Build alias PATCH payload using the API's delta semantics:
+	//   - add:    { alias, type }           (no index)
+	//   - modify: { alias, type, index }    (existing index)
+	//   - delete: { index }                 (index only, no alias/type)
 	var arrAlias []KeyAliasJSON
+
+	// Emit add/modify entries for all aliases in the plan.
 	for _, alias := range plan.Aliases {
 		var aliasJSON KeyAliasJSON
-		if alias.Alias.ValueString() != "" && alias.Alias.ValueString() != types.StringNull().ValueString() {
+		if alias.Alias.ValueString() != "" {
 			aliasJSON.Alias = alias.Alias.ValueString()
 		}
 		if alias.Index.ValueString() != "" {
@@ -1586,37 +1541,51 @@ func (r *resourceCMKey) Update(ctx context.Context, req resource.UpdateRequest, 
 				resp.Diagnostics.AddError("Error Updating CipherTrust Key", "Invalid alias index value: "+alias.Index.ValueString()+": "+parseErr.Error())
 				return
 			}
-			aliasJSON.Index = parsed
+			aliasJSON.Index = &parsed // modify existing alias
 		}
-		if alias.Type.ValueString() != "" && alias.Type.ValueString() != types.StringNull().ValueString() {
+		// else: no index → add new alias
+		if alias.Type.ValueString() != "" {
 			aliasJSON.Type = alias.Type.ValueString()
 		}
 		arrAlias = append(arrAlias, aliasJSON)
 	}
+
+	// Emit delete entries for aliases present in prior state but removed from plan.
+	planAliasNames := make(map[string]bool, len(plan.Aliases))
+	for _, a := range plan.Aliases {
+		planAliasNames[a.Alias.ValueString()] = true
+	}
+	for _, sa := range state.Aliases {
+		if !planAliasNames[sa.Alias.ValueString()] && sa.Index.ValueString() != "" {
+			idx, _ := strconv.ParseInt(sa.Index.ValueString(), 10, 64)
+			arrAlias = append(arrAlias, KeyAliasJSON{Index: &idx}) // delete: index only
+		}
+	}
+
 	payload.Aliases = arrAlias
 
-	if plan.ArchiveDate.ValueString() != "" && plan.ArchiveDate.ValueString() != types.StringNull().ValueString() {
+	if plan.ArchiveDate.ValueString() != "" {
 		payload.ArchiveDate = plan.ArchiveDate.ValueString()
 	}
-	if plan.CompromiseOccurrenceDate.ValueString() != "" && plan.CompromiseOccurrenceDate.ValueString() != types.StringNull().ValueString() {
+	if plan.CompromiseOccurrenceDate.ValueString() != "" {
 		payload.CompromiseOccurrenceDate = plan.CompromiseOccurrenceDate.ValueString()
 	}
-	if plan.DeactivationDate.ValueString() != "" && plan.DeactivationDate.ValueString() != types.StringNull().ValueString() {
+	if plan.DeactivationDate.ValueString() != "" {
 		payload.DeactivationDate = plan.DeactivationDate.ValueString()
 	}
-	if plan.Description.ValueString() != "" && plan.Description.ValueString() != types.StringNull().ValueString() {
+	if plan.Description.ValueString() != "" {
 		payload.Description = plan.Description.ValueString()
 	}
-	if plan.KeyId.ValueString() != "" && plan.KeyId.ValueString() != types.StringNull().ValueString() {
+	if plan.KeyId.ValueString() != "" {
 		payload.KeyId = plan.KeyId.ValueString()
 	}
 	// Add meta to payload if set
 	var metadata KeyMetadataJSON
-	if !reflect.DeepEqual((*KeyMetadataTFSDK)(nil), plan.Metadata) {
-		if plan.Metadata.OwnerId.ValueString() != "" && plan.Metadata.OwnerId.ValueString() != types.StringNull().ValueString() {
+	if plan.Metadata != nil {
+		if plan.Metadata.OwnerId.ValueString() != "" {
 			metadata.OwnerId = plan.Metadata.OwnerId.ValueString()
 		}
-		if !reflect.DeepEqual((*KeyMetadataPermissionsTFSDK)(nil), plan.Metadata.Permissions) {
+		if plan.Metadata.Permissions != nil {
 			var permission KeyMetadataPermissionsJSON
 			var decryptWithKey []string
 			var encryptWithKey []string
@@ -1666,15 +1635,15 @@ func (r *resourceCMKey) Update(ctx context.Context, req resource.UpdateRequest, 
 			permission.UseKey = useKey
 			metadata.Permissions = &permission
 		}
-		if !reflect.DeepEqual((*KeyMetadataCTETFSDK)(nil), plan.Metadata.CTE) {
+		if plan.Metadata.CTE != nil {
 			var cteParams KeyMetadataCTEJSON
-			if plan.Metadata.CTE.PersistentOnClient.ValueBool() != types.BoolNull().ValueBool() {
+			if !plan.Metadata.CTE.PersistentOnClient.IsNull() && !plan.Metadata.CTE.PersistentOnClient.IsUnknown() {
 				cteParams.PersistentOnClient = plan.Metadata.CTE.PersistentOnClient.ValueBool()
 			}
-			if plan.Metadata.CTE.EncryptionMode.ValueString() != "" && plan.Metadata.CTE.EncryptionMode.ValueString() != types.StringNull().ValueString() {
+			if plan.Metadata.CTE.EncryptionMode.ValueString() != "" {
 				cteParams.EncryptionMode = plan.Metadata.CTE.EncryptionMode.ValueString()
 			}
-			if plan.Metadata.CTE.CTEVersioned.ValueBool() != types.BoolNull().ValueBool() {
+			if !plan.Metadata.CTE.CTEVersioned.IsNull() && !plan.Metadata.CTE.CTEVersioned.IsUnknown() {
 				cteParams.CTEVersioned = plan.Metadata.CTE.CTEVersioned.ValueBool()
 			}
 			metadata.CTE = &cteParams
@@ -1682,34 +1651,34 @@ func (r *resourceCMKey) Update(ctx context.Context, req resource.UpdateRequest, 
 		payload.Metadata = &metadata
 	}
 
-	if plan.MUID.ValueString() != "" && plan.MUID.ValueString() != types.StringNull().ValueString() {
+	if plan.MUID.ValueString() != "" {
 		payload.MUID = plan.MUID.ValueString()
 	}
-	if plan.ProcessStartDate.ValueString() != "" && plan.ProcessStartDate.ValueString() != types.StringNull().ValueString() {
+	if plan.ProcessStartDate.ValueString() != "" {
 		payload.ProcessStartDate = plan.ProcessStartDate.ValueString()
 	}
-	if plan.ProtectStopDate.ValueString() != "" && plan.ProtectStopDate.ValueString() != types.StringNull().ValueString() {
+	if plan.ProtectStopDate.ValueString() != "" {
 		payload.ProtectStopDate = plan.ProtectStopDate.ValueString()
 	}
-	if plan.RevocationMessage.ValueString() != "" && plan.RevocationMessage.ValueString() != types.StringNull().ValueString() {
+	if plan.RevocationMessage.ValueString() != "" {
 		payload.RevocationMessage = plan.RevocationMessage.ValueString()
 	}
-	if plan.RevocationReason.ValueString() != "" && plan.RevocationReason.ValueString() != types.StringNull().ValueString() {
+	if plan.RevocationReason.ValueString() != "" {
 		payload.RevocationReason = plan.RevocationReason.ValueString()
 	}
-	if plan.RotationFrequencyDays.ValueString() != "" && plan.RotationFrequencyDays.ValueString() != types.StringNull().ValueString() {
+	if plan.RotationFrequencyDays.ValueString() != "" {
 		payload.RotationFrequencyDays = plan.RotationFrequencyDays.ValueString()
 	}
-	if plan.UnDeletable.ValueBool() != types.BoolNull().ValueBool() {
+	if !plan.UnDeletable.IsNull() && !plan.UnDeletable.IsUnknown() {
 		payload.UnDeletable = plan.UnDeletable.ValueBool()
 	}
-	if plan.UnExportable.ValueBool() != types.BoolNull().ValueBool() {
+	if !plan.UnExportable.IsNull() && !plan.UnExportable.IsUnknown() {
 		payload.UnExportable = plan.UnExportable.ValueBool()
 	}
-	if plan.UsageMask.ValueInt64() != types.Int64Null().ValueInt64() {
+	if !plan.UsageMask.IsNull() && !plan.UsageMask.IsUnknown() {
 		payload.UsageMask = plan.UsageMask.ValueInt64()
 	}
-	if plan.AllVersions.ValueBool() != types.BoolNull().ValueBool() {
+	if !plan.AllVersions.IsNull() && !plan.AllVersions.IsUnknown() {
 		payload.AllVersions = plan.AllVersions.ValueBool()
 	}
 	// Add labels to payload
@@ -1729,20 +1698,22 @@ func (r *resourceCMKey) Update(ctx context.Context, req resource.UpdateRequest, 
 		return
 	}
 
-	response, err := r.client.UpdateData(ctx, plan.ID.ValueString(), common.URL_KEY_MANAGEMENT, payloadJSON, "id")
+	// UpdateDataV2 returns the full PATCH response body (KeyExtended), which lets us
+	// pick up server-assigned alias indices for newly added aliases immediately.
+	responseBody, err := r.client.UpdateDataV2(ctx, plan.ID.ValueString(), common.URL_KEY_MANAGEMENT, payloadJSON)
 	if err != nil {
 		tflog.Debug(ctx, common.ERR_METHOD_END+err.Error()+" [resource_cm_key.go -> Update]["+plan.ID.ValueString()+"]")
 		resp.Diagnostics.AddError(
 			"Error updating key on CipherTrust Manager: ",
-			"Could not update key, unexpected error: "+err.Error()+string(payloadJSON),
+			"Could not update key, unexpected error: "+err.Error(),
 		)
 		return
 	}
 
-	plan.ID = types.StringValue(response)
+	plan.ID = types.StringValue(gjson.Get(responseBody, "id").String())
 
-	// Resolve any Optional+Computed bool fields that remain unknown after the PATCH.
-	// The CM API does not return these in the PATCH response, so use the prior state.
+	// Resolve Optional bool fields that may remain unknown after PATCH if the user
+	// did not explicitly configure them (IsUnknown means plan modifier left them open).
 	if plan.XTS.IsUnknown() {
 		plan.XTS = state.XTS
 	}
@@ -1751,6 +1722,50 @@ func (r *resourceCMKey) Update(ctx context.Context, req resource.UpdateRequest, 
 	}
 	if plan.UnExportable.IsUnknown() {
 		plan.UnExportable = state.UnExportable
+	}
+
+	// Re-hydrate alias indices from PATCH response so newly added aliases get their
+	// server-assigned index immediately (no need to wait for the next Read).
+	if plan.Aliases != nil {
+		aliasesResp := gjson.Get(responseBody, "aliases")
+		if aliasesResp.Exists() && len(aliasesResp.Array()) > 0 {
+			planOrder := make(map[string]int, len(plan.Aliases))
+			configuredAliasNames := make(map[string]bool, len(plan.Aliases))
+			for i, a := range plan.Aliases {
+				planOrder[a.Alias.ValueString()] = i
+				configuredAliasNames[a.Alias.ValueString()] = true
+			}
+			var hydratedAliases []*KeyAliasTFSDK
+			for _, elem := range aliasesResp.Array() {
+				if !configuredAliasNames[elem.Get("alias").String()] {
+					continue
+				}
+				a := &KeyAliasTFSDK{}
+				if rv := elem.Get("alias"); rv.Exists() {
+					a.Alias = types.StringValue(rv.String())
+				} else {
+					a.Alias = types.StringNull()
+				}
+				if rv := elem.Get("index"); rv.Exists() {
+					a.Index = types.StringValue(rv.String())
+				} else {
+					a.Index = types.StringNull()
+				}
+				if rv := elem.Get("type"); rv.Exists() {
+					a.Type = types.StringValue(rv.String())
+				} else {
+					a.Type = types.StringNull()
+				}
+				hydratedAliases = append(hydratedAliases, a)
+			}
+			if hydratedAliases != nil {
+				sort.Slice(hydratedAliases, func(i, j int) bool {
+					return planOrder[hydratedAliases[i].Alias.ValueString()] <
+						planOrder[hydratedAliases[j].Alias.ValueString()]
+				})
+				plan.Aliases = hydratedAliases
+			}
+		}
 	}
 
 	tflog.Trace(ctx, common.MSG_METHOD_END+"[resource_cm_key.go -> Update]["+plan.ID.ValueString()+"]")
@@ -1790,6 +1805,10 @@ func (r *resourceCMKey) Delete(ctx context.Context, req resource.DeleteRequest, 
 		}
 		return
 	}
+}
+
+func (r *resourceCMKey) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
+	resource.ImportStatePassthroughID(ctx, path.Root("id"), req, resp)
 }
 
 func (d *resourceCMKey) Configure(_ context.Context, req resource.ConfigureRequest, resp *resource.ConfigureResponse) {

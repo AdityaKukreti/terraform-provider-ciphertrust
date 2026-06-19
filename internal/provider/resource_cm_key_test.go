@@ -13,6 +13,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/acctest"
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
 	"github.com/hashicorp/terraform-plugin-testing/terraform"
+	"github.com/tidwall/gjson"
 )
 
 // aesKeyConfig returns a minimal ciphertrust_cm_key config for an AES key.
@@ -365,6 +366,371 @@ resource "ciphertrust_cm_key" "k" {
 				},
 				RefreshState:       true,
 				ExpectNonEmptyPlan: true,
+			},
+		},
+	})
+}
+
+// TestAccCMKey_aliasDeletion verifies that removing an alias from config causes the
+// PATCH to emit a delta-delete entry ({"index": N}) and the alias is removed from the server.
+func TestAccCMKey_aliasDeletion(t *testing.T) {
+	RequireCM(t)
+
+	suffix := uuid.New().String()[:8]
+	keyName := "tf-acc-key-aliasdel-" + suffix
+
+	twoAliasConfig := providerConfig + fmt.Sprintf(`
+resource "ciphertrust_cm_key" "k" {
+  name      = %q
+  algorithm = "aes"
+  key_size  = 256
+  aliases = [
+    { alias = "alias-keep", type = "string" },
+    { alias = "alias-drop", type = "string" },
+  ]
+}
+`, keyName)
+
+	oneAliasConfig := providerConfig + fmt.Sprintf(`
+resource "ciphertrust_cm_key" "k" {
+  name      = %q
+  algorithm = "aes"
+  key_size  = 256
+  aliases = [
+    { alias = "alias-keep", type = "string" },
+  ]
+}
+`, keyName)
+
+	resource.Test(t, resource.TestCase{
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		Steps: []resource.TestStep{
+			{
+				Config: twoAliasConfig,
+				Check: checkStep(t, "alias deletion: create with two aliases",
+					resource.TestCheckResourceAttr("ciphertrust_cm_key.k", "aliases.#", "2"),
+					resource.TestCheckResourceAttr("ciphertrust_cm_key.k", "aliases.0.alias", "alias-keep"),
+					resource.TestCheckResourceAttr("ciphertrust_cm_key.k", "aliases.1.alias", "alias-drop"),
+					resource.TestCheckResourceAttrSet("ciphertrust_cm_key.k", "aliases.0.index"),
+					resource.TestCheckResourceAttrSet("ciphertrust_cm_key.k", "aliases.1.index"),
+				),
+			},
+			{
+				// Remove alias-drop from config; PATCH must emit delete entry for its index.
+				Config: oneAliasConfig,
+				Check: checkStep(t, "alias deletion: after removing alias-drop",
+					resource.TestCheckResourceAttr("ciphertrust_cm_key.k", "aliases.#", "1"),
+					resource.TestCheckResourceAttr("ciphertrust_cm_key.k", "aliases.0.alias", "alias-keep"),
+				),
+			},
+			{
+				// Refresh confirms server has only one alias (no ghost alias-drop).
+				RefreshState:       true,
+				ExpectNonEmptyPlan: false,
+			},
+		},
+	})
+}
+
+// TestAccCMKey_undeletableExplicitFalse verifies that setting undeletable=false (after true)
+// actually sends the value to the API. Previously the boolean-false gate swallowed it.
+func TestAccCMKey_undeletableExplicitFalse(t *testing.T) {
+	RequireCM(t)
+
+	suffix := uuid.New().String()[:8]
+	keyName := "tf-acc-key-undelfale-" + suffix
+
+	resource.Test(t, resource.TestCase{
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		Steps: []resource.TestStep{
+			{
+				Config: providerConfig + fmt.Sprintf(`
+resource "ciphertrust_cm_key" "k" {
+  name         = %q
+  algorithm    = "aes"
+  key_size     = 256
+  undeletable  = true
+}
+`, keyName),
+				Check: checkStep(t, "undeletable false: create with undeletable=true",
+					resource.TestCheckResourceAttr("ciphertrust_cm_key.k", "undeletable", "true"),
+				),
+			},
+			{
+				// Change undeletable to false. The PATCH must explicitly send
+				// {"undeletable": false} — the previous bug would have omitted it.
+				Config: providerConfig + fmt.Sprintf(`
+resource "ciphertrust_cm_key" "k" {
+  name                    = %q
+  algorithm               = "aes"
+  key_size                = 256
+  undeletable             = false
+  remove_from_state_on_destroy = true
+}
+`, keyName),
+				Check: checkStep(t, "undeletable false: after setting undeletable=false",
+					resource.TestCheckResourceAttr("ciphertrust_cm_key.k", "undeletable", "false"),
+				),
+			},
+			{
+				// Refresh: server should reflect undeletable=false now.
+				RefreshState:       true,
+				ExpectNonEmptyPlan: false,
+			},
+		},
+	})
+}
+
+// TestAccCMKey_rotationFrequencyDays covers the full rotation_frequency_days lifecycle:
+//  1. Create with a numeric rotation window → state stores that value.
+//  2. Update to a different window → change reaches the server.
+//  3. Drift: out-of-band PATCH changes the window → Read() detects the change.
+//  4. Disable rotation by setting "0" → server stores ""; state preserves "0"
+//     to avoid the perpetual diff caused by the API normalisation.
+func TestAccCMKey_rotationFrequencyDays(t *testing.T) {
+	RequireCM(t)
+	client, ok := createCMClient()
+	if !ok {
+		t.Skip("createCMClient failed")
+	}
+
+	suffix := uuid.New().String()[:8]
+	keyName := "tf-acc-key-rotfreq-" + suffix
+
+	var capturedID string
+
+	cfgWith := func(days string) string {
+		return providerConfig + fmt.Sprintf(`
+resource "ciphertrust_cm_key" "k" {
+  name                   = %q
+  algorithm              = "aes"
+  key_size               = 256
+  rotation_frequency_days = %q
+}
+`, keyName, days)
+	}
+
+	cfgDisabled := providerConfig + fmt.Sprintf(`
+resource "ciphertrust_cm_key" "k" {
+  name                   = %q
+  algorithm              = "aes"
+  key_size               = 256
+  rotation_frequency_days = "0"
+}
+`, keyName)
+
+	resource.Test(t, resource.TestCase{
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		Steps: []resource.TestStep{
+			// Step 1: create with rotation = 30 days
+			{
+				Config: cfgWith("30"),
+				Check: checkStep(t, "rotfreq: create with 30",
+					resource.TestCheckResourceAttrSet("ciphertrust_cm_key.k", "id"),
+					resource.TestCheckResourceAttr("ciphertrust_cm_key.k", "rotation_frequency_days", "30"),
+					func(s *terraform.State) error {
+						capturedID = s.RootModule().Resources["ciphertrust_cm_key.k"].Primary.ID
+						return nil
+					},
+				),
+			},
+			// Step 2: update to 7 days — Terraform must PATCH the server
+			{
+				Config: cfgWith("7"),
+				Check: checkStep(t, "rotfreq: update to 7",
+					resource.TestCheckResourceAttr("ciphertrust_cm_key.k", "rotation_frequency_days", "7"),
+				),
+			},
+			// Step 3: out-of-band drift — change to 90 days directly on server
+			{
+				PreConfig: func() {
+					payload, _ := json.Marshal(map[string]interface{}{"rotationFrequencyDays": "90"})
+					_, _ = client.UpdateData(context.Background(), capturedID, common.URL_KEY_MANAGEMENT, payload, "id")
+				},
+				RefreshState:       true,
+				ExpectNonEmptyPlan: true, // Read() detects the 90 vs 7 discrepancy
+			},
+			// Step 4: re-apply desired state (7)
+			{
+				Config: cfgWith("7"),
+				Check: checkStep(t, "rotfreq: restored to 7",
+					resource.TestCheckResourceAttr("ciphertrust_cm_key.k", "rotation_frequency_days", "7"),
+				),
+			},
+			// Step 5: disable rotation by setting "0"
+			// The server converts "0" → "" internally. State must preserve "0" to avoid
+			// perpetual diff on subsequent refreshes.
+			{
+				Config: cfgDisabled,
+				Check: checkStep(t, "rotfreq: disabled (0)",
+					resource.TestCheckResourceAttr("ciphertrust_cm_key.k", "rotation_frequency_days", "0"),
+				),
+			},
+			// Step 6: refresh — state must remain stable (no diff between "0" in config and "" on server)
+			{
+				RefreshState:       true,
+				ExpectNonEmptyPlan: false,
+			},
+		},
+	})
+}
+
+// TestAccCMKey_templateId verifies that a key can be created from a template.
+// Set CIPHERTRUST_TEST_TEMPLATE_ID to the ID or name of an existing key template on the
+// target CM / CDSPaaS instance before running. The test is skipped when the variable is unset.
+//
+// CDSPaaS restricted-user flow: on CDSPaaS, Restricted Key Users must supply a
+// template_id and may only include owner_id in meta. To exercise that enforcement,
+// also set CDSPAAS=true, CIPHERTRUST_TENANT, and use a restricted-user credential pair
+// (CIPHERTRUST_USERNAME / CIPHERTRUST_PASSWORD). When run with admin credentials the
+// test still validates that template_id propagates to the API and the key is created.
+func TestAccCMKey_templateId(t *testing.T) {
+	RequireCM(t)
+
+	templateID := os.Getenv("CIPHERTRUST_TEST_TEMPLATE_ID")
+	if templateID == "" {
+		t.Skip("CIPHERTRUST_TEST_TEMPLATE_ID not set; skipping template_id test")
+	}
+
+	suffix := uuid.New().String()[:8]
+	keyName := "tf-acc-key-tmpl-" + suffix
+
+	// CDSPaaS restricted-user flow: only owner_id may be supplied in meta alongside template_id.
+	// On plain CM this is still valid; extra meta fields are just merged normally.
+	ownerSelf := os.Getenv("CIPHERTRUST_USERNAME")
+	if ownerSelf == "" {
+		ownerSelf = "admin"
+	}
+
+	// We don't know which fields the template will populate, so we only assert
+	// that the key was created (has an id). Checking algorithm/size would require
+	// knowing the template contents, which differ across environments.
+	resource.Test(t, resource.TestCase{
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		Steps: []resource.TestStep{
+			{
+				Config: providerConfig + fmt.Sprintf(`
+resource "ciphertrust_cm_key" "k" {
+  name        = %q
+  template_id = %q
+  assign_self_as_owner = true
+}
+`, keyName, templateID),
+				Check: checkStep(t, "templateId: key created from template",
+					resource.TestCheckResourceAttrSet("ciphertrust_cm_key.k", "id"),
+					resource.TestCheckResourceAttr("ciphertrust_cm_key.k", "name", keyName),
+				),
+			},
+			// Confirm stable state — no drift introduced by the template-driven creation.
+			{
+				RefreshState:       true,
+				ExpectNonEmptyPlan: false,
+			},
+		},
+	})
+}
+
+// TestAccCMKey_import verifies that an existing key can be brought under Terraform
+// management with `terraform import`. The test creates a key out-of-band via the CM
+// client, then imports it into a Terraform config by ID, and finally confirms that
+// a subsequent plan produces no diff (state matches server).
+func TestAccCMKey_import(t *testing.T) {
+	RequireCM(t)
+	client, ok := createCMClient()
+	if !ok {
+		t.Skip("createCMClient failed")
+	}
+
+	suffix := uuid.New().String()[:8]
+	keyName := "tf-acc-key-import-" + suffix
+
+	// Create the key directly (not via Terraform) so we can import it.
+	var importedID string
+	createPayload, _ := json.Marshal(map[string]interface{}{
+		"name":      keyName,
+		"algorithm": "aes",
+		"size":      256,
+	})
+	rawID, createErr := client.PostDataV2(context.Background(), uuid.New().String(), common.URL_KEY_MANAGEMENT, createPayload)
+	if createErr != nil {
+		t.Skipf("could not create key for import test: %v", createErr)
+	}
+	importedID = gjson.Get(rawID, "id").String()
+	if importedID == "" {
+		t.Skip("could not parse key id from create response")
+	}
+	t.Cleanup(func() {
+		url := fmt.Sprintf("%s/%s/%s", client.CipherTrustURL, common.URL_KEY_MANAGEMENT, importedID)
+		_, _ = client.DeleteByURL(context.Background(), uuid.New().String(), url)
+	})
+
+	resource.Test(t, resource.TestCase{
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		Steps: []resource.TestStep{
+			{
+				// Import the key created out-of-band.
+				ResourceName:  "ciphertrust_cm_key.imported",
+				ImportState:   true,
+				ImportStateId: importedID,
+				// Minimal config that matches what Read() will populate.
+				Config: providerConfig + fmt.Sprintf(`
+resource "ciphertrust_cm_key" "imported" {
+  name      = %q
+  algorithm = "aes"
+  key_size  = 256
+}
+`, keyName),
+				ImportStatePersist: true,
+			},
+			{
+				// After import, plan must produce no diff.
+				Config: providerConfig + fmt.Sprintf(`
+resource "ciphertrust_cm_key" "imported" {
+  name      = %q
+  algorithm = "aes"
+  key_size  = 256
+}
+`, keyName),
+				PlanOnly:           true,
+				ExpectNonEmptyPlan: false,
+			},
+		},
+	})
+}
+
+// TestAccCMKey_labelsEmptyMapDrift verifies that a key created without labels does not
+// develop perpetual drift when the server returns "labels": {} in the GET response.
+// Previously, Read() turned {} into an empty map in state, which differed from
+// the null value expected when no labels are configured.
+func TestAccCMKey_labelsEmptyMapDrift(t *testing.T) {
+	RequireCM(t)
+
+	suffix := uuid.New().String()[:8]
+	keyName := "tf-acc-key-lbldrift-" + suffix
+
+	cfg := providerConfig + fmt.Sprintf(`
+resource "ciphertrust_cm_key" "k" {
+  name      = %q
+  algorithm = "aes"
+  key_size  = 256
+}
+`, keyName)
+
+	resource.Test(t, resource.TestCase{
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		Steps: []resource.TestStep{
+			{
+				Config: cfg,
+				Check: checkStep(t, "labels empty-map: create without labels",
+					resource.TestCheckResourceAttrSet("ciphertrust_cm_key.k", "id"),
+					resource.TestCheckNoResourceAttr("ciphertrust_cm_key.k", "labels"),
+				),
+			},
+			// Refresh: server may return "labels":{} — Read() must NOT turn that into
+			// a non-null empty map in state (which would cause a perpetual diff).
+			{
+				RefreshState:       true,
+				ExpectNonEmptyPlan: false,
 			},
 		},
 	})

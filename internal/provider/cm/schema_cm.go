@@ -249,15 +249,15 @@ type KeyMetadataCTEJSON struct {
 }
 
 type KeyMetadataJSON struct {
-	OwnerId     string                      `json:"owner_id"`
-	Permissions *KeyMetadataPermissionsJSON `json:"permissions"`
-	CTE         *KeyMetadataCTEJSON         `json:"cte"`
+	OwnerId     string                      `json:"ownerId,omitempty"`
+	Permissions *KeyMetadataPermissionsJSON `json:"permissions,omitempty"`
+	CTE         *KeyMetadataCTEJSON         `json:"cte,omitempty"`
 }
 
 type KeyAliasJSON struct {
-	Alias string `json:"alias"`
-	Index int64  `json:"index"`
-	Type  string `json:"type"`
+	Alias string `json:"alias,omitempty"`
+	Index *int64 `json:"index,omitempty"` // pointer: nil omitted (add), &N used (modify/delete)
+	Type  string `json:"type,omitempty"`
 }
 
 type PublicKeyParametersJSON struct {
@@ -328,8 +328,8 @@ type CMKeyJSON struct {
 	Password                 string                   `json:"password,omitempty"`
 	ProcessStartDate         string                   `json:"processStartDate,omitempty"`
 	ProtectStopDate          string                   `json:"protectStopDate,omitempty"`
-	RevocationReason         string                   `json:"revocationMessage,omitempty"`
-	RevocationMessage        string                   `json:"revocationReason,omitempty"`
+	RevocationReason         string                   `json:"revocationReason,omitempty"`
+	RevocationMessage        string                   `json:"revocationMessage,omitempty"`
 	RotationFrequencyDays    string                   `json:"rotationFrequencyDays,omitempty"`
 	SecretDataEncoding       string                   `json:"secretDataEncoding,omitempty"`
 	SecretDataLink           string                   `json:"secretDataLink,omitempty"`
