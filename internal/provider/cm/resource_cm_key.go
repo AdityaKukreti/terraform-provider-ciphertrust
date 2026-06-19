@@ -16,7 +16,6 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
-	"github.com/hashicorp/terraform-plugin-framework/resource/schema/boolplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
@@ -408,19 +407,11 @@ func (r *resourceCMKey) Schema(_ context.Context, _ resource.SchemaRequest, resp
 			},
 			"unexportable": schema.BoolAttribute{
 				Optional:    true,
-				Computed:    true,
 				Description: "Key is not exportable. Defaults to false.",
-				PlanModifiers: []planmodifier.Bool{
-					boolplanmodifier.UseStateForUnknown(),
-				},
 			},
 			"undeletable": schema.BoolAttribute{
 				Optional:    true,
-				Computed:    true,
 				Description: "Key is not deletable. Defaults to false.",
-				PlanModifiers: []planmodifier.Bool{
-					boolplanmodifier.UseStateForUnknown(),
-				},
 			},
 			"state": schema.StringAttribute{
 				Optional:    true,
@@ -493,11 +484,7 @@ func (r *resourceCMKey) Schema(_ context.Context, _ resource.SchemaRequest, resp
 			},
 			"xts": schema.BoolAttribute{
 				Optional:    true,
-				Computed:    true,
 				Description: "If set to true, then key created will be XTS/CBC-CS1 Key. Defaults to false. Key algorithm must be 'AES'.",
-				PlanModifiers: []planmodifier.Bool{
-					boolplanmodifier.UseStateForUnknown(),
-				},
 			},
 			"public_key_parameters": schema.SingleNestedAttribute{
 				Optional:    true,
@@ -1224,7 +1211,7 @@ func (r *resourceCMKey) Read(ctx context.Context, req resource.ReadRequest, resp
 		plan.Name = types.StringNull()
 	}
 	if r := gjson.Get(response, "algorithm"); r.Exists() {
-		plan.Algorithm = types.StringValue(strings.ToLower(r.String()))
+		plan.Algorithm = types.StringValue(r.String())
 	} else {
 		plan.Algorithm = types.StringNull()
 	}
@@ -1237,10 +1224,12 @@ func (r *resourceCMKey) Read(ctx context.Context, req resource.ReadRequest, resp
 			plan.UsageMask = types.Int64Null()
 		}
 	}
-	if r := gjson.Get(response, "size"); r.Exists() {
-		plan.Size = types.Int64Value(r.Int())
-	} else {
-		plan.Size = types.Int64Null()
+	if !state.Size.IsNull() {
+		if r := gjson.Get(response, "size"); r.Exists() {
+			plan.Size = types.Int64Value(r.Int())
+		} else {
+			plan.Size = types.Int64Null()
+		}
 	}
 	if r := gjson.Get(response, "description"); r.Exists() {
 		plan.Description = types.StringValue(r.String())
