@@ -1003,42 +1003,41 @@ resource "ciphertrust_cm_key" "test_key" {
 func TestCMKeyOutOfBandDeletion(t *testing.T) {
 	rName := "tf-key-" + acctest.RandStringFromCharSet(8, acctest.CharSetAlphaNum)
 
-	// deleteOutOfBand returns a Check function that deletes the resource from
-	// CM directly after Terraform has created it, simulating an out-of-band delete.
-	deleteOutOfBand := func(resourceName string) resource.TestCheckFunc {
-		return func(s *terraform.State) error {
-			rs, ok := s.RootModule().Resources[resourceName]
-			if !ok {
-				return fmt.Errorf("resource %s not found in state", resourceName)
-			}
-			id := rs.Primary.ID
-			client, ok := createCMClient()
-			if !ok {
-				t.Skip("Skipping out-of-band deletion test: CM client could not be created (check CIPHERTRUST_* env vars)")
-			}
-			endpoint := common.URL_KEY_MANAGEMENT + "/" + id
-			if _, err := client.DeleteByURL(context.Background(), id, endpoint); err != nil {
-				return fmt.Errorf("out-of-band delete failed: %s", err)
-			}
-			return nil
-		}
+	client, ok := createCMClient()
+	if !ok {
+		t.Skip("Skipping out-of-band deletion test: CM client could not be created (check CIPHERTRUST_* env vars)")
 	}
+
+	var capturedID string
 
 	resource.Test(t, resource.TestCase{
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
 		Steps: []resource.TestStep{
-			// Step 1: Create the key normally, then delete it from CM directly.
+			// Step 1: Create the key normally. Capture its ID for use in Step 2.
+			// The post-apply refresh here succeeds (key still exists on CM) so the
+			// plan is empty and the step passes cleanly.
 			{
 				Config: aesKeyConfig(rName, 256),
 				Check: resource.ComposeAggregateTestCheckFunc(
 					resource.TestCheckResourceAttrSet("ciphertrust_cm_key.test_key", "id"),
-					deleteOutOfBand("ciphertrust_cm_key.test_key"),
+					func(s *terraform.State) error {
+						capturedID = s.RootModule().Resources["ciphertrust_cm_key.test_key"].Primary.ID
+						return nil
+					},
 				),
 			},
-			// Step 2: Refresh state — Read() must detect 404 and remove from
-			// state cleanly (no error). RefreshState: true runs terraform refresh.
+			// Step 2: Delete the key out-of-band in PreConfig, then RefreshState.
+			// Read() detects the 404 and removes the resource from state, so the
+			// plan shows +create (ExpectNonEmptyPlan: true).
 			{
-				RefreshState: true,
+				PreConfig: func() {
+					endpoint := common.URL_KEY_MANAGEMENT + "/" + capturedID
+					if _, err := client.DeleteByURL(context.Background(), capturedID, endpoint); err != nil {
+						t.Logf("out-of-band delete failed (key may already be gone): %s", err)
+					}
+				},
+				RefreshState:       true,
+				ExpectNonEmptyPlan: true,
 			},
 			// Step 3: Re-apply — Terraform recreates the key from scratch, proving
 			// the resource can be recovered after an out-of-band deletion.
