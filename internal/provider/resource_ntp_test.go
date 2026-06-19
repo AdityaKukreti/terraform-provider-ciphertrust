@@ -66,14 +66,14 @@ func TestAccCMNTP_DriftDetection(t *testing.T) {
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
 		Steps: []resource.TestStep{
 			{
-				PreConfig: func() { ntpSweep("0.pool.ntp.org") },
+				PreConfig: func() { ntpSweep("time3.google.com") },
 				Config: providerConfig + `
 resource "ciphertrust_ntp" "test" {
-  host = "0.pool.ntp.org"
+  host = "time3.google.com"
 }
 `,
 				Check: checkStep(t, "drift detection: create",
-					resource.TestCheckResourceAttr("ciphertrust_ntp.test", "host", "0.pool.ntp.org"),
+					resource.TestCheckResourceAttr("ciphertrust_ntp.test", "host", "time3.google.com"),
 					func(s *terraform.State) error {
 						rs, ok := s.RootModule().Resources["ciphertrust_ntp.test"]
 						if !ok {
@@ -114,14 +114,14 @@ func TestAccCMNTP_NoDrift(t *testing.T) {
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
 		Steps: []resource.TestStep{
 			{
-				PreConfig: func() { ntpSweep("1.pool.ntp.org") },
+				PreConfig: func() { ntpSweep("time4.google.com") },
 				Config: providerConfig + `
 resource "ciphertrust_ntp" "test" {
-  host = "1.pool.ntp.org"
+  host = "time4.google.com"
 }
 `,
 				Check: checkStep(t, "no drift: create",
-					resource.TestCheckResourceAttr("ciphertrust_ntp.test", "host", "1.pool.ntp.org"),
+					resource.TestCheckResourceAttr("ciphertrust_ntp.test", "host", "time4.google.com"),
 				),
 			},
 			{
@@ -142,14 +142,14 @@ func TestAccCMNTP_Delete404Guard(t *testing.T) {
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
 		Steps: []resource.TestStep{
 			{
-				PreConfig: func() { ntpSweep("2.pool.ntp.org") },
+				PreConfig: func() { ntpSweep("time3.google.com") },
 				Config: providerConfig + `
 resource "ciphertrust_ntp" "test" {
-  host = "2.pool.ntp.org"
+  host = "time3.google.com"
 }
 `,
 				Check: checkStep(t, "delete 404 guard: create",
-					resource.TestCheckResourceAttr("ciphertrust_ntp.test", "host", "2.pool.ntp.org"),
+					resource.TestCheckResourceAttr("ciphertrust_ntp.test", "host", "time3.google.com"),
 					func(s *terraform.State) error {
 						rs, ok := s.RootModule().Resources["ciphertrust_ntp.test"]
 						if !ok {
@@ -177,7 +177,7 @@ resource "ciphertrust_ntp" "test" {
 				},
 				Config: providerConfig + `
 resource "ciphertrust_ntp" "test" {
-  host = "2.pool.ntp.org"
+  host = "time3.google.com"
 }
 `,
 				Destroy: true,
