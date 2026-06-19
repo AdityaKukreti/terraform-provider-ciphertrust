@@ -120,7 +120,7 @@ type KeyMetadataTFSDK struct {
 
 type KeyAliasTFSDK struct {
 	Alias types.String `tfsdk:"alias"`
-	Index types.Int64  `tfsdk:"index"`
+	Index types.String `tfsdk:"index"`
 	Type  types.String `tfsdk:"type"`
 }
 
@@ -249,15 +249,15 @@ type KeyMetadataCTEJSON struct {
 }
 
 type KeyMetadataJSON struct {
-	OwnerId     string                      `json:"owner_id"`
-	Permissions *KeyMetadataPermissionsJSON `json:"permissions"`
-	CTE         *KeyMetadataCTEJSON         `json:"cte"`
+	OwnerId     string                      `json:"ownerId,omitempty"`
+	Permissions *KeyMetadataPermissionsJSON `json:"permissions,omitempty"`
+	CTE         *KeyMetadataCTEJSON         `json:"cte,omitempty"`
 }
 
 type KeyAliasJSON struct {
-	Alias string `json:"alias"`
-	Index int64  `json:"index"`
-	Type  string `json:"type"`
+	Alias string `json:"alias,omitempty"`
+	Index *int64 `json:"index,omitempty"` // pointer: nil omitted (add), &N used (modify/delete)
+	Type  string `json:"type,omitempty"`
 }
 
 type PublicKeyParametersJSON struct {
@@ -328,15 +328,15 @@ type CMKeyJSON struct {
 	Password                 string                   `json:"password,omitempty"`
 	ProcessStartDate         string                   `json:"processStartDate,omitempty"`
 	ProtectStopDate          string                   `json:"protectStopDate,omitempty"`
-	RevocationReason         string                   `json:"revocationMessage,omitempty"`
-	RevocationMessage        string                   `json:"revocationReason,omitempty"`
+	RevocationReason         string                   `json:"revocationReason,omitempty"`
+	RevocationMessage        string                   `json:"revocationMessage,omitempty"`
 	RotationFrequencyDays    string                   `json:"rotationFrequencyDays,omitempty"`
 	SecretDataEncoding       string                   `json:"secretDataEncoding,omitempty"`
 	SecretDataLink           string                   `json:"secretDataLink,omitempty"`
 	SigningAlgo              string                   `json:"signingAlgo,omitempty"`
 	Size                     int64                    `json:"size,omitempty"`
-	UnExportable             bool                     `json:"unexportable,omitempty"`
-	UnDeletable              bool                     `json:"undeletable,omitempty"`
+	UnExportable             *bool                    `json:"unexportable,omitempty"`
+	UnDeletable              *bool                    `json:"undeletable,omitempty"`
 	State                    string                   `json:"state,omitempty"`
 	TemplateID               string                   `json:"templateId,omitempty"`
 	UsageMask                int64                    `json:"usageMask,omitempty"`
