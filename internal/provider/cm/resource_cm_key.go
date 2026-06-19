@@ -67,10 +67,16 @@ func (r *resourceCMKey) Schema(_ context.Context, _ resource.SchemaRequest, resp
 					StringImmutableModifier{FieldName: "algorithm"},
 				},
 				Validators: []validator.String{
+					// The API accepts both lowercase (swagger POST enum) and uppercase
+					// (returned by GET). Accept both cases for all algorithms so that
+					// existing configs and test fixtures are not broken.
 					stringvalidator.OneOf([]string{
 						"aes", "tdes", "rsa", "ec",
 						"hmac-sha1", "hmac-sha256", "hmac-sha384", "hmac-sha512",
 						"seed", "aria", "opaque",
+						"AES", "TDES", "RSA", "EC",
+						"HMAC-SHA1", "HMAC-SHA256", "HMAC-SHA384", "HMAC-SHA512",
+						"SEED", "ARIA", "OPAQUE",
 					}...),
 				},
 			},
