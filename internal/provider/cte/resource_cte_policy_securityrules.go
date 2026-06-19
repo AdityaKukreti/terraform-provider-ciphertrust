@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"regexp"
+	"strings"
 
 	"github.com/google/uuid"
 
@@ -21,8 +23,9 @@ import (
 )
 
 var (
-	_ resource.Resource              = &resourceCTEPolicySecurityRule{}
-	_ resource.ResourceWithConfigure = &resourceCTEPolicySecurityRule{}
+	_ resource.Resource                = &resourceCTEPolicySecurityRule{}
+	_ resource.ResourceWithConfigure   = &resourceCTEPolicySecurityRule{}
+	_ resource.ResourceWithImportState = &resourceCTEPolicySecurityRule{}
 )
 
 func NewResourceCTEPolicySecurityRule() resource.Resource {
@@ -66,9 +69,12 @@ func (r *resourceCTEPolicySecurityRule) Schema(_ context.Context, _ resource.Sch
 						Optional:    true,
 						Computed:    true,
 						Default:     stringdefault.StaticString("all_ops"),
-						Description: "Actions applicable to the rule. Examples of actions are read, write, all_ops, and key_op.",
+						Description: "Actions applicable to the rule. Examples of actions are read, write, all_ops, and key_op. Separate multiple actions by commas.",
 						Validators: []validator.String{
-							stringvalidator.OneOf([]string{"read", "write", "all_ops", "key_op"}...),
+							stringvalidator.RegexMatches(
+								regexp.MustCompile(`^(read|write|all_ops|key_op)(,(read|write|all_ops|key_op))*$`),
+								"must be a comma-separated list of: read, write, all_ops, key_op",
+							),
 						},
 					},
 					"effect": schema.StringAttribute{
@@ -380,4 +386,29 @@ func (d *resourceCTEPolicySecurityRule) Configure(_ context.Context, req resourc
 	}
 
 	d.client = client
+}
+
+func (r *resourceCTEPolicySecurityRule) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
+	// Import ID format: "policy_id:rule_id"
+	parts := strings.Split(req.ID, ":")
+	if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
+		resp.Diagnostics.AddError(
+			"Invalid import ID",
+			"Expected format: policy_id:rule_id",
+		)
+		return
+	}
+
+	policyID := parts[0]
+	ruleID := parts[1]
+
+	state := CTEPolicyAddSecurityRuleTFSDK{
+		CTEClientPolicyID: types.StringValue(policyID),
+		SecurityRule: SecurityRuleTFSDK{
+			ID: types.StringValue(ruleID),
+		},
+	}
+
+	diags := resp.State.Set(ctx, state)
+	resp.Diagnostics.Append(diags...)
 }

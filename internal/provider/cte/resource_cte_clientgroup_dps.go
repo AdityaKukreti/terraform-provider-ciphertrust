@@ -10,6 +10,7 @@ import (
 	"github.com/google/uuid"
 	"strings"
 
+	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
@@ -21,8 +22,9 @@ import (
 )
 
 var (
-	_ resource.Resource              = &resourceCTEClientGroupDesignatedPrimarySet{}
-	_ resource.ResourceWithConfigure = &resourceCTEClientGroupDesignatedPrimarySet{}
+	_ resource.Resource                = &resourceCTEClientGroupDesignatedPrimarySet{}
+	_ resource.ResourceWithConfigure   = &resourceCTEClientGroupDesignatedPrimarySet{}
+	_ resource.ResourceWithImportState = &resourceCTEClientGroupDesignatedPrimarySet{}
 )
 
 func NewResourceCTEClientGroupDesignatedPrimarySet() resource.Resource {
@@ -274,4 +276,24 @@ func setCTEClientGroupDesignatedPrimarySetState(
 	state.ID = types.StringValue(apiResp.ID)
 	state.Name = types.StringValue(apiResp.Name)
 	state.ClientList = types.StringValue(apiResp.PrimaryClientNameList)
+	state.LDTCommGroupServiceID = types.StringValue(apiResp.LdtCommGroupServiceID)
+}
+
+func (r *resourceCTEClientGroupDesignatedPrimarySet) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
+	id := uuid.New().String()
+	tflog.Debug(ctx, common.MSG_METHOD_START+"[resource_cte_clientgroup_dps.go -> ImportState]["+id+"]")
+	defer tflog.Debug(ctx, common.MSG_METHOD_END+"[resource_cte_clientgroup_dps.go -> ImportState]["+id+"]")
+
+	// Expect import ID in format: "client_group_id:dps_id"
+	parts := strings.SplitN(req.ID, ":", 2)
+	if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
+		resp.Diagnostics.AddError(
+			"Invalid import ID format",
+			"Expected import ID in format: <client_group_id>:<dps_id>, got: "+req.ID,
+		)
+		return
+	}
+
+	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("client_group_id"), parts[0])...)
+	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("id"), parts[1])...)
 }

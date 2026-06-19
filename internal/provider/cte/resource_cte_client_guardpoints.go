@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/google/uuid"
+	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/booldefault"
@@ -24,8 +25,9 @@ import (
 )
 
 var (
-	_ resource.Resource              = &resourceCTEClientGP{}
-	_ resource.ResourceWithConfigure = &resourceCTEClientGP{}
+	_ resource.Resource                = &resourceCTEClientGP{}
+	_ resource.ResourceWithConfigure   = &resourceCTEClientGP{}
+	_ resource.ResourceWithImportState = &resourceCTEClientGP{}
 )
 
 func NewResourceCTEClientGP() resource.Resource {
@@ -322,12 +324,12 @@ func (r *resourceCTEClientGP) Read(ctx context.Context, req resource.ReadRequest
 			GuardPointParams: CTEClientGuardPointParamsTFSDK{
 				GPType:         types.StringValue(gp.GuardPointType),
 				IsGuardEnabled: types.BoolValue(gp.GuardEnabled),
+				PolicyID:       types.StringValue(gp.PolicyID),
 			},
 		}
 
 		if hadPrior {
 			p := prevEntry.GuardPointParams
-			entry.GuardPointParams.PolicyID = p.PolicyID
 			entry.GuardPointParams.IsAutomountEnabled = p.IsAutomountEnabled
 			entry.GuardPointParams.IsCIFSEnabled = p.IsCIFSEnabled
 			entry.GuardPointParams.IsEarlyAccessEnabled = p.IsEarlyAccessEnabled
@@ -646,4 +648,11 @@ func parseConfig(response string) string {
 		k++
 	}
 	return strings.Join(ids, ",")
+}
+
+func (r *resourceCTEClientGP) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
+	id := uuid.New().String()
+	tflog.Debug(ctx, common.MSG_METHOD_START+"[resource_cte_client_gp.go -> ImportState]["+id+"]")
+	defer tflog.Debug(ctx, common.MSG_METHOD_END+"[resource_cte_client_gp.go -> ImportState]["+id+"]")
+	resource.ImportStatePassthroughID(ctx, path.Root("client_id"), req, resp)
 }
