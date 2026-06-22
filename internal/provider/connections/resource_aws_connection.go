@@ -397,10 +397,16 @@ func (r *resourceCCKMAWSConnection) Read(ctx context.Context, req resource.ReadR
 	} else {
 		state.Description = types.StringNull()
 	}
-	// access_key_id: update state only when CM returns it; CDSPaaS omits credentials from GET
-	// responses entirely, so preserve prior state when absent to avoid spurious drift.
-	if r := gjson.Get(response, "access_key_id"); r.Exists() {
-		state.AccessKeyID = types.StringValue(r.String())
+	// access_key_id: only hydrate from API when the user configured the field (prior state
+	// is non-null). When null in state, the connection may carry credentials set via the
+	// env-var fallback in Create(); reading them back would produce a spurious diff against
+	// an HCL config that does not declare the field. When non-null, update from API to
+	// surface drift; if absent from response, preserve prior state (CDSPaaS may not echo
+	// credentials back in GET responses).
+	if !state.AccessKeyID.IsNull() {
+		if r := gjson.Get(response, "access_key_id"); r.Exists() {
+			state.AccessKeyID = types.StringValue(r.String())
+		}
 	}
 	if r := gjson.Get(response, "assume_role_arn"); r.Exists() {
 		state.AssumeRoleARN = types.StringValue(r.String())
