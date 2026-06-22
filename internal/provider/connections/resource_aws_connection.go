@@ -390,17 +390,17 @@ func (r *resourceCCKMAWSConnection) Read(ctx context.Context, req resource.ReadR
 	// Required / always-present user fields
 	state.Name = types.StringValue(gjson.Get(response, "name").String())
 
-	// description and access_key_id: purely user-settable; CM only returns what was explicitly set.
+	// description: purely user-settable; CM only returns what was explicitly set.
 	// Use r.Exists() to surface drift when the value changes vs config.
 	if r := gjson.Get(response, "description"); r.Exists() {
 		state.Description = types.StringValue(r.String())
 	} else {
 		state.Description = types.StringNull()
 	}
+	// access_key_id: update state only when CM returns it; CDSPaaS omits credentials from GET
+	// responses entirely, so preserve prior state when absent to avoid spurious drift.
 	if r := gjson.Get(response, "access_key_id"); r.Exists() {
 		state.AccessKeyID = types.StringValue(r.String())
-	} else {
-		state.AccessKeyID = types.StringNull()
 	}
 	if r := gjson.Get(response, "assume_role_arn"); r.Exists() {
 		state.AssumeRoleARN = types.StringValue(r.String())
