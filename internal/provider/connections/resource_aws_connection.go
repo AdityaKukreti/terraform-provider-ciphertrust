@@ -450,8 +450,8 @@ func (r *resourceCCKMAWSConnection) Read(ctx context.Context, req resource.ReadR
 		}
 	}
 
-	// secret_access_key: write-only — absent from CM GET responses.
-	// state.SecretAccessKey already holds the prior state value from req.State.Get; no assignment needed.
+	// secret_access_key: write-only — CM never returns it in GET responses.
+	// state.SecretAccessKey retains the value loaded by req.State.Get above; no API hydration needed.
 
 	// iam_role_anywhere: CM may return an empty block when not configured. Only populate state
 	// when the anywhere_role_arn sub-field (Required) is non-empty, indicating a real configuration.
@@ -534,11 +534,19 @@ func (r *resourceCCKMAWSConnection) Read(ctx context.Context, req resource.ReadR
 // Update updates the resource and sets the updated Terraform state on success.
 func (r *resourceCCKMAWSConnection) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
 	var plan AWSConnectionModelTFSDK
+	var state AWSConnectionModelTFSDK
 	var payload AWSConnectionModelJSON
 	id := uuid.New().String()
 	tflog.Trace(ctx, common.MSG_METHOD_START+"[resource_aws_connection.go -> Update]["+id+"]")
 
 	diags := req.Plan.Get(ctx, &plan)
+	resp.Diagnostics.Append(diags...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	// Load prior state to preserve write-only fields absent from CM GET responses.
+	diags = req.State.Get(ctx, &state)
 	resp.Diagnostics.Append(diags...)
 	if resp.Diagnostics.HasError() {
 		return
@@ -659,6 +667,13 @@ func (r *resourceCCKMAWSConnection) Update(ctx context.Context, req resource.Upd
 	plan.LastConnectionError = types.StringValue(gjson.Get(readResponse, "last_connection_error").String())
 	plan.LastConnectionAt = types.StringValue(gjson.Get(readResponse, "last_connection_at").String())
 	// Optional fields retain plan values (user intent); Read() on next plan/refresh corrects API-side drift.
+
+	// Preserve write-only field: secret_access_key is never returned by CM GET responses.
+	// When not present in the HCL config, plan.SecretAccessKey is null; restore from prior
+	// state so the key is not silently lost after an update that doesn't re-supply the secret.
+	if plan.SecretAccessKey.IsNull() || plan.SecretAccessKey.ValueString() == "" {
+		plan.SecretAccessKey = state.SecretAccessKey
+	}
 
 	tflog.Trace(ctx, common.MSG_METHOD_END+"[resource_aws_connection.go -> Update]["+id+"]")
 	diags = resp.State.Set(ctx, plan)
