@@ -196,6 +196,12 @@ func (r *resourceCTEPolicySignatureRule) Update(ctx context.Context, req resourc
 		return
 	}
 
+	//immutable field handling
+	if plan.CTEPolicyID.ValueString() != state.CTEPolicyID.ValueString() {
+		resp.Diagnostics.AddError("Cannot change policy ID associated with policy rule", "Policy ID is an immutable field")
+		return
+	}
+
 	id := uuid.New().String()
 
 	stateIDs := state.SignatureRuleIDs.Elements()

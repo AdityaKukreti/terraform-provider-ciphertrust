@@ -280,6 +280,11 @@ func (r *resourceCTEPolicyLDTKeyRule) Update(ctx context.Context, req resource.U
 	if resp.Diagnostics.HasError() {
 		return
 	}
+	//immutable field handling
+	if plan.CTEClientPolicyID.ValueString() != state.CTEClientPolicyID.ValueString() {
+		resp.Diagnostics.AddError("Cannot change policy ID associated with policy rule", "Policy ID is an immutable field")
+		return
+	}
 	var ldtKeyRule = plan.LDTKeyRule
 
 	if ldtKeyRule.ResourceSetID.ValueString() != state.LDTKeyRule.ResourceSetID.ValueString() && ldtKeyRule.ResourceSetID.ValueString() != "" && ldtKeyRule.ResourceSetID.ValueString() != types.StringNull().ValueString() {

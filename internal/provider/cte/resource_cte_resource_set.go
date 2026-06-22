@@ -277,12 +277,26 @@ func (r *resourceCTEResourceSet) Read(ctx context.Context, req resource.ReadRequ
 
 // Update updates the resource and sets the updated Terraform state on success.
 func (r *resourceCTEResourceSet) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
-	var plan CTEResourceSetTFSDK
+	var plan, state CTEResourceSetTFSDK
 	var payload CTEResourceSetJSON
 
 	diags := req.Plan.Get(ctx, &plan)
 	resp.Diagnostics.Append(diags...)
 	if resp.Diagnostics.HasError() {
+		return
+	}
+	diags = req.State.Get(ctx, &state)
+	resp.Diagnostics.Append(diags...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	//immutable fields handling
+	if plan.Name.ValueString() != state.Name.ValueString() {
+		resp.Diagnostics.AddError("Cannot change resource set name once it is created", "Name is an immutable field")
+		return
+	}
+	if plan.Type.ValueString() != state.Type.ValueString() {
+		resp.Diagnostics.AddError("Cannot change resource set type", "Type is an immutable field")
 		return
 	}
 

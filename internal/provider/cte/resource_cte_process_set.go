@@ -273,12 +273,23 @@ func (r *resourceCTEProcessSet) Read(ctx context.Context, req resource.ReadReque
 
 // Update updates the resource and sets the updated Terraform state on success.
 func (r *resourceCTEProcessSet) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
-	var plan CTEProcessSetTFSDK
+	var plan, state CTEProcessSetTFSDK
 	var payload CTEProcessSetJSON
 
 	diags := req.Plan.Get(ctx, &plan)
 	resp.Diagnostics.Append(diags...)
 	if resp.Diagnostics.HasError() {
+		return
+	}
+	diags = req.State.Get(ctx, &state)
+	resp.Diagnostics.Append(diags...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	//immutable field handling
+	if plan.Name.ValueString() != state.Name.ValueString() {
+		resp.Diagnostics.AddError("Cannot change process set name once it is created", "Name is an immutable field")
 		return
 	}
 

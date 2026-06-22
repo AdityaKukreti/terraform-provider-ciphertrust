@@ -199,12 +199,22 @@ func (r *resourceCTEPolicyKeyRule) Read(ctx context.Context, req resource.ReadRe
 
 // Update updates the resource and sets the updated Terraform state on success.
 func (r *resourceCTEPolicyKeyRule) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
-	var plan CTEPolicyAddKeyRuleTFSDK
+	var plan, state CTEPolicyAddKeyRuleTFSDK
 	var payload KeyRuleJSON
 
 	diags := req.Plan.Get(ctx, &plan)
 	resp.Diagnostics.Append(diags...)
 	if resp.Diagnostics.HasError() {
+		return
+	}
+	diags = req.State.Get(ctx, &state)
+	resp.Diagnostics.Append(diags...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	//immutable field handling
+	if plan.CTEClientPolicyID.ValueString() != state.CTEClientPolicyID.ValueString() {
+		resp.Diagnostics.AddError("Cannot change policy ID associated with policy rule", "Policy ID is an immutable field")
 		return
 	}
 

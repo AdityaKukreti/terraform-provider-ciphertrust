@@ -7,8 +7,9 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/google/uuid"
 	"strings"
+
+	"github.com/google/uuid"
 
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
@@ -54,9 +55,6 @@ func (r *resourceCTEClientGroupDesignatedPrimarySet) Schema(_ context.Context, _
 			"client_group_id": schema.StringAttribute{
 				Required:    true,
 				Description: "The ID of the CTE Client Group to which this Designated Primary Set belongs.",
-				PlanModifiers: []planmodifier.String{
-					stringplanmodifier.RequiresReplace(),
-				},
 			},
 			"name": schema.StringAttribute{
 				Required:    true,
@@ -186,12 +184,34 @@ func (r *resourceCTEClientGroupDesignatedPrimarySet) Read(ctx context.Context, r
 // Update updates the resource and sets the updated Terraform state on success.
 // Only client_list is updatable; all other fields either require replacement or are immutable.
 func (r *resourceCTEClientGroupDesignatedPrimarySet) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
-	var plan CTEClientGroupDesignatedPrimarySetTFSDK
+	var plan, state CTEClientGroupDesignatedPrimarySetTFSDK
 	var payload CTEClientGroupDesignatedPrimarySetUpdateJSON
 
 	diags := req.Plan.Get(ctx, &plan)
 	resp.Diagnostics.Append(diags...)
 	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	diags = req.State.Get(ctx, &state)
+	resp.Diagnostics.Append(diags...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	//handle immutable fields
+	if plan.ClientGroupID.ValueString() != state.ClientGroupID.ValueString() {
+		resp.Diagnostics.AddError("Cannot change client group id", "client group id is an immutable field")
+		return
+	}
+
+	if plan.Name.ValueString() != state.Name.ValueString() {
+		resp.Diagnostics.AddError("Cannt change designated primary set name", "name is an immutable field")
+		return
+	}
+
+	if plan.LDTCommGroupServiceID.ValueString() != state.LDTCommGroupServiceID.ValueString() {
+		resp.Diagnostics.AddError("Cannt change LDT comm group service id", "LDT comm group service id is an immutable field")
 		return
 	}
 
