@@ -68,12 +68,7 @@ resource "ciphertrust_cte_client_group" "test_cg_group_test1" {
   # - Ignored for other op_type values
   # - Add/remove clients from client_list based on operation type
 
-  /*
-  client_list = [
-    "client1",  # Client hostname or identifier
-    "client2"      # Client IP address
-  ]
-  */
+
 
   # Whether to inherit attributes from parent client group
   #
