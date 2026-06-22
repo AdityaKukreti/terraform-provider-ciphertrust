@@ -23,15 +23,24 @@ func awsAccessKeyID() string {
 	return "AKIAIOSFODNN7EXAMPLE"
 }
 
+// awsSecretAccessKey returns the AWS secret access key for acceptance tests.
+// Reads from the environment variable; falls back to the well-known placeholder
+// value from AWS documentation when the env var is not set.
+func awsSecretAccessKey() string {
+	if v := os.Getenv("AWS_SECRET_ACCESS_KEY"); v != "" {
+		return v
+	}
+	return "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY"
+}
+
 // awsConnConfig returns a minimal ciphertrust_aws_connection config.
-// secret_access_key is intentionally omitted from HCL; the provider reads
-// it from the AWS_SECRET_ACCESS_KEY environment variable as a fallback.
 func awsConnConfig(name, description string) string {
 	cfg := fmt.Sprintf(`
 resource "ciphertrust_aws_connection" "test" {
-  name          = %q
-  access_key_id = %q
-`, name, awsAccessKeyID())
+  name              = %q
+  access_key_id     = %q
+  secret_access_key = %q
+`, name, awsAccessKeyID(), awsSecretAccessKey())
 	if description != "" {
 		cfg += fmt.Sprintf("  description = %q\n", description)
 	}
@@ -42,24 +51,26 @@ resource "ciphertrust_aws_connection" "test" {
 func awsConnConfigWithScalars(name, region, cloudName string) string {
 	return providerConfig + fmt.Sprintf(`
 resource "ciphertrust_aws_connection" "test" {
-  name          = %q
-  access_key_id = %q
-  aws_region    = %q
-  cloud_name    = %q
+  name              = %q
+  access_key_id     = %q
+  secret_access_key = %q
+  aws_region        = %q
+  cloud_name        = %q
 }
-`, name, awsAccessKeyID(), region, cloudName)
+`, name, awsAccessKeyID(), awsSecretAccessKey(), region, cloudName)
 }
 
 func awsConnConfigWithMapList(name string) string {
 	return providerConfig + fmt.Sprintf(`
 resource "ciphertrust_aws_connection" "test" {
-  name          = %q
-  access_key_id = %q
-  labels        = { env = "test" }
-  meta          = { owner = "qa" }
-  products      = ["cckm"]
+  name              = %q
+  access_key_id     = %q
+  secret_access_key = %q
+  labels            = { env = "test" }
+  meta              = { owner = "qa" }
+  products          = ["cckm"]
 }
-`, name, awsAccessKeyID())
+`, name, awsAccessKeyID(), awsSecretAccessKey())
 }
 
 // deleteAWSConnection deletes an AWS connection by ID from CM, ignoring errors.
