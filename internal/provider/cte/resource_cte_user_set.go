@@ -13,6 +13,7 @@ import (
 
 	common "github.com/ThalesGroup/terraform-provider-ciphertrust/internal/provider/common"
 	"github.com/hashicorp/terraform-plugin-framework/attr"
+	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/mapdefault"
@@ -24,8 +25,9 @@ import (
 )
 
 var (
-	_ resource.Resource              = &resourceCTEUserSet{}
-	_ resource.ResourceWithConfigure = &resourceCTEUserSet{}
+	_ resource.Resource                = &resourceCTEUserSet{}
+	_ resource.ResourceWithConfigure   = &resourceCTEUserSet{}
+	_ resource.ResourceWithImportState = &resourceCTEUserSet{}
 )
 
 func NewResourceCTEUserSet() resource.Resource {
@@ -444,4 +446,11 @@ func setCTEUserSetState(
 		users = append(users, userObj)
 	}
 	state.Users = users
+}
+
+func (r *resourceCTEUserSet) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
+	id := uuid.New().String()
+	tflog.Debug(ctx, common.MSG_METHOD_START+"[resource_cte_user_set.go -> ImportState]["+id+"]")
+	defer tflog.Debug(ctx, common.MSG_METHOD_END+"[resource_cte_user_set.go -> ImportState]["+id+"]")
+	resource.ImportStatePassthroughID(ctx, path.Root("id"), req, resp)
 }

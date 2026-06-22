@@ -4,8 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-
 	"github.com/google/uuid"
+	"strings"
 
 	common "github.com/ThalesGroup/terraform-provider-ciphertrust/internal/provider/common"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
@@ -18,8 +18,9 @@ import (
 )
 
 var (
-	_ resource.Resource              = &resourceCTEPolicyDataTXRule{}
-	_ resource.ResourceWithConfigure = &resourceCTEPolicyDataTXRule{}
+	_ resource.Resource                = &resourceCTEPolicyDataTXRule{}
+	_ resource.ResourceWithConfigure   = &resourceCTEPolicyDataTXRule{}
+	_ resource.ResourceWithImportState = &resourceCTEPolicyDataTXRule{}
 )
 
 func NewResourceCTEPolicyDataTXRule() resource.Resource {
@@ -302,4 +303,29 @@ func (d *resourceCTEPolicyDataTXRule) Configure(_ context.Context, req resource.
 	}
 
 	d.client = client
+}
+
+func (r *resourceCTEPolicyDataTXRule) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
+	// Import ID format: "policy_id:rule_id"
+	parts := strings.Split(req.ID, ":")
+	if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
+		resp.Diagnostics.AddError(
+			"Invalid import ID",
+			"Expected format: policy_id:rule_id",
+		)
+		return
+	}
+
+	policyID := parts[0]
+	ruleID := parts[1]
+
+	state := AddDataTXRulePolicyTFSDK{
+		CTEClientPolicyID: types.StringValue(policyID),
+		DataTXRule: DataTransformationRuleTFSDK{
+			ID: types.StringValue(ruleID),
+		},
+	}
+
+	diags := resp.State.Set(ctx, state)
+	resp.Diagnostics.Append(diags...)
 }

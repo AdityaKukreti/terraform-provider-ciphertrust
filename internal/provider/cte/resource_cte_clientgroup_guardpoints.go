@@ -12,6 +12,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
+	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/booldefault"
@@ -26,8 +27,9 @@ import (
 )
 
 var (
-	_ resource.Resource              = &resourceCTEClientGroupGP{}
-	_ resource.ResourceWithConfigure = &resourceCTEClientGroupGP{}
+	_ resource.Resource                = &resourceCTEClientGroupGP{}
+	_ resource.ResourceWithConfigure   = &resourceCTEClientGroupGP{}
+	_ resource.ResourceWithImportState = &resourceCTEClientGroupGP{}
 )
 
 func NewResourceCTEClientGroupGP() resource.Resource {
@@ -337,12 +339,12 @@ func (r *resourceCTEClientGroupGP) Read(ctx context.Context, req resource.ReadRe
 				GPType:         types.StringValue(gp.GuardPointType),
 				IsMFAEnabled:   types.BoolValue(gp.MFAEnabled),
 				IsGuardEnabled: types.BoolValue(gp.GuardEnabled),
+				PolicyID:       types.StringValue(gp.PolicyID),
 			},
 		}
 
 		if hadPrior {
 			p := prevEntry.GuardPointParams
-			entry.GuardPointParams.PolicyID = p.PolicyID
 			entry.GuardPointParams.IsAutomountEnabled = p.IsAutomountEnabled
 			entry.GuardPointParams.IsCIFSEnabled = p.IsCIFSEnabled
 			entry.GuardPointParams.IsEarlyAccessEnabled = p.IsEarlyAccessEnabled
@@ -723,4 +725,11 @@ func buildParamsPayload(p CTEClientGuardPointParamsTFSDK) CTEClientGuardPointPar
 		out.NWShareCredentialsID = p.NWShareCredentialsID.ValueString()
 	}
 	return out
+}
+
+func (r *resourceCTEClientGroupGP) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
+	id := uuid.New().String()
+	tflog.Debug(ctx, common.MSG_METHOD_START+"[resource_cte_client_group_gp.go -> ImportState]["+id+"]")
+	defer tflog.Debug(ctx, common.MSG_METHOD_END+"[resource_cte_client_group_gp.go -> ImportState]["+id+"]")
+	resource.ImportStatePassthroughID(ctx, path.Root("client_group_id"), req, resp)
 }
