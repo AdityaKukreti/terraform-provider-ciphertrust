@@ -17,6 +17,24 @@ import (
 	"github.com/tidwall/gjson"
 )
 
+// Acceptance tests run against lab / CI CipherTrust Managers whose TLS
+// certificates are self-signed (often without IP SANs). With the secure-by-
+// default provider, this would block tests at plan time on certificate
+// verification. Set NO_SSL_VERIFY=true at package init unless the operator
+// has supplied a trusted CA bundle for the test target — this propagates
+// through the provider's standard env-var precedence and covers every
+// inline test provider block, not just `providerConfig`. End-user defaults
+// outside of `go test` are unchanged.
+func init() {
+	if os.Getenv("CIPHERTRUST_CA_CERT") != "" {
+		return
+	}
+	if _, set := os.LookupEnv("NO_SSL_VERIFY"); set {
+		return // honour an explicit override (including "false")
+	}
+	_ = os.Setenv("NO_SSL_VERIFY", "true")
+}
+
 // providerConfig is the HCL provider block injected at the front of every
 // acceptance-test config. It is built once from CIPHERTRUST_* environment
 // variables so that no sed-based source-file patching is needed in CI.
