@@ -93,8 +93,9 @@ func (r *resourceCCKMOCIConnection) Schema(_ context.Context, _ resource.SchemaR
 				Description: "Optional end-user or service data stored with the connection.",
 			},
 			"name": schema.StringAttribute{
-				Required:    true,
-				Description: "Unique connection name",
+				Required:      true,
+				Description:   "Unique connection name. Immutable after creation — changing this field will produce a plan-time error.",
+				PlanModifiers: []planmodifier.String{NameImmutableModifier{}},
 			},
 			"pub_key_fingerprint": schema.StringAttribute{
 				Required:    true,
@@ -419,6 +420,10 @@ func (r *resourceCCKMOCIConnection) Update(ctx context.Context, req resource.Upd
 
 	if plan.UserOcid.ValueString() != gjson.Get(response, "user_ocid").String() {
 		payload.UserOCID = plan.UserOcid.ValueString()
+	}
+
+	if plan.Region.ValueString() != gjson.Get(response, "region").String() {
+		payload.Region = plan.Region.ValueString()
 	}
 
 	payloadJSON, err := json.Marshal(payload)
