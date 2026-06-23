@@ -73,6 +73,7 @@ resource "ciphertrust_scheduler" "scheduler" {
 // TestAccScheduler_nameImmutable verifies that changing the name of a scheduler
 // after creation produces a plan-time error, not a silent no-op.
 func TestAccScheduler_nameImmutable(t *testing.T) {
+	RequireCM(t)
 	t.Log("======== CHECK: scheduler name immutable ========")
 	resource.Test(t, resource.TestCase{
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,

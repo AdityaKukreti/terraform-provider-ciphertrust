@@ -85,7 +85,7 @@ type AWSConnectionModelJSON struct {
 	Application             types.String           `tfsdk:"application"`
 	DevAccount              types.String           `tfsdk:"dev_account"`
 	ID                      string                 `json:"id"`
-	Name                    string                 `json:"name"`
+	Name                    string                 `json:"name,omitempty"`
 	Description             string                 `json:"description"`
 	AccessKeyID             string                 `json:"access_key_id"`
 	AssumeRoleARN           string                 `json:"assume_role_arn"`
@@ -93,7 +93,7 @@ type AWSConnectionModelJSON struct {
 	AWSRegion               string                 `json:"aws_region"`
 	AWSSTSRegionalEndpoints string                 `json:"aws_sts_regional_endpoints"`
 	CloudName               string                 `json:"cloud_name"`
-	IsRoleAnywhere          bool                   `json:"is_role_anywhere"`
+	IsRoleAnywhere          bool                   `json:"is_role_anywhere,omitempty"`
 	IAMRoleAnywhere         *IAMRoleAnywhereJSON   `json:"iam_role_anywhere"`
 	Labels                  map[string]interface{} `json:"labels"`
 	Meta                    interface{}            `json:"meta"`
