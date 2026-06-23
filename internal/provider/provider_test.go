@@ -118,7 +118,7 @@ func getCipherTrustVersion() int {
 		fmt.Printf("CIPHERTRUST_ADDRESS, CIPHERTRUST_USERNAME and CIPHERTRUST_PASSWORD environment variables must be set to get the system version, returning %d\n", devCMVersionValue)
 		return devCMVersionValue
 	}
-	client, err = common.NewClient(context.Background(), uuid.NewString(), &address, &domain, &domain, &username, &password, nil, true, 180)
+	client, err = common.NewClient(context.Background(), uuid.NewString(), &address, &domain, &domain, &username, &password, nil, common.TLSOptions{InsecureSkipVerify: true}, 180)
 	if err != nil {
 		fmt.Printf("** Failed to create client, returning %d. err: %s\n", cipherTrustVersion, err.Error())
 		return cipherTrustVersion
@@ -312,7 +312,7 @@ func createCMClient() (*common.Client, bool) {
 	} else {
 		domain = os.Getenv("CIPHERTRUST_DOMAIN")
 	}
-	client, err := common.NewClient(context.Background(), uuid.NewString(), &address, &authDomain, &domain, &username, &password, tenant, true, 180)
+	client, err := common.NewClient(context.Background(), uuid.NewString(), &address, &authDomain, &domain, &username, &password, tenant, common.TLSOptions{InsecureSkipVerify: true}, 180)
 	if err != nil {
 		tenantVal := ""
 		if tenant != nil {
