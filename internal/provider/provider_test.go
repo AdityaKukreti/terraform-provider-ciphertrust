@@ -50,6 +50,17 @@ provider "ciphertrust" {
   bootstrap = "no"
 `, address, username, password)
 
+	// Acceptance tests run against lab/CI CipherTrust Managers that present
+	// self-signed certificates (often without proper IP SANs). Honour
+	// CIPHERTRUST_CA_CERT if the operator has supplied a trusted bundle for
+	// the test target; otherwise opt into skip-verify so tests aren't blocked
+	// by the production-grade default introduced for end users.
+	if caCert := os.Getenv("CIPHERTRUST_CA_CERT"); caCert != "" {
+		cfg += fmt.Sprintf("  ca_cert = %q\n", caCert)
+	} else {
+		cfg += "  no_ssl_verify = true\n"
+	}
+
 	if tenant != "" {
 		// CDSPaaS: tenant drives auth_domain_path; domain/auth_domain unused.
 		cfg += fmt.Sprintf("  tenant = %q\n", tenant)
