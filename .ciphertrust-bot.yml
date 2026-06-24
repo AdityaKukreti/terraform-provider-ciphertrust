@@ -1,0 +1,26 @@
+bot:
+  dashboard_issue_title: "CipherTrust Bot Dashboard"
+  idempotent_comments: true
+
+labels:
+  managed_extra: []
+
+risk:
+  high_risk_paths:
+    - .github/workflows/**
+    - terraform-bot/**
+    - go.mod
+    - go.sum
+    - "**/*auth*"
+    - "**/*credential*"
+    - "**/*token*"
+    - "**/*secret*"
+    - "**/*tls*"
+  low_risk_paths:
+    - docs/**
+    - examples/**
+    - "*.md"
+    - "**/*.md"
+
+commands:
+  natural_language: true
