@@ -88,10 +88,10 @@ def add_comment(issue_number,body):
 def issue_comments(issue_number):
     comments=[]; page=1
     while True:
-        batch=api('/issues/'+str(issue_number)+'/comments?per_page=100&page='+str(page),area='comments')
+        batch=api('/issues/'+str(issue_number)+'/comments?per_page=10&page='+str(page),area='comments')
         if not batch:break
         comments.extend(batch)
-        if len(batch)<100:break
+        if len(batch)<10:break
         page+=1
     return comments
 
