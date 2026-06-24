@@ -239,3 +239,6 @@ def pr_patch(pr_number,max_chars=6000):
         cut=cut if cut>0 else max_chars
         return full[:cut]+'\n\n_[diff truncated — explanation covers partial changes only]_'
     return full
+
+
+
