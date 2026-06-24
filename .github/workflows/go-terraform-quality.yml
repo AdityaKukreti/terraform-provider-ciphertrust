@@ -9,10 +9,11 @@ on:
 
 permissions:
   contents: read
+  security-events: write
 
 jobs:
   go-quality:
-    name: Go lint, test, and build
+    name: Go lint, test, and vulnerability checks
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
@@ -72,9 +73,16 @@ jobs:
         if: steps.detect-go.outputs.has_go_mod == 'true'
         run: go build ./...
 
+      - name: Run govulncheck
+        if: steps.detect-go.outputs.has_go_mod == 'true'
+        uses: golang/govulncheck-action@v1
+        with:
+          go-version-input: '1.21.x'
+          go-package: ./...
+
       - name: Skip Go module checks
         if: steps.detect-go.outputs.has_go_mod != 'true'
-        run: echo "No go.mod found; skipping module-based Go vet/test/build."
+        run: echo "No go.mod found; skipping module-based Go vet/test/build/govulncheck."
 
   terraform-quality:
     name: Terraform formatting and static checks
@@ -131,6 +139,15 @@ jobs:
             echo "Running tflint in $dir"
             (cd "$dir" && tflint --format compact)
           done
+
+      - name: Run Checkov on Terraform files
+        if: steps.detect-tf.outputs.has_tf == 'true'
+        uses: bridgecrewio/checkov-action@v12
+        with:
+          directory: .
+          framework: terraform
+          quiet: true
+          soft_fail: true
 
       - name: Skip Terraform checks
         if: steps.detect-tf.outputs.has_tf != 'true'
