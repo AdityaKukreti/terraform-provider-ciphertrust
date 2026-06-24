@@ -37,12 +37,6 @@ def sync_labels(num, desired, current, add_only=False):
         return
     managed=bot_managed()
     to_add=sorted(desired-current)
-    # Never re-apply a label a maintainer deliberately removed. This holds in both
-    # add-only (PR updates) and full-sync (issues) modes, so a maintainer's removal
-    # is honored on issues and PRs alike.
-    removed=gh.maintainer_removed_labels(num)
-    if removed:
-        to_add=[l for l in to_add if l not in removed]
     to_remove=[] if add_only else sorted((current-desired) & managed)
     for l in to_add:
         gh.ensure_label(l,description=CUSTOM_LABELS.get(l,'Managed by ciphertrust-bot'))
