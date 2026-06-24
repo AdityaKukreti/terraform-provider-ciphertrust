@@ -6,7 +6,7 @@ description: |-
   
 ---
 
-# ciphertrust_aws_key (Resource)
+# ciphertrust_aws_key (Resource) (Resource)
 
 Primary uses of the ciphertrust_aws_key resource include:
 - Creating a native AWS key
