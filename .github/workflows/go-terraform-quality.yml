@@ -1,0 +1,77 @@
+name: Go Quality Checks
+
+on:
+  pull_request:
+    branches: [ main, '1.0.1' ]
+  push:
+    branches: [ main, '1.0.1' ]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  go-quality:
+    name: Go lint, test, and build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Detect Go project shape
+        id: detect-go
+        shell: bash
+        run: |
+          if find . -path ./.git -prune -o -name '*.go' -print -quit | grep -q .; then
+            echo "has_go_files=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_go_files=false" >> "$GITHUB_OUTPUT"
+          fi
+          if [ -f go.mod ]; then
+            echo "has_go_mod=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_go_mod=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Set up Go
+        if: steps.detect-go.outputs.has_go_files == 'true' || steps.detect-go.outputs.has_go_mod == 'true'
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.21.x'
+          cache: ${{ steps.detect-go.outputs.has_go_mod == 'true' }}
+
+      - name: Check gofmt
+        if: steps.detect-go.outputs.has_go_files == 'true'
+        run: |
+          files=$(gofmt -l $(find . -path ./.git -prune -o -name '*.go' -print))
+          if [ -n "$files" ]; then
+            echo "The following Go files need gofmt:"
+            echo "$files"
+            exit 1
+          fi
+
+      - name: Download Go modules
+        if: steps.detect-go.outputs.has_go_mod == 'true'
+        run: go mod download
+
+      - name: Check go mod tidy
+        if: steps.detect-go.outputs.has_go_mod == 'true'
+        run: |
+          go mod tidy
+          git diff --exit-code go.mod go.sum
+
+      - name: Run go vet
+        if: steps.detect-go.outputs.has_go_mod == 'true'
+        run: go vet ./...
+
+      - name: Run unit tests
+        if: steps.detect-go.outputs.has_go_mod == 'true'
+        run: go test ./... -count=1
+
+      - name: Build provider
+        if: steps.detect-go.outputs.has_go_mod == 'true'
+        run: go build ./...
+
+      - name: Skip Go module checks
+        if: steps.detect-go.outputs.has_go_mod != 'true'
+        run: echo "No go.mod found; skipping module-based Go vet/test/build."
