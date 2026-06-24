@@ -363,6 +363,54 @@ func TestAccAWSConnection_immutableName(t *testing.T) {
 	})
 }
 
+// awsConnConfigNoCredentials returns a ciphertrust_aws_connection config that
+// deliberately omits access_key_id and secret_access_key from HCL, relying on
+// the backwards-compatibility env-var fallback in Create().
+func awsConnConfigNoCredentials(name string) string {
+	return providerConfig + fmt.Sprintf(`
+resource "ciphertrust_aws_connection" "test" {
+  name = %q
+}
+`, name)
+}
+
+// TestAccAWSConnection_envVarFallbackWritesToState verifies that when
+// access_key_id and secret_access_key are omitted from HCL config and supplied
+// via AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY environment variables, the
+// Create() function writes the resolved values into Terraform state so that
+// subsequent plans are idempotent (no perpetual diff).
+func TestAccAWSConnection_envVarFallbackWritesToState(t *testing.T) {
+	RequireCM(t)
+	if os.Getenv("AWS_ACCESS_KEY_ID") == "" || os.Getenv("AWS_SECRET_ACCESS_KEY") == "" {
+		t.Skip("skipping TestAccAWSConnection_envVarFallbackWritesToState: AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY must be set")
+	}
+
+	suffix := uuid.New().String()[:8]
+	name := "tf-acc-aws-envvar-" + suffix
+	cfg := awsConnConfigNoCredentials(name)
+
+	resource.Test(t, resource.TestCase{
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		Steps: []resource.TestStep{
+			{
+				// Create with no credentials in HCL; env-var fallback should supply them.
+				Config: cfg,
+				Check: checkStep(t, "env-var fallback: create",
+					resource.TestCheckResourceAttrSet("ciphertrust_aws_connection.test", "id"),
+					// Both credential fields must be non-null in state after Create().
+					resource.TestCheckResourceAttrSet("ciphertrust_aws_connection.test", "access_key_id"),
+					resource.TestCheckResourceAttrSet("ciphertrust_aws_connection.test", "secret_access_key"),
+				),
+			},
+			{
+				// Second plan with identical config must produce no diff (idempotency).
+				Config:   cfg,
+				PlanOnly: true,
+			},
+		},
+	})
+}
+
 // TestAccAWSConnection_updateComputedFields verifies that Computed fields are
 // refreshed from CM in state after an in-Terraform update, and that Update()
 // does not corrupt the resource ID.
