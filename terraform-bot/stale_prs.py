@@ -93,7 +93,7 @@ def _process_stale(item,label,exempt,threshold,grace,grace_period,closer):
         # Can't tell when we warned — be conservative and don't close.
         return
     last_update=parse_time(item.get('updated_at'))
-    if last_update and last_update>labeled_at:
+    if last_update and last_update>labeled_at+ACTIVITY_MARGIN:
         # Someone replied, edited, or pushed after the warning — treat as revived
         # and drop the stale label so the cycle restarts instead of closing.
         try:
