@@ -1,0 +1,55 @@
+name: Terraform Issue Bot
+
+on:
+  issues:
+    types: [opened, edited]
+  pull_request_target:
+    types: [opened, edited, synchronize, reopened, ready_for_review, labeled]
+  issue_comment:
+    types: [created]
+  schedule:
+    - cron: '0 3 * * *'
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: 'Optional mode: default, dashboard, stale-prs'
+        required: false
+        default: ''
+      stale_pr_days:
+        description: 'Days before stale PR cleanup'
+        required: false
+        default: '30'
+
+permissions:
+  contents: read
+  issues: write
+  pull-requests: read
+
+jobs:
+  terraform-bot:
+    name: Run Terraform issue bot
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r terraform-bot/requirements.txt
+
+      - name: Run bot
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+          GROQ_MODEL: llama-3.3-70b-versatile
+          TERRAFORM_BOT_MODE: ${{ github.event.inputs.mode }}
+          STALE_PR_DAYS: ${{ github.event.inputs.stale_pr_days || '30' }}
+          STALE_PR_LABEL: stale
+        run: python terraform-bot/bot.py
