@@ -1,8 +1,22 @@
+# Declare variables for AWS credentials to avoid hardcoding sensitive values.
+# Supply values via environment variables (TF_VAR_access_key_id, TF_VAR_secret_access_key),
+# a secrets manager, or a .tfvars file that is excluded from version control (.gitignore).
+variable "access_key_id" {
+  description = "AWS access key ID. Provide via TF_VAR_access_key_id or a .tfvars file excluded from version control."
+  type        = string
+}
+
+variable "secret_access_key" {
+  description = "AWS secret access key. Provide via TF_VAR_secret_access_key or a .tfvars file excluded from version control."
+  type        = string
+  sensitive   = true
+}
+
 # Create an AWS connection
 resource "ciphertrust_aws_connection" "aws_connection" {
   name              = "connection-name"
-  access_key_id     = "access-key-id"
-  secret_access_key = "secret-access-key"
+  access_key_id     = var.access_key_id
+  secret_access_key = var.secret_access_key
 }
 
 # Use the connection ID to retrieve account details
