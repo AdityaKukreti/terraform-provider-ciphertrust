@@ -126,7 +126,7 @@ def close_stale_prs():
 
 def close_stale_issues():
     threshold=timedelta(days=days('STALE_ISSUE_DAYS',60))
-    grace_days_val=days('STALE_ISSUE_DAYS',7)
+    grace_days_val=days('STALE_GRACE_DAYS',7)
     grace=timedelta(days=grace_days_val)
     label=os.getenv('STALE_ISSUE_LABEL','stale')
     exempt=os.getenv('STALE_EXEMPT_LABEL','no-stale')
