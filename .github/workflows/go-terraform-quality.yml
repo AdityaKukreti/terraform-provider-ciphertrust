@@ -1,0 +1,154 @@
+name: Go and Terraform Quality Checks
+
+on:
+  pull_request:
+    branches: [ main, '1.0.1' ]
+  push:
+    branches: [ main, '1.0.1' ]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  security-events: write
+
+jobs:
+  go-quality:
+    name: Go lint, test, and vulnerability checks
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Detect Go project shape
+        id: detect-go
+        shell: bash
+        run: |
+          if find . -path ./.git -prune -o -name '*.go' -print -quit | grep -q .; then
+            echo "has_go_files=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_go_files=false" >> "$GITHUB_OUTPUT"
+          fi
+          if [ -f go.mod ]; then
+            echo "has_go_mod=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_go_mod=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Set up Go
+        if: steps.detect-go.outputs.has_go_files == 'true' || steps.detect-go.outputs.has_go_mod == 'true'
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.21.x'
+          cache: ${{ steps.detect-go.outputs.has_go_mod == 'true' }}
+
+      - name: Check gofmt
+        if: steps.detect-go.outputs.has_go_files == 'true'
+        run: |
+          files=$(gofmt -l $(find . -path ./.git -prune -o -name '*.go' -print))
+          if [ -n "$files" ]; then
+            echo "The following Go files need gofmt:"
+            echo "$files"
+            exit 1
+          fi
+
+      - name: Download Go modules
+        if: steps.detect-go.outputs.has_go_mod == 'true'
+        run: go mod download
+
+      - name: Check go mod tidy
+        if: steps.detect-go.outputs.has_go_mod == 'true'
+        run: |
+          go mod tidy
+          git diff --exit-code go.mod go.sum
+
+      - name: Run go vet
+        if: steps.detect-go.outputs.has_go_mod == 'true'
+        run: go vet ./...
+
+      - name: Run unit tests
+        if: steps.detect-go.outputs.has_go_mod == 'true'
+        run: go test ./... -count=1
+
+      - name: Build provider
+        if: steps.detect-go.outputs.has_go_mod == 'true'
+        run: go build ./...
+
+      - name: Run govulncheck
+        if: steps.detect-go.outputs.has_go_mod == 'true'
+        uses: golang/govulncheck-action@v1
+        with:
+          go-version-input: '1.21.x'
+          go-package: ./...
+
+      - name: Skip Go module checks
+        if: steps.detect-go.outputs.has_go_mod != 'true'
+        run: echo "No go.mod found; skipping module-based Go vet/test/build/govulncheck."
+
+  terraform-quality:
+    name: Terraform formatting and static checks
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Detect Terraform files to check
+        id: detect-tf
+        shell: bash
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            base="origin/${{ github.base_ref }}"
+            files=$(git diff --name-only "$base"...HEAD -- '*.tf' || true)
+          else
+            files=$(find . -path ./.git -prune -o -name '*.tf' -print | sed 's#^./##')
+          fi
+          if [ -n "$files" ]; then
+            echo "has_tf=true" >> "$GITHUB_OUTPUT"
+            printf '%s\n' "$files" > /tmp/tf-files.txt
+            cat /tmp/tf-files.txt
+          else
+            echo "has_tf=false" >> "$GITHUB_OUTPUT"
+            echo "No Terraform files changed or found."
+          fi
+
+      - name: Set up Terraform
+        if: steps.detect-tf.outputs.has_tf == 'true'
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_wrapper: false
+
+      - name: Terraform fmt check
+        if: steps.detect-tf.outputs.has_tf == 'true'
+        run: |
+          while read file; do
+            [ -n "$file" ] || continue
+            terraform fmt -check "$file"
+          done < /tmp/tf-files.txt
+
+      - name: Set up TFLint
+        if: steps.detect-tf.outputs.has_tf == 'true'
+        uses: terraform-linters/setup-tflint@v4
+
+      - name: Run TFLint on touched Terraform directories
+        if: steps.detect-tf.outputs.has_tf == 'true'
+        run: |
+          tflint --init
+          cut -d/ -f1- --output-delimiter=/ /tmp/tf-files.txt | xargs -n1 dirname | sort -u | while read dir; do
+            [ -n "$dir" ] || continue
+            echo "Running tflint in $dir"
+            (cd "$dir" && tflint --format compact)
+          done
+
+      - name: Run Checkov on Terraform files
+        if: steps.detect-tf.outputs.has_tf == 'true'
+        uses: bridgecrewio/checkov-action@v12
+        with:
+          directory: .
+          framework: terraform
+          quiet: true
+          soft_fail: true
+
+      - name: Skip Terraform checks
+        if: steps.detect-tf.outputs.has_tf != 'true'
+        run: echo "No Terraform files to check for this run."
