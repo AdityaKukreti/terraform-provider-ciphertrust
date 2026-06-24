@@ -133,7 +133,7 @@ def assess_quality(title,body):
         return None
 
 
-def summarize(title,body,patch=None):
+def summarize(title,body,patch=None,comments=None):
     if patch:
         system=('Summarize this pull request for maintainers in concise Markdown. '
                 'You have the description AND the actual diff. '
@@ -142,6 +142,8 @@ def summarize(title,body,patch=None):
     else:
         system='Summarize the GitHub issue/PR provided by the user for maintainers in concise Markdown. Include problem, likely area, and next action.'
         user='Title: '+str(title)+'\nBody: '+str(body or '')[:5000]
+        if comments:
+            user+='\n\nComments:\n'+str(comments)[:3000]
     return ask(system,user,max_tokens=500)
 
 

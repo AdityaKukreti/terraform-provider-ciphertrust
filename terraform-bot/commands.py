@@ -163,7 +163,15 @@ def run(issue,comment):
             commenter.repost(num,'summary','## Summary\n\nAI summary unavailable — `GROQ_API_KEY` is not configured.\n\n_Handled by ciphertrust-bot._')
             return
         patch=gh.pr_patch(num) if 'pull_request' in issue else None
-        s=llm.summarize(issue.get('title'),issue.get('body'),patch=patch)
+        human_comments=None
+        if 'pull_request' not in issue:
+            bot_marker=commenter.BOT_MARKER_PREFIX
+            raw=gh.issue_comments(num)
+            human_comments='\n\n'.join(
+                c.get('body','') for c in raw
+                if bot_marker not in (c.get('body') or '')
+            ) or None
+        s=llm.summarize(issue.get('title'),issue.get('body'),patch=patch,comments=human_comments)
         commenter.repost(num,'summary','## Summary\n\n'+(s or 'AI summary unavailable (LLM call failed).')+'\n\n_Handled by ciphertrust-bot._')
         return
     if intent=='explain':
