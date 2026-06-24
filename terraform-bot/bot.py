@@ -36,8 +36,6 @@ def main():
         commands.run(issue,e['comment'])
     else:
         labeler.run(issue)
-        if e.get('action')=='opened':
-            duplicates.run(issue)
 
 
 if __name__=='__main__':
