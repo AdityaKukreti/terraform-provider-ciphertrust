@@ -12,13 +12,29 @@ on:
   workflow_dispatch:
     inputs:
       mode:
-        description: 'Optional mode: default, dashboard, stale-prs'
+        description: 'Optional mode: default, dashboard, merge-queue, stale-prs'
         required: false
         default: ''
       stale_pr_days:
         description: 'Days before stale PR cleanup'
         required: false
         default: '30'
+      stale_issue_days:
+        description: 'Days before stale issue cleanup'
+        required: false
+        default: '60'
+      stale_pr_minutes:
+        description: 'Testing only: minutes before stale PR cleanup'
+        required: false
+        default: ''
+      stale_grace_days:
+        description: 'Days between stale warning and close'
+        required: false
+        default: '7'
+
+concurrency:
+  group: terraform-bot-${{ github.event.issue.number || github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: false
 
 permissions:
   contents: read
@@ -45,11 +61,16 @@ jobs:
 
       - name: Run bot
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.CIPHERBOT_PAT }}
+          GH_TOKEN: ${{ secrets.CIPHERBOT_PAT }}
           GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
           GROQ_MODEL: llama-3.3-70b-versatile
           TERRAFORM_BOT_MODE: ${{ github.event.inputs.mode }}
           STALE_PR_DAYS: ${{ github.event.inputs.stale_pr_days || '30' }}
+          STALE_ISSUE_DAYS: ${{ github.event.inputs.stale_issue_days || '60' }}
+          STALE_PR_MINUTES: ${{ github.event.inputs.stale_pr_minutes }}
           STALE_PR_LABEL: stale
+          STALE_ISSUE_LABEL: stale
+          STALE_GRACE_DAYS: ${{ github.event.inputs.stale_grace_days || '7' }}
+          STALE_EXEMPT_LABEL: no-stale
         run: python terraform-bot/bot.py
