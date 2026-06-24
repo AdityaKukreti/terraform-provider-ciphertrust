@@ -144,7 +144,7 @@ def summarize(title,body,patch=None,comments=None):
         user='Title: '+str(title)+'\nBody: '+str(body or '')[:5000]
         if comments:
             user+='\n\nComments:\n'+str(comments)[:3000]
-    return ask(system,user,max_tokens=500)
+    return ask(system,user,max_tokens=120)
 
 
 def explain_pr(title,body,patch):
