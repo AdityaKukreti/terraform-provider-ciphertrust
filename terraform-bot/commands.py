@@ -115,7 +115,7 @@ def parse_command(text):
     if re.search(r'\b(clean|remove).{0,15}label',low): return {'intent':'clean-labels','args':{}}
     if re.search(r'\bsummar(ize|ise|y)\b',low): return {'intent':'summarize','args':{}}
     if re.search(r'\bfeatures?\b',low) or 'what can you do' in low: return {'intent':'features','args':{}}
-    if bot_config.enabled('commands.natural_language',True):
+    if not bot_config.enabled('commands.natural_language',True):
         return {'intent':'unknown','args':{}}
     data=llm.intent(low)
     return {'intent':data.get('intent','unknown'),'args':data.get('args') or {}}
