@@ -40,10 +40,6 @@ def find_existing_comment(issue_number,key):
 
 def upsert(issue_number,key,body):
     full=marker(key)+'\n'+body
-    if bot_config.enabled('bot.idempotent_comments',True):
-        existing=find_existing_comment(issue_number,key)
-        if existing:
-            return gh.update_comment(existing['id'],full)
     return gh.add_comment(issue_number,full)
 
 
