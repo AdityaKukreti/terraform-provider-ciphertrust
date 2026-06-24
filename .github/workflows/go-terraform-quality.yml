@@ -1,4 +1,4 @@
-name: Go Quality Checks
+name: Go and Terraform Quality Checks
 
 on:
   pull_request:
@@ -75,3 +75,63 @@ jobs:
       - name: Skip Go module checks
         if: steps.detect-go.outputs.has_go_mod != 'true'
         run: echo "No go.mod found; skipping module-based Go vet/test/build."
+
+  terraform-quality:
+    name: Terraform formatting and static checks
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Detect Terraform files to check
+        id: detect-tf
+        shell: bash
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            base="origin/${{ github.base_ref }}"
+            files=$(git diff --name-only "$base"...HEAD -- '*.tf' || true)
+          else
+            files=$(find . -path ./.git -prune -o -name '*.tf' -print | sed 's#^./##')
+          fi
+          if [ -n "$files" ]; then
+            echo "has_tf=true" >> "$GITHUB_OUTPUT"
+            printf '%s\n' "$files" > /tmp/tf-files.txt
+            cat /tmp/tf-files.txt
+          else
+            echo "has_tf=false" >> "$GITHUB_OUTPUT"
+            echo "No Terraform files changed or found."
+          fi
+
+      - name: Set up Terraform
+        if: steps.detect-tf.outputs.has_tf == 'true'
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_wrapper: false
+
+      - name: Terraform fmt check
+        if: steps.detect-tf.outputs.has_tf == 'true'
+        run: |
+          while read file; do
+            [ -n "$file" ] || continue
+            terraform fmt -check "$file"
+          done < /tmp/tf-files.txt
+
+      - name: Set up TFLint
+        if: steps.detect-tf.outputs.has_tf == 'true'
+        uses: terraform-linters/setup-tflint@v4
+
+      - name: Run TFLint on touched Terraform directories
+        if: steps.detect-tf.outputs.has_tf == 'true'
+        run: |
+          tflint --init
+          cut -d/ -f1- --output-delimiter=/ /tmp/tf-files.txt | xargs -n1 dirname | sort -u | while read dir; do
+            [ -n "$dir" ] || continue
+            echo "Running tflint in $dir"
+            (cd "$dir" && tflint --format compact)
+          done
+
+      - name: Skip Terraform checks
+        if: steps.detect-tf.outputs.has_tf != 'true'
+        run: echo "No Terraform files to check for this run."
