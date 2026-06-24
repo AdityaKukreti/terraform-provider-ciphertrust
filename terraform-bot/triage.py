@@ -133,7 +133,7 @@ def quality_labels_from_missing(body,missing):
     # toward the missing total (and the "more info needed" comment) but no longer
     # emits its own label.
     labels=[]
-    if len((body or '').strip())<80 or len(missing)>=2:
+    if len((body or '').strip())<80 or len(missing)>=1:
         labels.append('needs-info')
     return sorted(set(labels))
 
