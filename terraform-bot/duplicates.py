@@ -189,7 +189,7 @@ def run(issue):
     scored=[]
     for c in candidates:
         sc,reasons=score(issue,c)
-        if sc>=0.65:
+        if sc>=0.42:
             scored.append((sc,c,reasons))
     scored=sorted(scored,key=lambda x:x[0],reverse=True)[:5]
     if not scored:
