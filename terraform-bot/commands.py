@@ -145,8 +145,6 @@ def check_labels(issue,clean=False):
 
 
 def run(issue,comment):
-    # Guard first: skip bot's own comments before the permission check.
-    # Without this the example commands in help/label output self-trigger.
     if is_self_or_bot(comment):
         return
     if not allowed(comment):
