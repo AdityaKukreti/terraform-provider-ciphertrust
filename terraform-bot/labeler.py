@@ -120,7 +120,7 @@ def run(issue):
     quality_labels,missing=assess_quality(issue)
     desired.update(quality_labels)
     current=set(x.get('name') for x in issue.get('labels',[]) if x.get('name'))
-    sync_labels(num,desired,current)
+    sync_labels(num,desired,current,add_only=True)
     msg=triage.issue_quality_comment(missing)
     if msg:
         commenter.upsert(num,'issue-quality',msg)
