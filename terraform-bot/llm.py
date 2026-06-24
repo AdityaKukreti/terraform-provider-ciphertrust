@@ -46,7 +46,7 @@ def ask(system_prompt,user_content='',max_tokens=700,json_mode=False,temperature
         if user_content:
             messages.append({'role':'user','content':user_content})
         kwargs=dict(
-            model=os.getenv('GROQ_MODEL','llama-3.3-70b-versatile'),
+            model=os.getenv('GROQ_MODEL','llama-3.1-70b-versatile'),
             messages=messages,
             temperature=temperature,
             max_tokens=max_tokens,
